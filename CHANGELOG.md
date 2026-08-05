@@ -1,5 +1,52 @@
 # Journal des versions
 
+## v0.5.0 — Socle du rendu à niveaux de détail
+
+Aucun changement visible. Ce lot pose les fondations qui rendront possible la
+descente continue de l'orbite jusqu'au sol, et donc la végétation et les
+créatures. Tout est en Kotlin pur et testé en intégration continue ; le moteur
+de rendu n'est pas touché, il ne peut donc rien casser.
+
+### Ce que la simulation a établi avant écriture du code
+
+| Altitude caméra | Tuiles | Triangles | Arête au sol |
+|---|---|---|---|
+| 10 000 km | 9 | 18 k | 156 km |
+| 100 km | 198 | 405 k | 1,2 km |
+| 1 km | 381 | 780 k | 9,5 m |
+| 2 m | 633 | 1,3 M | 4 cm |
+
+La charge est **bornée** : descendre de l'orbite au ras du sol la multiplie par
+70, non par un quadrillion comme le ferait une subdivision uniforme. Avec des
+tuiles de 17×17, le pire cas tombe à 324 000 triangles et 7 Mo.
+
+### Composants
+
+- **`CubeSphere`** : projection des six faces d'un cube sur la sphère, avec
+  déformation tangente. Ramène le rapport de surface entre cellules du centre et
+  des coins de 4,74 à 1,37 — mesuré, pas estimé. L'icosphère reste le support de
+  la simulation ; le cube-sphère devient celui de la géométrie affichée.
+- **`TileId`** : adressage quadtree (face, niveau, x, y), géométrie, élimination
+  par l'horizon, critère de subdivision et sélection descendante.
+- **`ElevationField`** : le champ d'élévation devient une fonction pure de la
+  position, évaluable à toute résolution.
+- **`TerrainProfile`** : rassemble les constantes issues des traitements globaux
+  (niveau de la mer, amplitudes, relief). **Garantit que le terrain fin et la
+  grille simulée sont la même fonction**, pas deux approximations voisines — ce
+  qui élimine coutures et sauts visuels entre niveaux de détail par construction
+  plutôt que par correction. Un test le vérifie sommet par sommet.
+- **`CoarseSampler`** : retrouve la cellule simulée d'un point quelconque par
+  descente sur le graphe d'adjacence, en une trentaine d'étapes au lieu de
+  10 242 comparaisons. Vérifié contre la recherche exhaustive.
+
+### Ce que ce lot ne fait pas encore
+
+Le maillage des tuiles, la gestion de l'arbre en mémoire, les coordonnées
+relatives à la caméra et la caméra libre. Le flottant 32 bits ne représente que
+50 cm près du centre de la planète, contre un centième de millimètre à cent
+mètres de la caméra : les coordonnées relatives sont donc obligatoires, et
+constituent le prochain lot.
+
 ## v0.4.0 — Climat crédible et rendu maîtrisé
 
 Le premier APK fonctionnel a révélé une planète couverte à 30 % de glace, contre

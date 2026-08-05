@@ -55,12 +55,14 @@ class WorldGenerator(
         // Chaque champ tire sa propre graine : ajouter la tectonique en lot 1.4
         // ne décalera pas le climat déjà généré.
         onProgress(Stage.ELEVATION, 0f)
-        val terrainNoise = Noise(masterSeed.derive("terrain"))
-        val warpNoise = Noise(masterSeed.derive("terrain/warp"))
+        // Le champ d'élévation est une fonction pure de la position : c'est ce
+        // qui permettra au rendu à tuiles de l'évaluer à n'importe quelle
+        // finesse, sans jamais diverger de la grille simulée.
+        val field = ElevationField(masterSeed)
 
         val raw = FloatArray(n)
         for (i in 0 until n) {
-            raw[i] = rawElevation(terrainNoise, warpNoise, sphere.vertices[i])
+            raw[i] = field.rawAt(sphere.vertices[i])
             if (i and 1023 == 0) onProgress(Stage.ELEVATION, i.toFloat() / n)
         }
         onProgress(Stage.ELEVATION, 1f)
@@ -95,18 +97,26 @@ class WorldGenerator(
         val peakiness = reliefRng.nextFloatRange(1.6f, 3.2f)
         val trenchScale = reliefRng.nextFloatRange(0.6f, 1.0f)
 
+        // Le profil rassemble les constantes issues du calibrage global. À
+        // partir d'ici, l'altitude redevient une fonction pure de la position,
+        // évaluable partout et à toute résolution.
+        val profile = TerrainProfile(
+            seed = masterSeed,
+            params = params,
+            field = field,
+            seaLevel = seaLevel,
+            landSpan = landSpan,
+            seaSpan = seaSpan,
+            reliefScale = reliefScale,
+            peakiness = peakiness,
+            trenchScale = trenchScale
+        )
+
+        // On passe par le profil plutôt que de recopier la formule : c'est ce
+        // qui garantit que grille grossière et terrain fin ne peuvent pas
+        // diverger, même après une modification future.
         val altitudeM = FloatArray(n)
-        for (i in 0 until n) {
-            val e = raw[i]
-            altitudeM[i] = if (e >= seaLevel) {
-                val t = (e - seaLevel) / landSpan
-                // Exposant > 1 : beaucoup de plaines basses, peu de sommets.
-                pow(t, peakiness) * params.maxAltitudeM * reliefScale
-            } else {
-                val t = (seaLevel - e) / seaSpan
-                -t * params.maxDepthM * trenchScale
-            }
-        }
+        for (i in 0 until n) altitudeM[i] = profile.altitudeFromRaw(raw[i])
 
         // --- Étape 3 bis : distance à l'océan ---
         //
@@ -269,38 +279,9 @@ class WorldGenerator(
             temperatureC = temperatureC,
             precipMm = precipMm,
             biomeId = biomeId,
-            stats = stats
+            stats = stats,
+            terrain = profile
         )
     }
 
-    /** Puissance à exposant réel, exprimée sans dépendance à java.lang.Math. */
-    private fun pow(base: Float, exponent: Float): Float =
-        if (base <= 0f) 0f else kotlin.math.exp(exponent * kotlin.math.ln(base))
-
-    /**
-     * Champ d'élévation brut, sans unité — seul son ordre relatif compte, le
-     * calibrage du niveau de la mer s'occupe de la mise à l'échelle.
-     *
-     * Trois ingrédients :
-     *  - une **déformation du domaine** qui tord l'espace avant l'échantillonnage,
-     *    ce qui produit des côtes sinueuses au lieu de contours ronds ;
-     *  - un **bruit basse fréquence** qui dessine les masses continentales ;
-     *  - un **bruit en crêtes**, masqué par les terres, qui pose les montagnes
-     *    uniquement là où il y a de la terre à soulever.
-     */
-    private fun rawElevation(terrain: Noise, warp: Noise, v: Vec3): Float {
-        val d = 0.32f
-        val wx = v.x + warp.fbm(v.x * 2.6f, v.y * 2.6f, v.z * 2.6f, 3) * d
-        val wy = v.y + warp.fbm(v.x * 2.6f + 31f, v.y * 2.6f + 17f, v.z * 2.6f + 7f, 3) * d
-        val wz = v.z + warp.fbm(v.x * 2.6f - 19f, v.y * 2.6f - 43f, v.z * 2.6f + 23f, 3) * d
-
-        val continent = terrain.fbm(wx * 1.45f, wy * 1.45f, wz * 1.45f, 6)
-        val mountains = terrain.ridged(wx * 3.2f + 100f, wy * 3.2f, wz * 3.2f - 100f, 5)
-
-        // Le masque évite les montagnes surgissant du milieu de l'océan.
-        val landMask = clamp01((continent + 0.03f) * 3.5f)
-        val coastalSoftening = lerp(0.35f, 1f, landMask)
-
-        return continent + mountains * landMask * coastalSoftening * 1.30f
-    }
 }

@@ -34,7 +34,14 @@ class PlanetData(
     val biomeId: ByteArray,
 
     /** Statistiques de génération, affichées dans le HUD de debug. */
-    val stats: GenerationStats
+    val stats: GenerationStats,
+
+    /**
+     * Terrain sous forme de fonction, évaluable en tout point et à toute
+     * résolution. C'est lui que consultera le rendu à tuiles ; il rend
+     * exactement [altitudeM] sur les sommets de la grille.
+     */
+    val terrain: TerrainProfile
 ) {
 
     /**
