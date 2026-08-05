@@ -15,19 +15,28 @@ import kotlin.math.sin
 /**
  * Moteur de rendu de la planète.
  *
- * Points traités dans ce lot :
- *  - stockage des sommets en VBO côté GPU plutôt qu'en tampon client
- *  - reconstruction propre après perte du contexte OpenGL (lot 0.9) : le
- *    maillage vit dans [MainActivity], le renderer ne fait que le téléverser
- *  - mesure du temps par image pour le HUD de debug (lot 0.6)
+ * ## Correction majeure de cette version : la caméra
+ *
+ * En v0.2, faire pivoter la vue faisait tourner le **modèle**. Comme le soleil
+ * est fixe dans le repère du monde, déplacer la caméra changeait donc
+ * l'éclairage : impossible de faire le tour d'une planète pour observer sa face
+ * nocturne, la nuit se déplaçait avec le regard.
+ *
+ * Désormais la matrice modèle ne porte que la **rotation propre de la planète**,
+ * pilotée par le temps planétaire ; la caméra orbite dans la matrice de vue.
+ * L'éclairage devient cohérent : le jour et la nuit appartiennent à la planète,
+ * pas à l'observateur.
  */
 class PlanetRenderer : GLSurfaceView.Renderer {
 
-    // --- État caméra, écrit depuis le fil UI, lu depuis le fil GL ---
-    @Volatile var yaw = 0f
-    @Volatile var pitch = 15f
+    // --- Commandes, écrites depuis le fil UI ---
+    @Volatile var yawDeg = 0f
+    @Volatile var pitchDeg = 18f
     @Volatile var distance = 3.2f
-    @Volatile var autoRotate = true
+    @Volatile var spinDeg = 0f
+    @Volatile var sunX = 1f
+    @Volatile var sunY = 0f
+    @Volatile var sunZ = 0f
 
     // --- Télémétrie lue par le HUD ---
     @Volatile var frameMs = 0f
@@ -36,8 +45,13 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         private set
     @Volatile var drawnTriangles = 0
         private set
+    @Volatile var glRenderer: String = "?"
+        private set
 
-    /** Maillage à téléverser. Remplacé par [MainActivity] à chaque nouveau monde. */
+    /** Erreur GPU, affichée plutôt que laissée en écran noir silencieux. */
+    @Volatile var lastError: String? = null
+        private set
+
     @Volatile var pendingMesh: PlanetMesh? = null
 
     private var program = 0
@@ -58,23 +72,32 @@ class PlanetRenderer : GLSurfaceView.Renderer {
     private val model = FloatArray(16)
     private val temp = FloatArray(16)
     private val mvp = FloatArray(16)
+    private val eye = FloatArray(3)
 
-    private var spin = 0f
-    private var sunAngle = 0.6f
     private var lastFrameNanos = 0L
     private var fpsAccumulator = 0f
     private var fpsFrames = 0
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        // Le contexte a pu être détruit (mise en veille) : tout identifiant GPU
-        // conservé est désormais invalide. On repart de zéro sans toucher aux
-        // données du monde, qui vivent hors du renderer.
+        // Contexte possiblement recréé après une veille : tout identifiant GPU
+        // détenu est caduc. On repart de zéro sans toucher aux données du monde,
+        // qui vivent hors du renderer.
         program = 0
         vbo = 0
         uploadedVertexCount = 0
+        lastError = null
+
+        glRenderer = try {
+            (GLES20.glGetString(GLES20.GL_RENDERER) ?: "?")
+        } catch (t: Throwable) {
+            "?"
+        }
 
         program = buildProgram(VERTEX_SHADER, FRAGMENT_SHADER)
-        if (program == 0) return
+        if (program == 0) {
+            if (lastError == null) lastError = "Shaders indisponibles sur ce GPU"
+            return
+        }
 
         aPosition = GLES20.glGetAttribLocation(program, "aPosition")
         aColor = GLES20.glGetAttribLocation(program, "aColor")
@@ -113,21 +136,28 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         }
 
         if (program != 0 && uploadedVertexCount > 0) {
-            if (autoRotate) spin += dt * 2.2f
-            sunAngle += dt * 0.05f
+            // Caméra en coordonnées sphériques autour de l'origine.
+            val yawRad = yawDeg * DEG
+            val pitchRad = pitchDeg * DEG
+            val horizontal = cos(pitchRad) * distance
+            eye[0] = horizontal * sin(yawRad)
+            eye[1] = sin(pitchRad) * distance
+            eye[2] = horizontal * cos(yawRad)
 
-            Matrix.setLookAtM(view, 0, 0f, 0f, distance, 0f, 0f, 0f, 0f, 1f, 0f)
+            Matrix.setLookAtM(view, 0, eye[0], eye[1], eye[2], 0f, 0f, 0f, 0f, 1f, 0f)
+
+            // La matrice modèle ne porte que la rotation propre de la planète.
             Matrix.setIdentityM(model, 0)
-            Matrix.rotateM(model, 0, pitch, 1f, 0f, 0f)
-            Matrix.rotateM(model, 0, yaw + spin, 0f, 1f, 0f)
+            Matrix.rotateM(model, 0, spinDeg, 0f, 1f, 0f)
+
             Matrix.multiplyMM(temp, 0, view, 0, model, 0)
             Matrix.multiplyMM(mvp, 0, projection, 0, temp, 0)
 
             GLES20.glUseProgram(program)
             GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
             GLES20.glUniformMatrix4fv(uModel, 1, false, model, 0)
-            GLES20.glUniform3f(uCamera, 0f, 0f, distance)
-            GLES20.glUniform3f(uSun, cos(sunAngle) * 0.82f, 0.30f, sin(sunAngle) * 0.82f)
+            GLES20.glUniform3f(uCamera, eye[0], eye[1], eye[2])
+            GLES20.glUniform3f(uSun, sunX, sunY, sunZ)
 
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
             bindAttribute(aPosition, 3, PlanetMesh.OFFSET_POSITION)
@@ -170,27 +200,32 @@ class PlanetRenderer : GLSurfaceView.Renderer {
     }
 
     private fun upload(mesh: PlanetMesh) {
-        if (vbo != 0) {
-            GLES20.glDeleteBuffers(1, intArrayOf(vbo), 0)
-            vbo = 0
+        try {
+            if (vbo != 0) {
+                GLES20.glDeleteBuffers(1, intArrayOf(vbo), 0)
+                vbo = 0
+            }
+            val ids = IntArray(1)
+            GLES20.glGenBuffers(1, ids, 0)
+            vbo = ids[0]
+
+            val buffer: FloatBuffer = ByteBuffer
+                .allocateDirect(mesh.sizeBytes)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer()
+            buffer.put(mesh.vertexData)
+            buffer.position(0)
+
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
+            GLES20.glBufferData(
+                GLES20.GL_ARRAY_BUFFER, mesh.sizeBytes, buffer, GLES20.GL_STATIC_DRAW
+            )
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+            uploadedVertexCount = mesh.vertexCount
+        } catch (t: Throwable) {
+            lastError = "Téléversement du maillage échoué : ${t.javaClass.simpleName}"
+            Log.e(TAG, "Téléversement échoué", t)
         }
-        val ids = IntArray(1)
-        GLES20.glGenBuffers(1, ids, 0)
-        vbo = ids[0]
-
-        val buffer: FloatBuffer = ByteBuffer
-            .allocateDirect(mesh.sizeBytes)
-            .order(ByteOrder.nativeOrder())
-            .asFloatBuffer()
-        buffer.put(mesh.vertexData)
-        buffer.position(0)
-
-        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
-        GLES20.glBufferData(
-            GLES20.GL_ARRAY_BUFFER, mesh.sizeBytes, buffer, GLES20.GL_STATIC_DRAW
-        )
-        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
-        uploadedVertexCount = mesh.vertexCount
     }
 
     private fun buildProgram(vertexSrc: String, fragmentSrc: String): Int {
@@ -206,7 +241,9 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         val status = IntArray(1)
         GLES20.glGetProgramiv(p, GLES20.GL_LINK_STATUS, status, 0)
         if (status[0] == 0) {
-            Log.e(TAG, "Édition de liens échouée : " + GLES20.glGetProgramInfoLog(p))
+            val log = GLES20.glGetProgramInfoLog(p) ?: ""
+            Log.e(TAG, "Édition de liens échouée : $log")
+            lastError = "Édition de liens : ${log.take(110)}"
             GLES20.glDeleteProgram(p)
             return 0
         }
@@ -222,7 +259,9 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         val status = IntArray(1)
         GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, status, 0)
         if (status[0] == 0) {
-            Log.e(TAG, "Compilation de shader échouée : " + GLES20.glGetShaderInfoLog(shader))
+            val log = GLES20.glGetShaderInfoLog(shader) ?: ""
+            Log.e(TAG, "Compilation de shader échouée : $log")
+            lastError = "Shader : ${log.take(110)}"
             GLES20.glDeleteShader(shader)
             return 0
         }
@@ -231,6 +270,7 @@ class PlanetRenderer : GLSurfaceView.Renderer {
 
     companion object {
         private const val TAG = "TerraRenderer"
+        private const val DEG = 0.017453292f
 
         private const val VERTEX_SHADER = """
             uniform mat4 uMvp;
@@ -273,7 +313,7 @@ class PlanetRenderer : GLSurfaceView.Renderer {
                 vec3 view = normalize(uCamera - vWorld);
 
                 // Terminateur adouci : le passage jour/nuit s'étale au lieu de
-                // trancher net, comme sur une vraie planète avec atmosphère.
+                // trancher net, comme sur une planète pourvue d'atmosphère.
                 float day = clamp(dot(sph, sun) * 2.6 + 0.30, 0.0, 1.0);
 
                 float diffuse = max(dot(n, sun), 0.0);
@@ -286,12 +326,12 @@ class PlanetRenderer : GLSurfaceView.Renderer {
                     color += vec3(0.95, 0.97, 1.0) * spec * 0.60 * day;
                 }
 
-                // Halo atmosphérique sur le limbe.
+                // Halo atmosphérique sur le limbe, plus intense côté jour.
                 float rim = pow(1.0 - max(dot(sph, view), 0.0), 3.5);
                 color += vec3(0.28, 0.50, 0.95) * rim * 0.90 * day;
 
                 // Faible lueur nocturne pour que la face sombre reste lisible.
-                color += vColor * 0.020;
+                color += vColor * 0.022;
 
                 gl_FragColor = vec4(color, 1.0);
             }

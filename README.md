@@ -1,12 +1,15 @@
-# Terra — v0.2.0
+# Terra — v0.3.0
 
 Simulateur de planète de poche. Aucune permission, aucun réseau, aucune donnée
 collectée.
 
 ## État d'avancement
 
-**Phase 0 — Socle technique** : lots 0.1 à 0.6, 0.11, 0.13
+**Phase 0 — Socle technique** : lots 0.1 à 0.6, 0.8, 0.11, 0.13
 **Phase 1 — Monde statique** : lots 1.1 à 1.3
+**Consolidation** : persistance, nommage, calques, géographie, temps, empreintes
+
+Prochain lot : 1.4 à 1.8 — tectonique des plaques.
 
 Voir `TERRA-FEUILLE-DE-ROUTE.md` pour le plan complet (143 lots, 9 phases).
 
@@ -25,10 +28,15 @@ JVM, ce qui rend la simulation testable automatiquement en intégration continue
 
 | Geste | Effet |
 |---|---|
-| Glisser | Pivoter la planète |
+| Glisser | Pivoter la planète (avec inertie) |
 | Pincer | Zoomer |
-| Appui long | Générer un nouveau monde |
+| Appui long | Ouvrir le sélecteur de monde |
 | Deux doigts (tape rapide) | Afficher / masquer le HUD |
+| Boutons bas-gauche | Changer de calque de données |
+| Boutons bas-droite | Vitesse du temps, sélecteur de monde |
+
+Le nom d'un monde est sa graine : noter « Kaleth » suffit à le retrouver à
+l'identique, sur n'importe quel appareil.
 
 ## Compilation
 

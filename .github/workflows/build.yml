@@ -41,5 +41,5 @@ jobs:
         with:
           name: test-reports-${{ github.sha }}
           path: |
-            core/build/reports/tests/
-            sim/build/reports/tests/
+            core/build/reports/
+            sim/build/reports/

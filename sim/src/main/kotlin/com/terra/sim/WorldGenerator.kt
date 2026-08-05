@@ -19,8 +19,17 @@ import kotlin.math.max
  */
 class WorldGenerator(
     private val masterSeed: Seed,
-    private val params: PlanetParams = PlanetParams()
+    private val params: PlanetParams = PlanetParams(),
+    private val worldName: String = ""
 ) {
+
+    companion object {
+        /** Construit un générateur à partir du nom du monde, qui sert de graine. */
+        fun fromName(name: String, params: PlanetParams = PlanetParams()): WorldGenerator {
+            val clean = WorldNamer.sanitize(name)
+            return WorldGenerator(Seed.fromText(clean), params, clean)
+        }
+    }
 
     /** Étapes annoncées à l'écran de chargement (lot 0.11). */
     enum class Stage(val label: String) {
@@ -168,6 +177,7 @@ class WorldGenerator(
         onProgress(Stage.DONE, 1f)
 
         return PlanetData(
+            name = worldName,
             seed = masterSeed,
             sphere = sphere,
             params = params,

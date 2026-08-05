@@ -1,46 +1,59 @@
 package com.terra.planet
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
-import com.terra.core.Seed
+import com.terra.core.SimClock
 import com.terra.core.clamp
-import com.terra.sim.Biome
+import com.terra.sim.MapLayer
 import com.terra.sim.PlanetData
 import com.terra.sim.PlanetParams
 import com.terra.sim.WorldGenerator
+import com.terra.sim.WorldNamer
+import com.terra.sim.WorldSave
+import com.terra.sim.WorldTime
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
  * Écran principal.
  *
- * Responsabilités de ce lot :
- *  - générer le monde hors du fil principal, avec progression réelle (lot 0.11)
- *  - conserver [PlanetData] hors du renderer pour survivre à une perte de
- *    contexte OpenGL (lot 0.9)
- *  - afficher un HUD de debug instrumenté (lot 0.6)
- *  - contrôles tactiles : rotation, pincement, appui long pour un nouveau monde
+ * Apports de cette version :
+ *  - le monde survit à la fermeture (nom + paramètres + tick sauvegardés)
+ *  - on peut nommer un monde et le retrouver exactement
+ *  - cinq calques de données pour juger la génération sur les grandeurs réelles
+ *  - le temps planétaire s'écoule vraiment, avec jours, saisons et contrôles
+ *  - inertie de rotation, et remontée des erreurs GPU dans le HUD
  */
 class MainActivity : Activity() {
 
     private lateinit var glView: GLSurfaceView
     private lateinit var renderer: PlanetRenderer
+    private lateinit var configChooser: BestConfigChooser
     private lateinit var hud: TextView
     private lateinit var loading: TextView
     private lateinit var scaleDetector: ScaleGestureDetector
+    private lateinit var store: WorldStore
+    private lateinit var layerBar: LinearLayout
+    private lateinit var timeBar: LinearLayout
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { r ->
@@ -50,46 +63,80 @@ class MainActivity : Activity() {
 
     /** Le monde vit ici, pas dans le renderer : il survit à la mise en veille. */
     @Volatile private var world: PlanetData? = null
-    @Volatile private var currentSeedValue: Long = 0L
     @Volatile private var meshBuildMs: Long = 0L
+
+    private val clock = SimClock(stepSeconds = 1f / 30f, maxStepsPerFrame = 240)
+    private var worldTime = WorldTime()
+    private var params = PlanetParams(subdivisions = 5)
+    private var currentLayer = MapLayer.BIOME
+    private var staleSave = false
 
     private var hudVisible = true
     private var lastX = 0f
     private var lastY = 0f
+    private var yawVelocity = 0f
+    private var pitchVelocity = 0f
+    private var dragging = false
     private var touchDownAt = 0L
     private var touchMoved = false
+    private var lastTickNanos = 0L
+
+    private val speeds = listOf(0f, 1f, 20f, 200f)
+    private val speedLabels = listOf("❚❚", "×1", "×20", "×200")
+    private var speedIndex = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        store = WorldStore(this)
 
         renderer = PlanetRenderer()
+        configChooser = BestConfigChooser()
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
-            setEGLConfigChooser(8, 8, 8, 0, 16, 0)
+            setEGLConfigChooser(configChooser)
             preserveEGLContextOnPause = true
             setRenderer(renderer)
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
 
         hud = TextView(this).apply {
-            setTextColor(Color.argb(190, 150, 255, 190))
+            setTextColor(Color.argb(195, 150, 255, 190))
             setShadowLayer(3f, 0f, 0f, Color.BLACK)
             typeface = Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f)
             setPadding(24, 24, 24, 24)
         }
 
         loading = TextView(this).apply {
-            setTextColor(Color.argb(230, 220, 235, 255))
+            setTextColor(Color.argb(235, 220, 235, 255))
             setShadowLayer(4f, 0f, 0f, Color.BLACK)
             typeface = Typeface.MONOSPACE
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             gravity = Gravity.CENTER
         }
 
+        layerBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(16, 8, 16, 20)
+        }
+        for (layer in MapLayer.values()) {
+            layerBar.addView(makeButton(layer.shortLabel) { switchLayer(layer) })
+        }
+
+        timeBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(16, 8, 16, 20)
+        }
+        speedLabels.forEachIndexed { index, label ->
+            timeBar.addView(makeButton(label) { setSpeed(index) })
+        }
+        timeBar.addView(makeButton("Monde") { showSeedDialog() })
+
         setContentView(FrameLayout(this).apply {
             addView(glView, FrameLayout.LayoutParams(-1, -1))
             addView(hud, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
+            addView(layerBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+            addView(timeBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
         })
 
@@ -97,48 +144,106 @@ class MainActivity : Activity() {
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScale(d: ScaleGestureDetector): Boolean {
                     val factor = if (d.scaleFactor > 0.01f) d.scaleFactor else 1f
-                    renderer.distance = clamp(renderer.distance / factor, 1.25f, 9f)
+                    renderer.distance = clamp(renderer.distance / factor, 1.22f, 9f)
                     return true
                 }
             })
 
-        generateWorld(System.currentTimeMillis())
-        startHudLoop()
+        restoreOrCreateWorld()
+        startUiLoop()
     }
 
-    // ---------------------------------------------------------------- monde
+    // ------------------------------------------------------------ boutons
 
-    private fun generateWorld(seedValue: Long) {
+    private fun makeButton(label: String, onTap: () -> Unit): TextView =
+        TextView(this).apply {
+            text = label
+            typeface = Typeface.MONOSPACE
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(Color.argb(225, 225, 240, 255))
+            setPadding(26, 16, 26, 16)
+            background = GradientDrawable().apply {
+                cornerRadius = 14f
+                setColor(Color.argb(105, 12, 24, 44))
+                setStroke(2, Color.argb(90, 150, 200, 255))
+            }
+            val lp = LinearLayout.LayoutParams(-2, -2)
+            lp.setMargins(6, 0, 6, 0)
+            layoutParams = lp
+            setOnClickListener { onTap() }
+        }
+
+    private fun refreshButtonStates() {
+        for (i in 0 until layerBar.childCount) {
+            highlight(layerBar.getChildAt(i) as TextView, i == currentLayer.ordinal)
+        }
+        for (i in 0 until speedLabels.size) {
+            highlight(timeBar.getChildAt(i) as TextView, i == speedIndex)
+        }
+    }
+
+    private fun highlight(view: TextView, active: Boolean) {
+        (view.background as? GradientDrawable)?.apply {
+            setColor(if (active) Color.argb(165, 30, 70, 120) else Color.argb(105, 12, 24, 44))
+            setStroke(2, if (active) Color.argb(210, 180, 230, 255) else Color.argb(90, 150, 200, 255))
+        }
+        view.setTextColor(
+            if (active) Color.argb(255, 235, 250, 255) else Color.argb(190, 200, 220, 240)
+        )
+    }
+
+    // ------------------------------------------------------------- monde
+
+    private fun restoreOrCreateWorld() {
+        val snapshot = store.load()
+        if (snapshot != null && snapshot.worldName.isNotEmpty()) {
+            staleSave = snapshot.isStale
+            params = snapshot.params
+            clock.restore(snapshot.tick)
+            generateWorld(snapshot.worldName)
+        } else {
+            staleSave = false
+            clock.reset()
+            generateWorld(WorldNamer.randomName(System.nanoTime()))
+        }
+    }
+
+    private fun generateWorld(name: String) {
         if (!generating.compareAndSet(false, true)) return
 
-        currentSeedValue = seedValue
         loading.visibility = View.VISIBLE
-        loading.text = "Terra\n\ninitialisation…"
+        loading.text = "Terra\n\n$name\n\ninitialisation…"
 
         worker.execute {
             try {
-                val seed = Seed.master(seedValue)
-                val generator = WorldGenerator(seed, PlanetParams(subdivisions = 5))
-
-                val data = generator.generate { stage, progress ->
+                val data = WorldGenerator.fromName(name, params).generate { stage, progress ->
                     val pct = (progress * 100f).roundToInt()
-                    mainHandler.post {
-                        loading.text = "Terra\n\n${stage.label}\n$pct %"
-                    }
+                    mainHandler.post { loading.text = "Terra\n\n$name\n\n${stage.label}\n$pct %" }
                 }
 
+                // L'analyse géographique et l'empreinte sont calculées ici, sur
+                // le fil de travail, pour ne jamais bloquer l'affichage.
+                data.geography
+                data.fingerprint
+
                 val meshStart = System.nanoTime()
-                val mesh = PlanetMesh(data)
+                val mesh = PlanetMesh(data, currentLayer)
                 meshBuildMs = (System.nanoTime() - meshStart) / 1_000_000L
 
                 world = data
+                worldTime = WorldTime(axialTiltDeg = params.axialTiltDeg)
                 renderer.pendingMesh = mesh
 
-                mainHandler.post { loading.visibility = View.GONE }
+                persist()
+                mainHandler.post {
+                    loading.visibility = View.GONE
+                    refreshButtonStates()
+                }
             } catch (t: Throwable) {
                 mainHandler.post {
                     loading.visibility = View.VISIBLE
-                    loading.text = "Échec de la génération\n\n${t.javaClass.simpleName}\n${t.message ?: ""}"
+                    loading.text = "Échec de la génération\n\n" +
+                            "${t.javaClass.simpleName}\n${t.message ?: ""}"
                 }
             } finally {
                 generating.set(false)
@@ -146,56 +251,172 @@ class MainActivity : Activity() {
         }
     }
 
-    // ------------------------------------------------------------------ HUD
+    private fun switchLayer(layer: MapLayer) {
+        if (layer == currentLayer) return
+        currentLayer = layer
+        refreshButtonStates()
+        val data = world ?: return
+        worker.execute {
+            val started = System.nanoTime()
+            val mesh = PlanetMesh(data, layer)
+            meshBuildMs = (System.nanoTime() - started) / 1_000_000L
+            renderer.pendingMesh = mesh
+        }
+    }
 
-    private fun startHudLoop() {
+    private fun setSpeed(index: Int) {
+        speedIndex = index
+        clock.timeScale = speeds[index]
+        refreshButtonStates()
+    }
+
+    private fun persist() {
+        val data = world ?: return
+        if (data.name.isEmpty()) return
+        store.save(WorldSave.Snapshot(data.name, params, clock.tick))
+    }
+
+    private fun showSeedDialog() {
+        val current = world?.name ?: ""
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            setText(current)
+            setSelection(text.length)
+            hint = "Nom du monde"
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Choisir un monde")
+            .setMessage(
+                "Le nom est la graine : un même nom reconstruit toujours " +
+                "exactement la même planète."
+            )
+            .setView(input)
+            .setPositiveButton("Générer") { _, _ ->
+                val name = WorldNamer.sanitize(input.text.toString())
+                if (name.isNotEmpty() && name != current) {
+                    clock.reset()
+                    staleSave = false
+                    generateWorld(name)
+                }
+            }
+            .setNeutralButton("Aléatoire") { _, _ ->
+                clock.reset()
+                staleSave = false
+                generateWorld(WorldNamer.randomName(System.nanoTime()))
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    // --------------------------------------------------------------- HUD
+
+    private fun startUiLoop() {
+        refreshButtonStates()
         mainHandler.post(object : Runnable {
             override fun run() {
+                tickSimulation()
                 if (hudVisible) hud.text = buildHudText()
-                mainHandler.postDelayed(this, 250L)
+                mainHandler.postDelayed(this, 100L)
             }
         })
+    }
+
+    /**
+     * Avance le temps planétaire et applique inertie et éclairage.
+     *
+     * L'horloge à pas fixe pilote enfin quelque chose : rotation propre de la
+     * planète, position du soleil, saison. À vitesse ×1, une journée
+     * planétaire dure environ quarante-huit secondes de temps réel.
+     */
+    private fun tickSimulation() {
+        val now = System.nanoTime()
+        val dt = if (lastTickNanos == 0L) 0.1f
+                 else ((now - lastTickNanos) / 1_000_000_000f).coerceIn(0f, 0.5f)
+        lastTickNanos = now
+
+        clock.advance(dt) { }
+
+        renderer.spinDeg = worldTime.spinDegrees(clock.tick)
+        val sun = worldTime.sunDirection(clock.tick)
+        renderer.sunX = sun[0]; renderer.sunY = sun[1]; renderer.sunZ = sun[2]
+
+        // Inertie : la planète continue de tourner après un glissement, et
+        // ralentit progressivement.
+        if (!dragging) {
+            if (abs(yawVelocity) > 0.01f || abs(pitchVelocity) > 0.01f) {
+                renderer.yawDeg += yawVelocity
+                renderer.pitchDeg = clamp(renderer.pitchDeg + pitchVelocity, -85f, 85f)
+                yawVelocity *= 0.90f
+                pitchVelocity *= 0.90f
+            } else {
+                yawVelocity = 0f
+                pitchVelocity = 0f
+            }
+        }
     }
 
     private fun buildHudText(): String {
         val w = world ?: return "TERRA v$VERSION\ngénération en cours…"
         val s = w.stats
+        val g = w.geography
         val sb = StringBuilder()
 
-        sb.append("TERRA v").append(VERSION).append("  ·  lot 0.1-0.6 / 1.1-1.3\n")
-        sb.append("graine   ").append(w.seed.shortCode())
-            .append("  (").append(currentSeedValue).append(")\n")
+        renderer.lastError?.let { sb.append("⚠ ").append(it).append("\n\n") }
+
+        sb.append("TERRA v").append(VERSION).append("  ·  calque ")
+            .append(currentLayer.label).append('\n')
+        sb.append("monde    ").append(w.name.ifEmpty { "(sans nom)" })
+            .append("   ").append(w.seed.shortCode()).append('\n')
+        sb.append("empreinte ").append(w.fingerprintHex()).append('\n')
+        if (staleSave) sb.append("         (généré par une version antérieure)\n")
+        sb.append("date     ").append(worldTime.format(clock.tick)).append('\n')
+        sb.append("soleil   déclinaison ")
+            .append(fmt(worldTime.sunDeclinationDeg(clock.tick))).append("°\n")
+        sb.append('\n')
+
         sb.append("rendu    ").append(fmt(renderer.fps)).append(" i/s   ")
-            .append(fmt(renderer.frameMs)).append(" ms\n")
+            .append(fmt(renderer.frameMs)).append(" ms   ")
+            .append(configChooser.chosenSamples).append("× AA\n")
+        sb.append("gpu      ").append(renderer.glRenderer.take(30)).append('\n')
         sb.append("maillage ").append(renderer.drawnTriangles).append(" triangles   ")
             .append(w.vertexCount).append(" cellules\n")
-        sb.append("calcul   monde ").append(s.generationMs).append(" ms   ")
-            .append("maillage ").append(meshBuildMs).append(" ms\n")
+        sb.append("calcul   monde ").append(s.generationMs).append(" ms   maillage ")
+            .append(meshBuildMs).append(" ms\n")
+        sb.append('\n')
+
         sb.append("océans   ").append(fmt(s.oceanFractionActual * 100f)).append(" %\n")
-        sb.append("altitude ").append(s.deepestDepthM.roundToInt()).append(" m … +")
+        sb.append("terres   ").append(g.continentCount).append(" continents, ")
+            .append(g.islandCount).append(" îles\n")
+        sb.append("         plus grand ")
+            .append(fmt(g.largestLandmassFraction * 100f)).append(" % des terres\n")
+        sb.append("         fragmentation ").append(fmt(g.fragmentation * 100f)).append(" %\n")
+        sb.append("mers int ").append(g.inlandSeaCount).append('\n')
+        sb.append("littoral ").append(g.coastlineKm.roundToInt()).append(" km\n")
+        sb.append("altitude moy ").append(g.meanLandAltitudeM.roundToInt()).append(" m   max +")
             .append(s.highestAltitudeM.roundToInt()).append(" m\n")
+        sb.append("montagnes ").append(fmt(g.mountainFraction * 100f))
+            .append(" % des terres\n")
         sb.append("climat   ").append(fmt(s.coldestC)).append(" °C … ")
             .append(fmt(s.hottestC)).append(" °C\n")
-        sb.append("biomes   ").append(s.distinctBiomes).append(" présents sur ")
-            .append(Biome.values().size).append('\n')
+        sb.append("biomes   ").append(s.distinctBiomes).append(" présents\n")
 
         s.biomeCounts.entries
             .sortedByDescending { it.value }
-            .take(6)
+            .take(5)
             .forEach { (biome, count) ->
-                val pct = count * 100f / w.vertexCount
                 sb.append("  ").append(biome.label.padEnd(17))
-                    .append(fmt(pct)).append(" %\n")
+                    .append(fmt(count * 100f / w.vertexCount)).append(" %\n")
             }
 
-        sb.append("\nglisser : pivoter · pincer : zoomer\n")
-        sb.append("appui long : nouveau monde · 2 doigts : HUD")
+        sb.append("\ndeux doigts (tape) : masquer ce panneau")
         return sb.toString()
     }
 
     private fun fmt(v: Float): String = String.format("%.1f", v)
 
-    // -------------------------------------------------------------- gestes
+    // ------------------------------------------------------------ gestes
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         scaleDetector.onTouchEvent(e)
@@ -205,7 +426,9 @@ class MainActivity : Activity() {
                 lastX = e.x; lastY = e.y
                 touchDownAt = System.currentTimeMillis()
                 touchMoved = false
-                renderer.autoRotate = false
+                dragging = true
+                yawVelocity = 0f
+                pitchVelocity = 0f
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -215,20 +438,21 @@ class MainActivity : Activity() {
                     if (dx * dx + dy * dy > 36f) touchMoved = true
                     // La sensibilité suit la distance : de près, on pivote plus lentement.
                     val speed = 0.22f * (renderer.distance / 3.2f)
-                    renderer.yaw += dx * speed
-                    renderer.pitch = clamp(renderer.pitch + dy * speed, -85f, 85f)
+                    val dYaw = -dx * speed
+                    val dPitch = dy * speed
+                    renderer.yawDeg += dYaw
+                    renderer.pitchDeg = clamp(renderer.pitchDeg + dPitch, -85f, 85f)
+                    yawVelocity = dYaw * 0.55f
+                    pitchVelocity = dPitch * 0.55f
                     lastX = e.x; lastY = e.y
                 }
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
                 touchMoved = true
-                if (e.pointerCount == 2) {
-                    // Deux doigts posés simultanément : bascule du HUD.
-                    if (System.currentTimeMillis() - touchDownAt < 250L) {
-                        hudVisible = !hudVisible
-                        hud.visibility = if (hudVisible) View.VISIBLE else View.GONE
-                    }
+                if (e.pointerCount == 2 && System.currentTimeMillis() - touchDownAt < 250L) {
+                    hudVisible = !hudVisible
+                    hud.visibility = if (hudVisible) View.VISIBLE else View.GONE
                 }
             }
 
@@ -237,44 +461,43 @@ class MainActivity : Activity() {
             }
 
             MotionEvent.ACTION_UP -> {
+                dragging = false
                 val held = System.currentTimeMillis() - touchDownAt
-                if (!touchMoved && held > 600L && !generating.get()) {
-                    generateWorld(System.nanoTime())
-                }
-                renderer.autoRotate = true
+                if (!touchMoved && held > 600L && !generating.get()) showSeedDialog()
             }
 
-            MotionEvent.ACTION_CANCEL -> renderer.autoRotate = true
+            MotionEvent.ACTION_CANCEL -> dragging = false
         }
         return true
     }
 
-    // ------------------------------------------------------------ cycle de vie
+    // ------------------------------------------------------- cycle de vie
 
     override fun onResume() {
         super.onResume()
         glView.onResume()
-        // Si le contexte GL a été détruit pendant la veille, le maillage est
-        // reconstruit à partir des données du monde, qui n'ont pas bougé.
+        lastTickNanos = 0L
         world?.let { data ->
             if (renderer.drawnTriangles == 0) {
-                worker.execute { renderer.pendingMesh = PlanetMesh(data) }
+                worker.execute { renderer.pendingMesh = PlanetMesh(data, currentLayer) }
             }
         }
     }
 
     override fun onPause() {
         super.onPause()
+        persist()
         glView.onPause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        persist()
         mainHandler.removeCallbacksAndMessages(null)
         worker.shutdownNow()
     }
 
     companion object {
-        const val VERSION = "0.2.0"
+        const val VERSION = "0.3.0"
     }
 }

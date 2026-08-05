@@ -15,6 +15,8 @@ import com.terra.core.Vec3
  * Toutes les grandeurs sont dans des unités physiques réelles.
  */
 class PlanetData(
+    /** Nom du monde : c'est lui qui fait office d'identité et de graine. */
+    val name: String,
     val seed: Seed,
     val sphere: Icosphere,
     val params: PlanetParams,
@@ -34,6 +36,40 @@ class PlanetData(
     /** Statistiques de génération, affichées dans le HUD de debug. */
     val stats: GenerationStats
 ) {
+
+    /**
+     * Analyse géographique, calculée à la demande car elle exige la
+     * construction de la liste d'adjacence.
+     */
+    val geography: Geography by lazy { Geography.analyze(this) }
+
+    /**
+     * Empreinte du monde — lot de consolidation.
+     *
+     * Condense l'ensemble des champs générés en un seul entier 64 bits. Sert de
+     * test de non-régression : si la graine « Gaia » ne produit plus la même
+     * empreinte qu'hier, c'est que l'algorithme a dérivé, volontairement ou non.
+     *
+     * Les valeurs sont quantifiées avant hachage pour tolérer les écarts
+     * d'arrondi entre processeurs sans masquer une vraie différence.
+     */
+    val fingerprint: Long by lazy {
+        var h = -3750763034362895579L   // FNV-1a 64 bits
+        fun feed(v: Long) {
+            h = h xor v
+            h *= 1099511628211L
+        }
+        for (i in 0 until vertexCount) {
+            feed(Math.round(altitudeM[i]).toLong())
+            feed(Math.round(temperatureC[i] * 100f).toLong())
+            feed(Math.round(precipMm[i]).toLong())
+            feed(biomeId[i].toLong())
+        }
+        h
+    }
+
+    /** Empreinte en hexadécimal, format compact pour le HUD et les rapports. */
+    fun fingerprintHex(): String = java.lang.Long.toHexString(fingerprint).padStart(16, '0')
 
     val vertexCount: Int get() = sphere.vertexCount
     val faceCount: Int get() = sphere.faceCount

@@ -1,5 +1,7 @@
 package com.terra.planet
 
+import com.terra.sim.LayerPalette
+import com.terra.sim.MapLayer
 import com.terra.sim.PlanetData
 import kotlin.math.sqrt
 
@@ -17,7 +19,7 @@ import kotlin.math.sqrt
  * pour obtenir des facettes nettes (low-poly). Une normale unique par sommet
  * partagé produirait un lissage qui effacerait complètement le style visuel.
  */
-class PlanetMesh(data: PlanetData) {
+class PlanetMesh(data: PlanetData, val layer: MapLayer = MapLayer.BIOME) {
 
     val vertexData: FloatArray
     val vertexCount: Int
@@ -50,6 +52,14 @@ class PlanetMesh(data: PlanetData) {
             px[i] = v.x * r; py[i] = v.y * r; pz[i] = v.z * r
         }
 
+        // Couleurs pré-calculées par sommet selon le calque demandé.
+        val colors = FloatArray(sphere.vertexCount * 3)
+        val tmp = FloatArray(3)
+        for (i in 0 until sphere.vertexCount) {
+            LayerPalette.color(layer, data, i, tmp)
+            colors[i * 3] = tmp[0]; colors[i * 3 + 1] = tmp[1]; colors[i * 3 + 2] = tmp[2]
+        }
+
         var o = 0
         var f = 0
         while (f < faces.size) {
@@ -73,9 +83,10 @@ class PlanetMesh(data: PlanetData) {
 
             for (k in 0..2) {
                 val vi = faces[f + k]
-                val biome = data.biome(vi)
                 vertexData[o++] = px[vi]; vertexData[o++] = py[vi]; vertexData[o++] = pz[vi]
-                vertexData[o++] = biome.r; vertexData[o++] = biome.g; vertexData[o++] = biome.b
+                vertexData[o++] = colors[vi * 3]
+                vertexData[o++] = colors[vi * 3 + 1]
+                vertexData[o++] = colors[vi * 3 + 2]
                 vertexData[o++] = nx; vertexData[o++] = ny; vertexData[o++] = nz
                 vertexData[o++] = material
             }
