@@ -1,5 +1,31 @@
 # Journal des versions
 
+## v0.7.2 — Correctif : écran noir à l'approche du sol
+
+### La cause, démontrée avant correction
+
+Le lancer de rayon évaluait le **champ de base**, mais les tuiles proches
+rendent le **champ détaillé** (`detailedAltitudeAt`, jusqu'à ±26 m d'écart).
+L'ancrage `snapToTerrain` garantissait donc deux mètres au-dessus d'une
+surface qui n'était pas celle affichée : près du sol, l'œil passait sous le
+terrain rendu, toutes les faces proches étaient vues de dos et éliminées —
+écran noir, corrélé à l'altitude.
+
+`TerrainRaycaster` évalue désormais la surface au niveau de détail maximal,
+celle que le mailleur produit. Deux tests ajoutés : égalité exacte des deux
+surfaces sur 500 directions (avec garde-fou exigeant des points où le détail
+agit vraiment), et ancrage vérifié au-dessus de la surface **rendue** sur 40
+poses de caméra au ras du sol. 187 tests attendus en CI.
+
+### Nuit lisible
+
+Second facteur du noir : à ×1, un jour planétaire dure 48 s, et la face
+nocturne était éclairée à 1,8 % — indiscernable d'un écran éteint. Clair de
+lune implicite au sol (lueur nocturne renforcée en descente uniquement) et
+plancher bleu sombre sur le ciel : la nuit se voit comme une nuit, plus comme
+une panne. Le bouton ❚❚ fige le soleil pour travailler côté jour.
+
+
 ## v0.7.1 — Lot B : la descente devient visible
 
 Premier rendu à tuiles branché de bout en bout : sélection à chaque image,

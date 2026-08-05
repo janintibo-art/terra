@@ -323,3 +323,73 @@ class CubeSphereDoubleTest {
         }
     }
 }
+
+/**
+ * Le test qui aurait attrapé le bug de la v0.7.1 : caméra et mailleur doivent
+ * voir exactement la même surface. Le lancer de rayon évaluait le champ de
+ * base quand les tuiles rendaient le champ détaillé — l'ancrage garantissait
+ * deux mètres au-dessus d'un sol qui n'était pas celui affiché, et l'œil
+ * finissait sous le terrain rendu, écran noir.
+ */
+class CollisionSurfaceTest {
+
+    companion object {
+        private val world: PlanetData by lazy {
+            WorldGenerator.fromName("Kaleth", PlanetParams(subdivisions = 4)).generate()
+        }
+    }
+
+    @Test
+    fun `le lancer de rayon evalue la surface rendue au niveau maximal`() {
+        val caster = TerrainRaycaster(world.terrain)
+        val maxAmp = world.terrain.detailAmplitudeForLevel(TileId.MAX_LEVEL)
+        val rng = Random(7)
+        var detailSeen = false
+
+        repeat(500) {
+            val d = Vec3d(
+                rng.nextDouble() * 2.0 - 1.0,
+                rng.nextDouble() * 2.0 - 1.0,
+                rng.nextDouble() * 2.0 - 1.0
+            )
+            if (d.lengthSq < 1e-6) return@repeat
+            val dir = d.normalized()
+
+            val fromCaster = caster.altitudeAlong(dir)
+            val rendered = world.terrain
+                .detailedAltitudeAt(dir.toVec3(), maxAmp)
+                .toDouble()
+            assertEquals(rendered, fromCaster, 1e-6, "surfaces divergentes")
+
+            // Garde-fou contre une régression sournoise : si le détail était de
+            // nouveau ignoré, les deux champs coïncideraient quand même sur
+            // l'océan et les rivages. On exige d'avoir observé au moins un
+            // point où le détail change réellement la valeur.
+            val base = world.terrain.altitudeAt(dir.toVec3()).toDouble()
+            if (kotlin.math.abs(fromCaster - base) > 0.5) detailSeen = true
+        }
+        assertTrue(detailSeen, "aucun point où le détail agit : l'échantillon ne prouve rien")
+    }
+
+    @Test
+    fun `la camera ancree reste au-dessus de la surface rendue`() {
+        val caster = TerrainRaycaster(world.terrain)
+        val rng = Random(11)
+
+        repeat(40) {
+            val cam = PlanetCamera(
+                world.params.radiusM.toDouble(),
+                focusLatRad = (rng.nextDouble() - 0.5) * Math.PI * 0.9,
+                focusLonRad = (rng.nextDouble() - 0.5) * 2.0 * Math.PI,
+                rangeM = 2.0 + rng.nextDouble() * 60.0,
+                tiltRad = rng.nextDouble() * 1.2
+            )
+            cam.snapToTerrain(caster)
+            val clearance = caster.heightAboveTerrain(cam.eyePositionM())
+            assertTrue(
+                clearance > 1.0,
+                "œil à $clearance m de la surface rendue (lat ${cam.focusLatRad})"
+            )
+        }
+    }
+}

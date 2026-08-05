@@ -57,17 +57,45 @@ class TerrainRaycaster(
     private val planetRadiusM: Double = terrain.params.radiusM.toDouble()
 ) {
 
-    /** Rayon de la sphère englobant tout relief émergé. */
+    /**
+     * Amplitude du détail haute fréquence incluse dans la surface de collision.
+     *
+     * ## Le bug que ce champ corrige (v0.7.1)
+     *
+     * Le lancer de rayon évaluait le champ de base, mais les tuiles proches
+     * rendent `detailedAltitudeAt` — jusqu'à ±26 m d'écart. L'ancrage de la
+     * caméra garantissait donc deux mètres au-dessus d'une surface qui n'était
+     * pas celle affichée : près du sol, l'œil passait sous le terrain rendu et
+     * l'écran devenait noir, toutes les faces proches étant vues de dos.
+     *
+     * La collision se fait désormais sur la surface au **niveau de détail
+     * maximal**. Quand les tuiles visibles sont plus grossières, la caméra
+     * flotte au pire à quelques mètres au-dessus du sol affiché — un défaut
+     * invisible, là où l'inverse enterrait l'observateur.
+     */
+    private val collisionDetailAmpM: Float =
+        terrain.detailAmplitudeForLevel(TileId.MAX_LEVEL)
+
+    /** Rayon de la sphère englobant tout relief émergé, détail compris. */
     private val outerRadius: Double =
-        planetRadiusM + terrain.params.maxAltitudeM.toDouble() + 1.0
+        planetRadiusM + terrain.params.maxAltitudeM.toDouble() +
+                collisionDetailAmpM.toDouble() + 1.0
 
     /** Rayon de la sphère sous laquelle aucun terrain ne peut se trouver. */
     private val innerRadius: Double =
         planetRadiusM - terrain.params.maxDepthM.toDouble() - 1.0
 
-    /** Altitude du terrain dans une direction donnée, en mètres. */
+    /**
+     * Altitude du terrain dans une direction donnée, en mètres.
+     *
+     * C'est la surface **rendue** qui fait foi, détail haute fréquence
+     * compris : caméra et maillage doivent voir le même monde. Un test
+     * vérifie l'égalité exacte avec ce que produit le mailleur au niveau
+     * maximal.
+     */
     fun altitudeAlong(direction: Vec3d): Double =
-        terrain.altitudeAt(direction.normalized().toVec3()).toDouble()
+        terrain.detailedAltitudeAt(direction.normalized().toVec3(), collisionDetailAmpM)
+            .toDouble()
 
     /**
      * Hauteur d'un point au-dessus du terrain. Négative sous la surface.

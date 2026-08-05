@@ -453,12 +453,14 @@ class PlanetRenderer(
         val s = sin(spinRad)
         val day = dayFactorAtEye(snapshot, sunX * c - sunZ * s, sunX * s + sunZ * c)
 
-        val topR = 0.10f * day * presence
-        val topG = 0.28f * day * presence
-        val topB = 0.62f * day * presence
-        val botR = (0.55f * day + 0.02f) * presence
-        val botG = (0.66f * day + 0.02f) * presence
-        val botB = (0.82f * day + 0.04f) * presence
+        // Plancher nocturne : un ciel strictement noir se confond avec un
+        // écran en panne. Un bleu très sombre suffit à donner l'horizon.
+        val topR = (0.10f * day + 0.004f) * presence
+        val topG = (0.28f * day + 0.008f) * presence
+        val topB = (0.62f * day + 0.022f) * presence
+        val botR = (0.55f * day + 0.016f) * presence
+        val botG = (0.66f * day + 0.022f) * presence
+        val botB = (0.82f * day + 0.045f) * presence
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         GLES20.glDepthMask(false)
@@ -784,7 +786,10 @@ class PlanetRenderer(
             void main() {
                 vec3 color = vColor * (0.12 + 0.88 * vDiffuse) * vDay;
                 color += vec3(0.90, 0.94, 1.0) * vSpec * vDay;
-                color += vColor * 0.018;
+                // Lueur nocturne plus franche qu'en orbite : au sol, un noir
+                // total rend la face nocturne intestable. Clair de lune
+                // implicite, en attendant les vraies lunes du lot 2.12.
+                color += vColor * (0.018 + 0.038 * (1.0 - vDay));
 
                 // Meme genou que le globe : les deux chemins doivent rendre
                 // les zones claires de la meme facon, sinon la bascule de mode
