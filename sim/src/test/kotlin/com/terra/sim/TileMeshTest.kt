@@ -77,10 +77,7 @@ class TileMeshTest {
                 val radius = sqrt(px * px + py * py + pz * pz)
 
                 val dir = Vec3d(px, py, pz).normalized().toVec3()
-                val expected = max(
-                    w.terrain.detailedAltitudeAt(dir, w.terrain.detailAmplitudeForLevel(level)),
-                    0f
-                ).toDouble()
+                val expected = max(w.terrain.renderedAltitudeAt(dir, level), 0f).toDouble()
 
                 worst = max(worst, abs(radius - r - expected))
                 maxRel = max(maxRel, sqrt(rx * rx + ry * ry + rz * rz))
@@ -342,7 +339,6 @@ class CollisionSurfaceTest {
     @Test
     fun `le lancer de rayon evalue la surface rendue au niveau maximal`() {
         val caster = TerrainRaycaster(world.terrain)
-        val maxAmp = world.terrain.detailAmplitudeForLevel(TileId.MAX_LEVEL)
         val rng = Random(7)
         var detailSeen = false
 
@@ -357,7 +353,7 @@ class CollisionSurfaceTest {
 
             val fromCaster = caster.altitudeAlong(dir)
             val rendered = world.terrain
-                .detailedAltitudeAt(dir.toVec3(), maxAmp)
+                .renderedAltitudeAt(dir.toVec3(), TileId.MAX_LEVEL)
                 .toDouble()
             assertEquals(rendered, fromCaster, 1e-6, "surfaces divergentes")
 

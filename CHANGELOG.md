@@ -1,5 +1,39 @@
 # Journal des versions
 
+## v0.8.1 — Le sol proche existe enfin
+
+Troisième retour d'essai sur le rendu rapproché, et il était fondé : le champ
+de détail le plus fin variait sur ~19 km — à hauteur d'œil, le sol était
+mathématiquement plat, et aucun éclairage ne peut sauver un plan.
+
+### Micro-relief
+
+Cinq octaves métriques s'ajoutent à la surface **rendue** (collines douces à
+~1,5 km, cassures en crêtes jusqu'à 67 m de longueur d'onde), calibrées par
+simulation : pente moyenne ~7°, fréquence la plus fine à 0,6 % du bruit de
+quantification float32, montée progressive du niveau 12 au niveau 18 dont
+chaque cran (±0,62 m) reste très en deçà de la marge des jupes. Le bénéfice
+principal est indirect : les facettes du maillage retrouvent des orientations
+variées, et c'est l'éclairage qui refait le relief.
+
+Mailleur et lancer de rayon consomment la même fonction
+(`renderedAltitudeAt`) : la régression « caméra sous la surface » de la
+v0.7.1 est structurellement impossible, et le test de collision le vérifie.
+
+### Moucheture
+
+La teinte du sol varie par plages d'environ 450 m (±8 %) : fini l'aplat de
+couleur d'un biome uniforme vu de près.
+
+### Le monde simulé n'a pas bougé
+
+Micro-relief et moucheture vivent sur le flux `terrain/micro` et ne touchent
+que le rendu : grille, climat, biomes et empreintes sont bit à bit identiques
+— un test le verrouille. `GENERATION_VERSION` passe néanmoins à 3 : l'aspect
+des mondes change, et les sauvegardes anciennes s'affichent comme telles.
+
+- 4 tests ajoutés — 203 attendus en CI.
+
 ## v0.8.0 — Lot 1.4 : les plaques tectoniques
 
 Retour à la Phase 1, comme prévu par la feuille de route : le monde statique

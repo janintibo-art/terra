@@ -73,13 +73,11 @@ class TerrainRaycaster(
      * flotte au pire à quelques mètres au-dessus du sol affiché — un défaut
      * invisible, là où l'inverse enterrait l'observateur.
      */
-    private val collisionDetailAmpM: Float =
-        terrain.detailAmplitudeForLevel(TileId.MAX_LEVEL)
-
-    /** Rayon de la sphère englobant tout relief émergé, détail compris. */
+    /** Rayon de la sphère englobant tout relief émergé, détail et micro compris. */
     private val outerRadius: Double =
         planetRadiusM + terrain.params.maxAltitudeM.toDouble() +
-                collisionDetailAmpM.toDouble() + 1.0
+                terrain.detailAmplitudeForLevel(TileId.MAX_LEVEL).toDouble() +
+                TerrainProfile.MICRO_TOTAL_AMPLITUDE_M.toDouble() + 1.0
 
     /** Rayon de la sphère sous laquelle aucun terrain ne peut se trouver. */
     private val innerRadius: Double =
@@ -94,7 +92,7 @@ class TerrainRaycaster(
      * maximal.
      */
     fun altitudeAlong(direction: Vec3d): Double =
-        terrain.detailedAltitudeAt(direction.normalized().toVec3(), collisionDetailAmpM)
+        terrain.renderedAltitudeAt(direction.normalized().toVec3(), TileId.MAX_LEVEL)
             .toDouble()
 
     /**

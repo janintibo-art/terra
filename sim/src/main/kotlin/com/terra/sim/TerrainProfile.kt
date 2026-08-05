@@ -91,6 +91,7 @@ class TerrainProfile(
 ) {
 
     private val detail = Noise(seed.derive("terrain/detail"))
+    private val micro = Noise(seed.derive("terrain/micro"))
 
     /** Puissance à exposant réel, sans dépendre de java.lang.Math. */
     private fun pow(base: Float, exponent: Float): Float =
@@ -151,5 +152,53 @@ class TerrainProfile(
         if (level < 10) return 0f
         val steps = (level - 10).coerceAtMost(13)
         return max(0f, 4f * steps)
+    }
+
+    /**
+     * Altitude telle que la surface est **rendue** au niveau de tuile donné —
+     * l'unique vérité que partagent le mailleur et la collision de caméra.
+     *
+     * ## Pourquoi le micro-relief existe (v0.8.1)
+     *
+     * Le champ de détail le plus fin variait sur ~19 km : à hauteur d'œil, le
+     * sol était mathématiquement plat, et aucun éclairage ne peut sauver un
+     * plan. Ces octaves métriques — calibrées par simulation : pente moyenne
+     * ~7°, longueur d'onde la plus fine 67 m pour rester à 0,6 % du bruit de
+     * quantification float32 — redonnent aux facettes des orientations
+     * variées ; c'est l'éclairage qui fait ensuite l'essentiel du travail
+     * visuel. La montée par niveau (12 → 18) évite tout ressaut : chaque
+     * cran ajoute ±0,62 m, très en deçà de la marge de 4 m des jupes.
+     */
+    fun renderedAltitudeAt(p: Vec3, level: Int): Float {
+        val base = detailedAltitudeAt(p, detailAmplitudeForLevel(level))
+        if (level < 12 || base <= 0f) return base
+
+        val fade = clamp01((level - 12) / 6f)
+        // Fondu de rivage plus court que celui du détail : les plages
+        // doivent onduler un peu, pas devenir des falaises.
+        val shoreFade = clamp01(base / 40f)
+
+        val hills = micro.fbm(p.x * 26_000f, p.y * 26_000f, p.z * 26_000f, 3) - 0.5f
+        val breaks = micro.ridged(p.x * 300_000f + 51f, p.y * 300_000f, p.z * 300_000f - 17f, 2) - 0.5f
+
+        return base + (hills * 6.2f + breaks * 1.2f) * fade * shoreFade
+    }
+
+    /**
+     * Moucheture de teinte du sol : facteur autour de 1, par plages d'environ
+     * 450 m. Casse l'aplat de couleur d'un biome uniforme sans introduire de
+     * données nouvelles — c'est du même monde, vu de près.
+     */
+    fun colorJitterAt(p: Vec3): Float {
+        val n = micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2) - 0.5f
+        return 1f + n * 0.16f
+    }
+
+    companion object {
+        /**
+         * Amplitude crête-à-crête maximale du micro-relief, pour dimensionner
+         * la sphère englobante du lancer de rayon.
+         */
+        const val MICRO_TOTAL_AMPLITUDE_M = 7.4f
     }
 }

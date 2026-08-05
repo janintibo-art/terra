@@ -88,7 +88,6 @@ class TileMesh(
         val cz = centerDir.z * planetRadiusM
         centerXM = cx; centerYM = cy; centerZM = cz
 
-        val detailAmp = profile.detailAmplitudeForLevel(tile.level)
 
         // Positions relatives (double), altitudes vraies, directions unitaires.
         val relX = DoubleArray(verts * verts)
@@ -111,7 +110,7 @@ class TileMesh(
             for (i in 0..n) {
                 val d = CubeSphere.gridDirection(tile.face, tile.level, baseGx + i, baseGy + j, n)
                 val df = d.toVec3()
-                val a = profile.detailedAltitudeAt(df, detailAmp)
+                val a = profile.renderedAltitudeAt(df, tile.level)
 
                 // L'eau fait partie du maillage, à rayon constant — décision
                 // notée dans l'état du projet ; une surface d'eau dédiée
@@ -126,7 +125,8 @@ class TileMesh(
                 dirX[idx] = df.x; dirY[idx] = df.y; dirZ[idx] = df.z
 
                 hint = sampler.nearestVertex(df, hint)
-                colorFor(sampler, hint, df, a, profile.params, colR, colG, colB, idx)
+                val jitter = if (a > 0f) profile.colorJitterAt(df) else 1f
+                colorFor(sampler, hint, df, a, jitter, profile.params, colR, colG, colB, idx)
                 idx++
             }
         }
@@ -365,7 +365,7 @@ class TileMesh(
             val d = CubeSphere.gridDirection(
                 tile.face, tile.level, tile.x * MESH_N + i, tile.y * MESH_N + j, MESH_N
             )
-            val a = profile.detailedAltitudeAt(d.toVec3(), profile.detailAmplitudeForLevel(tile.level))
+            val a = profile.renderedAltitudeAt(d.toVec3(), tile.level)
             return d * (planetRadiusM + max(a, 0f).toDouble())
         }
 
@@ -380,6 +380,7 @@ class TileMesh(
          */
         private fun colorFor(
             sampler: CoarseSampler, vertexIndex: Int, dir: Vec3, altitudeM: Float,
+            jitter: Float,
             params: PlanetParams,
             outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
         ) {
@@ -394,7 +395,7 @@ class TileMesh(
                     outB[idx] = 0.56f + (0.240f - 0.56f) * t
                 }
             } else {
-                val tint = 0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)
+                val tint = (0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)) * jitter
                 outR[idx] = clamp01(biome.r * tint)
                 outG[idx] = clamp01(biome.g * tint)
                 outB[idx] = clamp01(biome.b * tint)
