@@ -1,5 +1,19 @@
 # Journal des versions
 
+## v0.5.1 — Correctif
+
+- `Geography` : `LAKE_THRESHOLD` et `INLAND_SEA_THRESHOLD` étaient utilisées sans
+  être déclarées. La modification automatique qui devait les insérer ciblait le
+  bloc avec une indentation de quatre espaces alors qu'il se trouve à huit, dans
+  le `companion object` — le remplacement n'a donc rien fait, sans le signaler.
+
+  Le code qui les consomme, lui, avait bien été inséré : d'où deux références
+  orphelines et l'échec de `:sim:compileKotlin`.
+
+- Ajout d'un contrôle de références orphelines, exécuté sur l'ensemble des
+  fichiers avant chaque livraison. Confronté à la version fautive, il retrouve
+  précisément les deux constantes manquantes.
+
 ## v0.5.0 — Socle du rendu à niveaux de détail
 
 Aucun changement visible. Ce lot pose les fondations qui rendront possible la

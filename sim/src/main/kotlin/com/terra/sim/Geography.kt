@@ -50,6 +50,12 @@ class Geography private constructor(
         /** Une masse continentale est un « continent » au-delà de cette part des terres. */
         private const val CONTINENT_THRESHOLD = 0.06f
 
+        /** En deçà de cette part de l'eau totale, un plan d'eau isolé est un lac. */
+        private const val LAKE_THRESHOLD = 0.004f
+
+        /** Au-delà de cette part, ce n'est plus une mer intérieure mais l'océan. */
+        private const val INLAND_SEA_THRESHOLD = 0.08f
+
         fun analyze(data: PlanetData): Geography {
             val n = data.vertexCount
             val adjacency = data.sphere.buildAdjacency()
