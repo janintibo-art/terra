@@ -167,8 +167,8 @@ class WorldGenerator(
         val stats = GenerationStats(
             generationMs = (System.nanoTime() - startedAt) / 1_000_000L,
             oceanFractionActual = oceanCells.toFloat() / n,
-            highestAltitudeM = altitudeM.max(),
-            deepestDepthM = altitudeM.min(),
+            highestAltitudeM = altitudeM.maxOrNull() ?: 0f,
+            deepestDepthM = altitudeM.minOrNull() ?: 0f,
             coldestC = coldest,
             hottestC = hottest,
             biomeCounts = counts

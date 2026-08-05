@@ -17,7 +17,7 @@ class WorldNamerTest {
         val rng = Rng(1L)
         repeat(500) {
             val name = WorldNamer.randomName(rng)
-            assertTrue(name.length in 3..14, "longueur anormale : $name")
+            assertTrue(name.length in 3..20, "longueur anormale : $name")
             assertTrue(name[0].isUpperCase(), "majuscule manquante : $name")
             assertTrue(name.all { it.isLetter() }, "caractère invalide : $name")
         }

@@ -56,25 +56,25 @@ object WorldSave {
 
     fun encode(snapshot: Snapshot): ByteArray {
         val bytes = ByteArrayOutputStream(256)
-        DataOutputStream(bytes).use { out ->
-            out.writeInt(MAGIC)
-            out.writeInt(FORMAT_VERSION)
-            out.writeInt(GENERATION_VERSION)
-            out.writeUTF(snapshot.worldName)
-            out.writeLong(snapshot.tick)
+        DataOutputStream(bytes).use { stream ->
+            stream.writeInt(MAGIC)
+            stream.writeInt(FORMAT_VERSION)
+            stream.writeInt(GENERATION_VERSION)
+            stream.writeUTF(snapshot.worldName)
+            stream.writeLong(snapshot.tick)
 
             val p = snapshot.params
-            out.writeFloat(p.radiusM)
-            out.writeFloat(p.oceanFraction)
-            out.writeFloat(p.maxAltitudeM)
-            out.writeFloat(p.maxDepthM)
-            out.writeFloat(p.reliefExaggeration)
-            out.writeFloat(p.axialTiltDeg)
-            out.writeFloat(p.equatorTempC)
-            out.writeFloat(p.poleTempDropC)
-            out.writeFloat(p.lapseRateCPerKm)
-            out.writeFloat(p.maxPrecipMm)
-            out.writeInt(p.subdivisions)
+            stream.writeFloat(p.radiusM)
+            stream.writeFloat(p.oceanFraction)
+            stream.writeFloat(p.maxAltitudeM)
+            stream.writeFloat(p.maxDepthM)
+            stream.writeFloat(p.reliefExaggeration)
+            stream.writeFloat(p.axialTiltDeg)
+            stream.writeFloat(p.equatorTempC)
+            stream.writeFloat(p.poleTempDropC)
+            stream.writeFloat(p.lapseRateCPerKm)
+            stream.writeFloat(p.maxPrecipMm)
+            stream.writeInt(p.subdivisions)
         }
         return bytes.toByteArray()
     }

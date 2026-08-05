@@ -270,13 +270,21 @@ class WorldGeneratorTest {
     @Test
     fun `le rayon de rendu vaut un au niveau de la mer`() {
         val w = world(606L)
+        var highestRadius = 1f
         for (i in 0 until w.vertexCount) {
+            val r = w.renderRadius(i)
             if (w.altitudeM[i] <= 0f) {
-                assertEquals(1f, w.renderRadius(i), "océan déformé au sommet $i")
+                assertEquals(1f, r, "océan déformé au sommet $i")
             } else {
-                assertTrue(w.renderRadius(i) > 1f)
+                // Pas de comparaison stricte : une altitude de quelques
+                // millimètres donne un rayon qui, en flottant 32 bits, vaut
+                // encore exactement 1. Ce qui compte est qu'aucune terre ne
+                // passe sous le niveau de la mer, et que le relief existe.
+                assertTrue(r >= 1f, "terre enfoncée au sommet $i : rayon $r")
+                if (r > highestRadius) highestRadius = r
             }
         }
+        assertTrue(highestRadius > 1.01f, "aucun relief visible : max $highestRadius")
     }
 
     @Test

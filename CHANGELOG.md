@@ -1,5 +1,21 @@
 # Journal des versions
 
+## v0.3.1 — Correctifs de compilation
+
+Le premier passage de la CI a révélé une erreur qui bloquait la compilation
+depuis la v0.2.0 : aucun test n'avait donc jamais pu s'exécuter.
+
+- **`Rng` : conflit de surcharge.** Le constructeur public `(graine, séquence)`
+  et le constructeur privé `(état, inc)` ont la même signature une fois
+  compilés — deux `Long`. Le second est remplacé par `Rng.fromState()`.
+- `.max()` / `.min()` sur tableaux remplacés par `maxOrNull()` / `minOrNull()`.
+- `out` n'est plus utilisé comme identifiant dans `WorldSave`.
+- `:sim` expose `:core` en `api` et non `implementation` : `PlanetData` publie
+  des types de `:core` dans sa signature.
+- Deux tests mal calibrés corrigés : longueur maximale des noms générés, et
+  comparaison stricte du rayon de rendu qu'un flottant 32 bits ne peut honorer
+  pour des altitudes millimétriques.
+
 ## v0.3.0 — Consolidation
 
 Lot sans nouveauté visuelle spectaculaire, consacré aux instruments qui

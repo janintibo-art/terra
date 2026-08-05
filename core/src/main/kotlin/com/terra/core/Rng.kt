@@ -20,19 +20,22 @@ import kotlin.math.sqrt
  * Le déterminisme de cette classe est la fondation de tout Terra : si elle
  * dérive, tous les tests de rejeu de la Phase 5 s'effondrent.
  */
-class Rng private constructor(state: Long, inc: Long) {
+class Rng(seed: Long, sequence: Long = DEFAULT_SEQUENCE) {
 
-    var state: Long = state
+    var state: Long = 0L
         private set
 
-    var inc: Long = inc
+    var inc: Long = 0L
         private set
 
-    constructor(seed: Long, sequence: Long = 0x14057B7EF767814FL) : this(0L, 0L) {
-        this.inc = (sequence shl 1) or 1L
-        this.state = 0L
+    init {
+        // Amorçage standard PCG : on avance une fois, on injecte la graine, on
+        // avance à nouveau. Sans cette double avance, deux graines proches
+        // produiraient des premiers tirages proches.
+        inc = (sequence shl 1) or 1L
+        state = 0L
         nextBits()
-        this.state += seed
+        state += seed
         nextBits()
     }
 
@@ -109,10 +112,28 @@ class Rng private constructor(state: Long, inc: Long) {
     fun <T> pick(items: List<T>): T = items[nextInt(items.size)]
 
     /** Copie indépendante, positionnée exactement au même point du flux. */
-    fun copy(): Rng = Rng(state, inc)
+    fun copy(): Rng = fromState(state, inc)
 
     companion object {
-        /** Restaure un générateur depuis un état sauvegardé. */
-        fun fromState(state: Long, inc: Long): Rng = Rng(state, inc)
+
+        /**
+         * Numéro de flux par défaut. Deux générateurs de même graine mais de
+         * séquences différentes produisent des suites indépendantes.
+         */
+        const val DEFAULT_SEQUENCE: Long = 0x14057B7EF767814FL
+
+        /**
+         * Restaure un générateur depuis un état sauvegardé.
+         *
+         * Volontairement une fonction plutôt qu'un constructeur : `Rng(Long, Long)`
+         * est déjà pris par `(graine, séquence)`, et deux constructeurs à deux
+         * `Long` auraient la même signature une fois compilés.
+         */
+        fun fromState(state: Long, inc: Long): Rng {
+            val rng = Rng(0L)
+            rng.state = state
+            rng.inc = inc
+            return rng
+        }
     }
 }
