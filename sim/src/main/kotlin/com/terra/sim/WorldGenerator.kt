@@ -39,6 +39,7 @@ class WorldGenerator(
         SEA_LEVEL("Remplissage des océans"),
         CLIMATE("Établissement du climat"),
         BIOMES("Répartition des biomes"),
+        TECTONICS("Découpage des plaques"),
         DONE("Monde prêt")
     }
 
@@ -268,6 +269,15 @@ class WorldGenerator(
             biomeCounts = counts
         )
 
+        // --- Étape 6 : plaques tectoniques (lot 1.4) ---
+        //
+        // Volontairement en fin de chaîne et sur son propre flux de graine :
+        // le monde jusqu'ici est bit à bit identique à la version précédente,
+        // et le test d'empreinte le vérifie contre les références figées.
+        onProgress(Stage.TECTONICS, 0f)
+        val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
+        onProgress(Stage.TECTONICS, 1f)
+
         onProgress(Stage.DONE, 1f)
 
         return PlanetData(
@@ -280,7 +290,8 @@ class WorldGenerator(
             precipMm = precipMm,
             biomeId = biomeId,
             stats = stats,
-            terrain = profile
+            terrain = profile,
+            plates = plates
         )
     }
 

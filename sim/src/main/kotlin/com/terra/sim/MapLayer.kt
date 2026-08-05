@@ -20,7 +20,8 @@ enum class MapLayer(val label: String, val shortLabel: String) {
     ALTITUDE("Altitude", "Relief"),
     TEMPERATURE("Température", "Temp."),
     PRECIPITATION("Précipitations", "Pluie"),
-    CLIMATE_ZONES("Zones climatiques", "Zones");
+    CLIMATE_ZONES("Zones climatiques", "Zones"),
+    PLATES("Plaques tectoniques", "Plaques");
 
     companion object {
         fun next(current: MapLayer): MapLayer {
@@ -44,7 +45,19 @@ object LayerPalette {
             MapLayer.TEMPERATURE -> temperature(data, index, out)
             MapLayer.PRECIPITATION -> precipitation(data, index, out)
             MapLayer.CLIMATE_ZONES -> climateZone(data, index, out)
+            MapLayer.PLATES -> plate(data, index, out)
         }
+    }
+
+    /**
+     * Couleur de plaque, assombrie sous l'océan actuel : on voit d'un coup
+     * d'œil où le futur relief tectonique (lot 1.6) devra contredire ou
+     * confirmer le trait de côte issu du bruit.
+     */
+    private fun plate(data: PlanetData, i: Int, out: FloatArray) {
+        val p = data.plates.plateOf(i)
+        val dim = if (data.altitudeM[i] < 0f) 0.55f else 1f
+        out[0] = p.r * dim; out[1] = p.g * dim; out[2] = p.b * dim
     }
 
     private fun biome(data: PlanetData, i: Int, out: FloatArray) {

@@ -41,7 +41,14 @@ class PlanetData(
      * résolution. C'est lui que consultera le rendu à tuiles ; il rend
      * exactement [altitudeM] sur les sommets de la grille.
      */
-    val terrain: TerrainProfile
+    val terrain: TerrainProfile,
+
+    /**
+     * Plaques tectoniques — lot 1.4. Purement descriptives pour l'instant :
+     * le relief n'en dérivera qu'au lot 1.6. Flux de graine indépendant, donc
+     * aucune influence sur les champs ci-dessus ni sur l'empreinte.
+     */
+    val plates: PlateSet
 ) {
 
     /**

@@ -1,5 +1,41 @@
 # Journal des versions
 
+## v0.8.0 — Lot 1.4 : les plaques tectoniques
+
+Retour à la Phase 1, comme prévu par la feuille de route : le monde statique
+reprend là où il s'était arrêté. Ce lot pose les fondations — le relief n'en
+dérivera qu'au lot 1.6.
+
+### Voronoï sphérique relaxé
+
+15 à 40 plaques par monde, tirées sur la sphère puis relaxées par **une**
+itération de Lloyd — chiffre mesuré avant écriture : zéro relaxation laisse
+des plaques réduites à une poignée de cellules (artefact de discrétisation),
+deux uniformisent des aires que la Terre montre très inégales. Une itération
+garde un rapport d'aires de 4 à 5 en éliminant les dégénérées, et une
+compaction garantit par construction qu'aucune plaque n'est vide.
+
+### Mouvement par rotation d'Euler
+
+Une plaque rigide sur une sphère ne peut que tourner autour d'un axe passant
+par le centre : chaque plaque reçoit son axe et sa vitesse angulaire, 3 à
+16 mrad/Ma — l'étalonnage terrestre (2 à 10 cm/an). La vélocité en tout point
+est un produit vectoriel, tangence testée. C'est sur ces vecteurs que le lot
+1.5 classera les frontières.
+
+### Non-régression, vérifiable
+
+La tectonique tire sa graine de son propre chemin : les mondes existants ne
+changent pas d'un bit, `GENERATION_VERSION` reste à 2, et le test d'empreinte
+doit rester vert sur les références figées — **d'où l'importance de les
+committer avant ce push** (commande fournie précédemment).
+
+### Aussi
+
+- Nouveau calque « Plaques » : teintes espacées par le nombre d'or, familles
+  distinctes pour océanique et continentale, assombries sous l'océan actuel.
+- 5 tests ajoutés — 199 attendus en CI.
+
 ## v0.7.3 — Le temps à l'échelle de l'observateur, l'horizon comme repère
 
 Réponse directe aux retours d'essai : cycle jour/nuit trop rapide au sol, et
