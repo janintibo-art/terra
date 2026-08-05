@@ -22,6 +22,10 @@ import android.widget.TextView
 import com.terra.core.SimClock
 import com.terra.core.clamp
 import com.terra.sim.Biome
+import com.terra.sim.CoarseSampler
+import com.terra.sim.ConsoleCommand
+import com.terra.sim.PlanetCamera
+import com.terra.sim.TerrainRaycaster
 import com.terra.sim.MapLayer
 import com.terra.sim.PlanetData
 import com.terra.sim.PlanetParams
@@ -66,6 +70,20 @@ class MainActivity : Activity() {
     @Volatile private var world: PlanetData? = null
     @Volatile private var meshBuildMs: Long = 0L
 
+    /**
+     * Pool de maillage des tuiles. Créé ici et non dans le renderer : il doit
+     * survivre aux pertes de contexte OpenGL et mourir avec l'activité.
+     */
+    private val tilePool = TileWorkerPool()
+
+    /** Caméra de descente, en double précision. Fil d'interface uniquement. */
+    private var camera: PlanetCamera? = null
+    private var raycaster: TerrainRaycaster? = null
+    private var descentActive = false
+    private var worldEpoch = 0
+    private lateinit var modeButton: TextView
+    private var lastPinchFocusY = 0f
+
     private val clock = SimClock(stepSeconds = 1f / 30f, maxStepsPerFrame = 240)
     private var worldTime = WorldTime()
     private var params = PlanetParams(subdivisions = 5)
@@ -90,7 +108,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = WorldStore(this)
 
-        renderer = PlanetRenderer()
+        renderer = PlanetRenderer(tilePool)
         configChooser = BestConfigChooser()
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
@@ -132,6 +150,8 @@ class MainActivity : Activity() {
             timeBar.addView(makeButton(label) { setSpeed(index) })
         }
         timeBar.addView(makeButton("Monde") { showSeedDialog() })
+        modeButton = makeButton("Sol") { toggleDescent() }
+        timeBar.addView(modeButton)
 
         setContentView(FrameLayout(this).apply {
             addView(glView, FrameLayout.LayoutParams(-1, -1))
@@ -143,9 +163,32 @@ class MainActivity : Activity() {
 
         scaleDetector = ScaleGestureDetector(this,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
+                    lastPinchFocusY = d.focusY
+                    return true
+                }
+
                 override fun onScale(d: ScaleGestureDetector): Boolean {
                     val factor = if (d.scaleFactor > 0.01f) d.scaleFactor else 1f
-                    renderer.distance = clamp(renderer.distance / factor, 1.22f, 9f)
+                    val cam = camera
+                    if (descentActive && cam != null) {
+                        // Pincer rapproche du point sous les doigts, pas du
+                        // centre de l'écran : sans cela, viser un détail est
+                        // un exercice de patience.
+                        val target = groundDirectionAtScreen(cam, d.focusX, d.focusY)
+                        if (target != null) cam.zoomTowards(target, 1.0 / factor)
+                        else cam.zoom(1.0 / factor)
+
+                        // Le déplacement vertical du centre de pincement pilote
+                        // l'inclinaison — le geste des globes virtuels.
+                        val dy = d.focusY - lastPinchFocusY
+                        lastPinchFocusY = d.focusY
+                        cam.tilt(dy * 0.006)
+
+                        settleCamera(cam)
+                    } else {
+                        renderer.distance = clamp(renderer.distance / factor, 1.22f, 9f)
+                    }
                     return true
                 }
             })
@@ -235,6 +278,27 @@ class MainActivity : Activity() {
                 worldTime = WorldTime(axialTiltDeg = params.axialTiltDeg)
                 renderer.pendingMesh = mesh
 
+                // Contexte du rendu à tuiles. L'époque croissante signale au
+                // fil OpenGL de jeter tout ce qui a été maillé pour l'ancien
+                // monde ; CoarseSampler construit ici son graphe d'adjacence,
+                // sur le fil de travail plutôt qu'à la première tuile.
+                worldEpoch++
+                raycaster = TerrainRaycaster(data.terrain)
+                renderer.tileContext = TileContext(
+                    data.terrain, CoarseSampler(data),
+                    data.params.radiusM.toDouble(), worldEpoch
+                )
+                mainHandler.post {
+                    camera?.let { old ->
+                        camera = PlanetCamera(
+                            data.params.radiusM.toDouble(),
+                            old.focusLatRad, old.focusLonRad,
+                            old.rangeM, old.headingRad, old.tiltRad
+                        )
+                        camera?.let { settleCamera(it) }
+                    }
+                }
+
                 persist()
                 mainHandler.post {
                     loading.visibility = View.GONE
@@ -308,6 +372,115 @@ class MainActivity : Activity() {
                 generateWorld(WorldNamer.randomName(System.nanoTime()))
             }
             .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    // ---------------------------------------------------------- descente
+
+    private fun toggleDescent() {
+        if (descentActive) {
+            descentActive = false
+            renderer.descentMode = false
+            modeButton.text = "Sol"
+            refreshButtonStates()
+            return
+        }
+        val data = world ?: return
+        if (camera == null) {
+            // Première entrée : plein globe à 0°, 0°. Viser d'office le plus
+            // grand continent serait mieux ; la géographie ne fournit pas
+            // encore son centroïde, et la console (« tp ») comble l'écart en
+            // attendant.
+            camera = PlanetCamera(
+                data.params.radiusM.toDouble(),
+                rangeM = 16_000_000.0
+            )
+        }
+        descentActive = true
+        modeButton.text = "Globe"
+        camera?.let { settleCamera(it) }
+        renderer.descentMode = true
+        refreshButtonStates()
+    }
+
+    /**
+     * Ancre la caméra sur le relief puis publie l'instantané au renderer.
+     * À appeler après toute manipulation — c'est le seul point de passage
+     * entre la caméra mutable du fil d'interface et le fil OpenGL.
+     */
+    private fun settleCamera(cam: PlanetCamera) {
+        raycaster?.let { cam.snapToTerrain(it) }
+        val eye = cam.eyePositionM()
+        val fwd = cam.forward()
+        val up = cam.up()
+        renderer.cameraSnapshot = CameraSnapshot(
+            eye.x, eye.y, eye.z,
+            fwd.x.toFloat(), fwd.y.toFloat(), fwd.z.toFloat(),
+            up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
+            cam.eyeAltitudeM(),
+            PlanetCamera.DEFAULT_FOV_RAD.toFloat()
+        )
+    }
+
+    /** Direction du sol sous un point de l'écran, ou null si le rayon manque. */
+    private fun groundDirectionAtScreen(cam: PlanetCamera, px: Float, py: Float): com.terra.core.Vec3d? {
+        val rc = raycaster ?: return null
+        val w = glView.width.toDouble().coerceAtLeast(1.0)
+        val h = glView.height.toDouble().coerceAtLeast(1.0)
+        val ndcX = px / w * 2.0 - 1.0
+        val ndcY = 1.0 - py / h * 2.0
+        val dir = cam.rayDirection(ndcX, ndcY, w / h)
+        return rc.cast(cam.eyePositionM(), dir)?.direction
+    }
+
+    // -------------------------------------------------------------- console
+
+    private fun showConsoleDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            hint = "tp 45.5 -73.6 500   ·   aide"
+            typeface = Typeface.MONOSPACE
+            setPadding(48, 32, 48, 32)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Console")
+            .setView(input)
+            .setPositiveButton("Exécuter") { _, _ -> runConsole(input.text.toString()) }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun runConsole(line: String) {
+        when (val cmd = ConsoleCommand.parse(line)) {
+            is ConsoleCommand.Teleport -> {
+                if (!descentActive) toggleDescent()
+                val cam = camera ?: return
+                cam.focusLatRad = Math.toRadians(cmd.latDeg)
+                cam.focusLonRad = Math.toRadians(cmd.lonDeg)
+                cmd.rangeM?.let { cam.rangeM = it }
+                settleCamera(cam)
+            }
+            is ConsoleCommand.LoadWorld -> {
+                val name = WorldNamer.sanitize(cmd.name)
+                if (name.isNotEmpty() && !generating.get()) {
+                    clock.reset()
+                    staleSave = false
+                    generateWorld(name)
+                }
+            }
+            is ConsoleCommand.SetMode -> {
+                if (cmd.descent != descentActive) toggleDescent()
+            }
+            is ConsoleCommand.Help -> showConsoleMessage(ConsoleCommand.HELP_TEXT)
+            is ConsoleCommand.Invalid -> showConsoleMessage(cmd.message)
+        }
+    }
+
+    private fun showConsoleMessage(text: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Console")
+            .setMessage(text)
+            .setPositiveButton("OK", null)
             .show()
     }
 
@@ -388,7 +561,23 @@ class MainActivity : Activity() {
             .append(renderer.glRenderer.take(16)).append('\n')
 
         sb.append(renderer.drawnTriangles).append(" tri · gen ").append(s.generationMs)
-            .append(" ms · maille ").append(meshBuildMs).append(" ms\n\n")
+            .append(" ms · maille ").append(meshBuildMs).append(" ms\n")
+
+        if (descentActive) {
+            val cam = camera
+            if (cam != null) {
+                sb.append("alt ").append(formatAltitude(cam.eyeAltitudeM()))
+                    .append(" · tuiles ").append(renderer.tilesDrawn)
+                    .append('/').append(renderer.tilesSelected)
+                    .append(" · manque ").append(renderer.tilesMissing)
+                    .append(" · cache ").append(renderer.tilesCached)
+                    .append(" · file ").append(tilePool.pendingCount).append('\n')
+                if (renderer.gpuPoolSummary.isNotEmpty()) {
+                    sb.append("gpu ").append(renderer.gpuPoolSummary).append('\n')
+                }
+            }
+        }
+        sb.append('\n')
 
         sb.append("océans ").append(fmt(s.oceanFractionActual * 100f)).append(" % · littoral ")
             .append(g.coastlineKm.roundToInt()).append(" km\n")
@@ -447,14 +636,26 @@ class MainActivity : Activity() {
                     val dx = e.x - lastX
                     val dy = e.y - lastY
                     if (dx * dx + dy * dy > 36f) touchMoved = true
-                    // La sensibilité suit la distance : de près, on pivote plus lentement.
-                    val speed = 0.22f * (renderer.distance / 3.2f)
-                    val dYaw = -dx * speed
-                    val dPitch = dy * speed
-                    renderer.yawDeg += dYaw
-                    renderer.pitchDeg = clamp(renderer.pitchDeg + dPitch, -85f, 85f)
-                    yawVelocity = dYaw * 0.55f
-                    pitchVelocity = dPitch * 0.55f
+                    val cam = camera
+                    if (descentActive && cam != null) {
+                        // Le glissement déplace le point visé, d'une amplitude
+                        // proportionnelle à la distance — la formule unique qui
+                        // fait rouler le globe de loin et défiler le sol de près.
+                        cam.pan(
+                            dx.toDouble(), dy.toDouble(),
+                            glView.height.toDouble().coerceAtLeast(1.0)
+                        )
+                        settleCamera(cam)
+                    } else {
+                        // La sensibilité suit la distance : de près, on pivote plus lentement.
+                        val speed = 0.22f * (renderer.distance / 3.2f)
+                        val dYaw = -dx * speed
+                        val dPitch = dy * speed
+                        renderer.yawDeg += dYaw
+                        renderer.pitchDeg = clamp(renderer.pitchDeg + dPitch, -85f, 85f)
+                        yawVelocity = dYaw * 0.55f
+                        pitchVelocity = dPitch * 0.55f
+                    }
                     lastX = e.x; lastY = e.y
                 }
             }
@@ -474,7 +675,9 @@ class MainActivity : Activity() {
             MotionEvent.ACTION_UP -> {
                 dragging = false
                 val held = System.currentTimeMillis() - touchDownAt
-                if (!touchMoved && held > 600L && !generating.get()) showSeedDialog()
+                if (!touchMoved && held > 600L && !generating.get()) {
+                    if (descentActive) showConsoleDialog() else showSeedDialog()
+                }
             }
 
             MotionEvent.ACTION_CANCEL -> dragging = false
@@ -506,9 +709,16 @@ class MainActivity : Activity() {
         persist()
         mainHandler.removeCallbacksAndMessages(null)
         worker.shutdownNow()
+        tilePool.shutdown()
+    }
+
+    private fun formatAltitude(m: Double): String = when {
+        m >= 100_000.0 -> "${(m / 1000.0).roundToInt()} km"
+        m >= 1_000.0 -> String.format("%.1f km", m / 1000.0)
+        else -> "${m.roundToInt()} m"
     }
 
     companion object {
-        const val VERSION = "0.7.0"
+        const val VERSION = "0.7.1"
     }
 }

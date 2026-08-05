@@ -1,5 +1,67 @@
 # Journal des versions
 
+## v0.7.1 — Lot B : la descente devient visible
+
+Premier rendu à tuiles branché de bout en bout : sélection à chaque image,
+maillage en tâche de fond sur le pool à priorité, téléversement budgété via le
+pool de tampons, et **coordonnées relatives à la caméra** sur toute la chaîne.
+Le globe contemplatif reste le mode par défaut ; un bouton « Sol » bascule.
+
+### Coordonnées relatives (lot 2.6, remonté volontairement)
+
+Les sommets sont stockés en float32 **relatifs au centre de leur tuile**,
+calculés en double ; à chaque image, le décalage `centre − œil` est calculé en
+double et converti en float au dernier moment. Validé numériquement avant
+écriture : 0,64 mm d'erreur au ras du sol, contre 44 cm de tremblement en
+coordonnées monde. Un test JVM rejoue la chaîne float32 complète.
+
+### Coïncidence des bords, structurelle
+
+Les sommets sont paramétrés par leurs indices de grille **globaux** en double :
+deux tuiles voisines calculent leurs sommets partagés à partir d'opérandes
+identiques, donc obtiennent les mêmes bits. Testé bit à bit, entre tuiles de
+même niveau et entre niveaux.
+
+### Jupes calculées
+
+`max(arête × 0,005 ; 1,5 m) + 4 m` — 0,5 % vient de l'étude spectrale du fbm
+(écart réel mesuré : 0,21 %, marge ×2,5), le terme fixe couvre la variation
+d'amplitude du détail haute fréquence entre niveaux. Un test mesure l'écart
+réel sur des paires adjacentes de deux mondes et vérifie la couverture.
+
+### Éclairage au sommet, pas au fragment
+
+Sur Mali, `mediump` fragment est un flottant 16 bits qui sature à 65 504 :
+normaliser une position planétaire y produirait des infinis. Tout ce qui
+manipule des mètres vit dans le vertex shader ; le fragment ne reçoit que des
+grandeurs dans [0, 1].
+
+### Aussi
+
+- Repli sur l'ancêtre prêt le plus profond, sans jamais superposer deux tuiles
+  (résolution en deux passes sur clés compactées, zéro allocation).
+- Ciel d'attente : dégradé piloté par l'altitude et le soleil — la diffusion
+  atmosphérique reste au lot 2.10.
+- Gestes de descente : glissement proportionnel à la distance, pincement vers
+  le point sous les doigts (lancer de rayon), inclinaison au déplacement
+  vertical du pincement.
+- **Console minimale** (lot 0.7 avancé) : appui long en mode sol —
+  `tp lat lon [portée]`, `monde <nom>`, `mode sol|globe`, `aide`. Grammaire
+  dans `:sim`, testée en CI, virgule décimale acceptée.
+- Brume de distance : repère de profondeur et voile sur la transition de
+  niveau de détail, en attendant le morphing du lot 2.4.
+- 15 tests ajoutés (185 attendus au total en CI).
+
+### Limites connues, assumées pour ce lot
+
+- Pas de morphing entre niveaux : un ressaut au changement de niveau, adouci
+  par la brume (lot 2.4).
+- L'océan est plat et facetté au sol : surface dédiée au lot 2.9.
+- Le premier survol d'une zone montre brièvement la tuile parente, le temps du
+  maillage — comportement voulu (jamais de trou), réglable par le budget.
+- Sol nu : la végétation n'existe pas encore, les collines sont lisses de près.
+
+
 ## v0.7.0 — Fondations de performance
 
 Lot préparatoire au rendu à tuiles, issu d'un audit du projet. Rien de visible :

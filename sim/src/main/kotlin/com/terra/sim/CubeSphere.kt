@@ -107,6 +107,69 @@ object CubeSphere {
     }
 
     /**
+     * Déformation en double précision — réservée au maillage des tuiles.
+     *
+     * Le sélecteur reste en 32 bits : sa précision suffit pour décider d'une
+     * subdivision, et il tourne à chaque image. Le mailleur, lui, produit des
+     * positions métriques : à 6 371 km du centre, le flottant 32 bits ne
+     * distingue plus rien en deçà de 50 cm, ce qui ferait bâiller les bords
+     * de tuiles voisines. D'où ce second chemin, en double de bout en bout.
+     */
+    fun warpD(x: Double): Double = kotlin.math.tan(x * (Math.PI * 0.25))
+
+    /**
+     * Point de la sphère unité en double précision.
+     *
+     * Même convention de faces que [toSphere]. Les deux chemins ne doivent
+     * jamais diverger : un test compare leurs résultats à la précision du
+     * flottant 32 bits.
+     */
+    fun toSphereD(face: Int, s: Double, t: Double): com.terra.core.Vec3d {
+        val u = warpD(s)
+        val v = warpD(t)
+        val x: Double; val y: Double; val z: Double
+        when (face) {
+            FACE_POS_X -> { x = 1.0; y = v; z = -u }
+            FACE_NEG_X -> { x = -1.0; y = v; z = u }
+            FACE_POS_Y -> { x = u; y = 1.0; z = -v }
+            FACE_NEG_Y -> { x = u; y = -1.0; z = v }
+            FACE_POS_Z -> { x = u; y = v; z = 1.0 }
+            else -> { x = -u; y = v; z = -1.0 }
+        }
+        val inv = 1.0 / kotlin.math.sqrt(x * x + y * y + z * z)
+        return com.terra.core.Vec3d(x * inv, y * inv, z * inv)
+    }
+
+    /**
+     * Direction du sommet de grille **global** (face, niveau, indice de maille).
+     *
+     * ## Pourquoi passer par des indices globaux
+     *
+     * Deux tuiles voisines partagent des sommets de bord. Si chacune calculait
+     * ses coordonnées par interpolation locale (`s0 + (s1−s0)·i/n`), les
+     * arrondis différeraient d'un ulp et les bords s'écarteraient — jusqu'à
+     * 70 cm une fois multipliés par le rayon planétaire, une fissure visible.
+     *
+     * En calculant `s = −1 + 2·gx/total` à partir de l'indice **global** gx,
+     * le sommet partagé reçoit exactement les mêmes opérandes dans les deux
+     * tuiles, donc exactement les mêmes bits. La coïncidence des bords n'est
+     * pas approchée, elle est structurelle. Un test la vérifie bit à bit.
+     *
+     * Aux frontières entre faces, cette garantie tombe (les paramétrages
+     * diffèrent) : l'écart y est de l'ordre de l'ulp du double, soit moins
+     * d'un nanomètre — les jupes couvrent très largement le résidu.
+     *
+     * @param gx indice global de colonne, entre 0 et meshN·2^niveau inclus
+     * @param gy indice global de ligne, même borne
+     */
+    fun gridDirection(face: Int, level: Int, gx: Int, gy: Int, meshN: Int): com.terra.core.Vec3d {
+        val total = (meshN.toLong() shl level).toDouble()
+        val s = -1.0 + 2.0 * gx.toDouble() / total
+        val t = -1.0 + 2.0 * gy.toDouble() / total
+        return toSphereD(face, s, t)
+    }
+
+    /**
      * Face et coordonnées d'un point de la sphère.
      *
      * Sur une arête ou un coin, plusieurs faces sont également valides ; le

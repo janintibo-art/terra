@@ -4,32 +4,85 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.util.Log
+import com.terra.core.Vec3
+import com.terra.sim.CoarseSampler
+import com.terra.sim.TerrainProfile
+import com.terra.sim.TileId
+import com.terra.sim.TileMesh
+import com.terra.sim.TileSelector
+import com.terra.sim.ViewCone
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.sqrt
+
+/**
+ * Instantané de la caméra de descente, construit sur le fil d'interface et lu
+ * sur le fil OpenGL.
+ *
+ * Immuable par construction : [PlanetCamera][com.terra.sim.PlanetCamera] porte
+ * un état mutable en double précision et n'est pas sûre entre fils ; plutôt
+ * que de la verrouiller à chaque image, on en fige une copie plate à chaque
+ * geste. L'œil reste en double — c'est la moitié de la chaîne de précision
+ * relative — le reste peut être en 32 bits sans conséquence.
+ */
+class CameraSnapshot(
+    val eyeXM: Double, val eyeYM: Double, val eyeZM: Double,
+    val fwdX: Float, val fwdY: Float, val fwdZ: Float,
+    val upX: Float, val upY: Float, val upZ: Float,
+    val altitudeM: Double,
+    val fovRad: Float
+)
+
+/**
+ * Tout ce qu'il faut pour mailler des tuiles d'un monde donné.
+ *
+ * [epoch] change à chaque nouveau monde : le fil OpenGL s'en sert pour vider
+ * cache et file de travail sans qu'aucun verrou ne traverse les fils.
+ */
+class TileContext(
+    val profile: TerrainProfile,
+    val sampler: CoarseSampler,
+    val radiusM: Double,
+    val epoch: Int
+)
 
 /**
  * Moteur de rendu de la planète.
  *
- * ## Correction majeure de cette version : la caméra
+ * ## Deux chemins de rendu
  *
- * En v0.2, faire pivoter la vue faisait tourner le **modèle**. Comme le soleil
- * est fixe dans le repère du monde, déplacer la caméra changeait donc
- * l'éclairage : impossible de faire le tour d'une planète pour observer sa face
- * nocturne, la nuit se déplaçait avec le regard.
+ * Le **globe** (mode par défaut) : le maillage icosphérique entier dans un
+ * tampon unique, en unités de sphère, caméra orbitale simple. Chemin hérité,
+ * volontairement intact — si le rendu à tuiles déçoit, l'application reste
+ * entièrement utilisable.
  *
- * Désormais la matrice modèle ne porte que la **rotation propre de la planète**,
- * pilotée par le temps planétaire ; la caméra orbite dans la matrice de vue.
- * L'éclairage devient cohérent : le jour et la nuit appartiennent à la planète,
- * pas à l'observateur.
+ * La **descente** (lot B) : sélection de tuiles à chaque image, maillage en
+ * tâche de fond, et surtout **coordonnées relatives à la caméra**. La matrice
+ * de vue place l'œil à l'origine ; chaque tuile reçoit en uniform le décalage
+ * `centre de tuile − œil`, calculé en double sur le CPU et converti en float
+ * au dernier moment. Validé numériquement : 0,64 mm d'erreur au ras du sol,
+ * là où des coordonnées monde en float32 trembleraient d'un demi-mètre.
+ *
+ * ## Éclairage calculé au sommet, pas au fragment
+ *
+ * Les positions métriques atteignent des millions de mètres. Or la précision
+ * `mediump` des fragments est un flottant 16 bits sur les GPU Mali, qui sature
+ * à 65 504 : normaliser une position planétaire y produirait des infinis et un
+ * écran noir difficile à diagnostiquer. Tout ce qui manipule des mètres se
+ * calcule donc dans le vertex shader (toujours `highp`), et le fragment ne
+ * reçoit que des grandeurs bornées à [0, 1].
  */
-class PlanetRenderer : GLSurfaceView.Renderer {
+class PlanetRenderer(
+    private val tilePool: TileWorkerPool
+) : GLSurfaceView.Renderer {
 
-    // --- Commandes, écrites depuis le fil UI ---
+    // --- Commandes du globe, écrites depuis le fil UI ---
     @Volatile var yawDeg = 0f
     @Volatile var pitchDeg = 18f
     @Volatile var distance = 3.2f
@@ -37,6 +90,11 @@ class PlanetRenderer : GLSurfaceView.Renderer {
     @Volatile var sunX = 1f
     @Volatile var sunY = 0f
     @Volatile var sunZ = 0f
+
+    // --- Commandes de la descente ---
+    @Volatile var descentMode = false
+    @Volatile var cameraSnapshot: CameraSnapshot? = null
+    @Volatile var tileContext: TileContext? = null
 
     // --- Télémétrie lue par le HUD ---
     @Volatile var frameMs = 0f
@@ -47,6 +105,16 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         private set
     @Volatile var glRenderer: String = "?"
         private set
+    @Volatile var tilesDrawn = 0
+        private set
+    @Volatile var tilesSelected = 0
+        private set
+    @Volatile var tilesMissing = 0
+        private set
+    @Volatile var tilesCached = 0
+        private set
+    @Volatile var gpuPoolSummary: String = ""
+        private set
 
     /** Erreur GPU, affichée plutôt que laissée en écran noir silencieux. */
     @Volatile var lastError: String? = null
@@ -54,10 +122,10 @@ class PlanetRenderer : GLSurfaceView.Renderer {
 
     @Volatile var pendingMesh: PlanetMesh? = null
 
+    // --- Ressources du chemin globe ---
     private var program = 0
     private var vbo = 0
     private var uploadedVertexCount = 0
-
     private var aPosition = -1
     private var aColor = -1
     private var aNormal = -1
@@ -67,12 +135,42 @@ class PlanetRenderer : GLSurfaceView.Renderer {
     private var uCamera = -1
     private var uSun = -1
 
+    // --- Ressources du chemin descente ---
+    private var tileProgram = 0
+    private var tAPosition = -1
+    private var tAColor = -1
+    private var tANormal = -1
+    private var tAMaterial = -1
+    private var tUViewProj = -1
+    private var tUOffset = -1
+    private var tUCenterWorld = -1
+    private var tUSun = -1
+    private var tUHaze = -1
+    private var tUHazeDensity = -1
+
+    private var skyProgram = 0
+    private var skyVbo = 0
+    private var sAPos = -1
+    private var sUTop = -1
+    private var sUBottom = -1
+
+    private val gpuPool = GpuBufferPool()
+    private val stream = TileStream(gpuPool)
+    private val selector = TileSelector()
+    private val selection = ArrayList<TileId>(1024)
+    private val drawList = ArrayList<TileStream.GpuTile>(1024)
+    private val neededKeys = HashSet<Long>(2048)
+    private var frameIndex = 0L
+    private var currentEpoch = -1
+
+    // --- Matrices et tampons de travail ---
     private val projection = FloatArray(16)
     private val view = FloatArray(16)
     private val model = FloatArray(16)
     private val temp = FloatArray(16)
     private val mvp = FloatArray(16)
     private val eye = FloatArray(3)
+    private var aspect = 1f
 
     private var lastFrameNanos = 0L
     private var fpsAccumulator = 0f
@@ -80,11 +178,17 @@ class PlanetRenderer : GLSurfaceView.Renderer {
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         // Contexte possiblement recréé après une veille : tout identifiant GPU
-        // détenu est caduc. On repart de zéro sans toucher aux données du monde,
-        // qui vivent hors du renderer.
+        // détenu est caduc. On oublie sans appeler OpenGL — détruire des
+        // identifiants de l'ancien contexte viserait ceux du nouveau.
         program = 0
         vbo = 0
         uploadedVertexCount = 0
+        tileProgram = 0
+        skyProgram = 0
+        skyVbo = 0
+        gpuPool.forgetAll()
+        stream.forgetGpu()
+        tilePool.cancelAll()
         lastError = null
 
         glRenderer = try {
@@ -98,7 +202,6 @@ class PlanetRenderer : GLSurfaceView.Renderer {
             if (lastError == null) lastError = "Shaders indisponibles sur ce GPU"
             return
         }
-
         aPosition = GLES20.glGetAttribLocation(program, "aPosition")
         aColor = GLES20.glGetAttribLocation(program, "aColor")
         aNormal = GLES20.glGetAttribLocation(program, "aNormal")
@@ -107,6 +210,28 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         uModel = GLES20.glGetUniformLocation(program, "uModel")
         uCamera = GLES20.glGetUniformLocation(program, "uCamera")
         uSun = GLES20.glGetUniformLocation(program, "uSun")
+
+        tileProgram = buildProgram(TILE_VERTEX_SHADER, TILE_FRAGMENT_SHADER)
+        if (tileProgram != 0) {
+            tAPosition = GLES20.glGetAttribLocation(tileProgram, "aPosition")
+            tAColor = GLES20.glGetAttribLocation(tileProgram, "aColor")
+            tANormal = GLES20.glGetAttribLocation(tileProgram, "aNormal")
+            tAMaterial = GLES20.glGetAttribLocation(tileProgram, "aMaterial")
+            tUViewProj = GLES20.glGetUniformLocation(tileProgram, "uViewProj")
+            tUOffset = GLES20.glGetUniformLocation(tileProgram, "uOffset")
+            tUCenterWorld = GLES20.glGetUniformLocation(tileProgram, "uCenterWorld")
+            tUSun = GLES20.glGetUniformLocation(tileProgram, "uSun")
+            tUHaze = GLES20.glGetUniformLocation(tileProgram, "uHaze")
+            tUHazeDensity = GLES20.glGetUniformLocation(tileProgram, "uHazeDensity")
+        }
+
+        skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
+        if (skyProgram != 0) {
+            sAPos = GLES20.glGetAttribLocation(skyProgram, "aPos")
+            sUTop = GLES20.glGetUniformLocation(skyProgram, "uTop")
+            sUBottom = GLES20.glGetUniformLocation(skyProgram, "uBottom")
+            skyVbo = createSkyQuad()
+        }
 
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
         GLES20.glEnable(GLES20.GL_CULL_FACE)
@@ -118,8 +243,7 @@ class PlanetRenderer : GLSurfaceView.Renderer {
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
-        val ratio = if (height > 0) width.toFloat() / height else 1f
-        Matrix.perspectiveM(projection, 0, 42f, ratio, 0.02f, 60f)
+        aspect = if (height > 0) width.toFloat() / height else 1f
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -127,6 +251,7 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         val dt = if (lastFrameNanos == 0L) 0.016f
                  else ((now - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 0.25f)
         lastFrameNanos = now
+        frameIndex++
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
@@ -135,45 +260,12 @@ class PlanetRenderer : GLSurfaceView.Renderer {
             pendingMesh = null
         }
 
-        if (program != 0 && uploadedVertexCount > 0) {
-            // Caméra en coordonnées sphériques autour de l'origine.
-            val yawRad = yawDeg * DEG
-            val pitchRad = pitchDeg * DEG
-            val horizontal = cos(pitchRad) * distance
-            eye[0] = horizontal * sin(yawRad)
-            eye[1] = sin(pitchRad) * distance
-            eye[2] = horizontal * cos(yawRad)
-
-            Matrix.setLookAtM(view, 0, eye[0], eye[1], eye[2], 0f, 0f, 0f, 0f, 1f, 0f)
-
-            // La matrice modèle ne porte que la rotation propre de la planète.
-            Matrix.setIdentityM(model, 0)
-            Matrix.rotateM(model, 0, spinDeg, 0f, 1f, 0f)
-
-            Matrix.multiplyMM(temp, 0, view, 0, model, 0)
-            Matrix.multiplyMM(mvp, 0, projection, 0, temp, 0)
-
-            GLES20.glUseProgram(program)
-            GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
-            GLES20.glUniformMatrix4fv(uModel, 1, false, model, 0)
-            GLES20.glUniform3f(uCamera, eye[0], eye[1], eye[2])
-            GLES20.glUniform3f(uSun, sunX, sunY, sunZ)
-
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
-            bindAttribute(aPosition, 3, PlanetMesh.OFFSET_POSITION)
-            bindAttribute(aColor, 3, PlanetMesh.OFFSET_COLOR)
-            bindAttribute(aNormal, 3, PlanetMesh.OFFSET_NORMAL)
-            bindAttribute(aMaterial, 1, PlanetMesh.OFFSET_MATERIAL)
-
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, uploadedVertexCount)
-
-            disableAttribute(aPosition)
-            disableAttribute(aColor)
-            disableAttribute(aNormal)
-            disableAttribute(aMaterial)
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
-
-            drawnTriangles = uploadedVertexCount / 3
+        val snapshot = cameraSnapshot
+        val ctx = tileContext
+        if (descentMode && snapshot != null && ctx != null && tileProgram != 0) {
+            drawDescent(snapshot, ctx)
+        } else {
+            drawGlobe()
         }
 
         frameMs = (System.nanoTime() - now) / 1_000_000f
@@ -184,6 +276,272 @@ class PlanetRenderer : GLSurfaceView.Renderer {
             fpsAccumulator = 0f
             fpsFrames = 0
         }
+    }
+
+    // ------------------------------------------------------------- descente
+
+    private fun drawDescent(snapshot: CameraSnapshot, ctx: TileContext) {
+        // Changement de monde : tout ce qui a été maillé décrit l'ancien.
+        if (ctx.epoch != currentEpoch) {
+            currentEpoch = ctx.epoch
+            // L'ordre compte : fermer la porte aux retardataires avant de
+            // vider, sinon un maillage de l'ancien monde déposé entre les deux
+            // passerait.
+            stream.acceptEpoch = ctx.epoch
+            tilePool.cancelAll()
+            stream.clear()
+        }
+
+        val radius = ctx.radiusM
+
+        // --- Sélection des tuiles, en unités de sphère unité ---
+        val camUnit = Vec3(
+            (snapshot.eyeXM / radius).toFloat(),
+            (snapshot.eyeYM / radius).toFloat(),
+            (snapshot.eyeZM / radius).toFloat()
+        )
+        val forward = Vec3(snapshot.fwdX, snapshot.fwdY, snapshot.fwdZ)
+        val cone = ViewCone.fromCamera(camUnit, forward, snapshot.fovRad, aspect)
+        selector.select(camUnit, selection, cone)
+        tilesSelected = selection.size
+
+        // --- Demandes de maillage, priorisées par l'axe du regard ---
+        for (tile in selection) {
+            val key = tile.packed()
+            if (stream.isCached(key)) continue
+            val priority = priorityOf(tile, camUnit, forward)
+            val profile = ctx.profile
+            val sampler = ctx.sampler
+            val epoch = ctx.epoch
+            tilePool.submit(key, priority) {
+                stream.offer(TileMesh(tile, profile, sampler, radius), epoch)
+            }
+        }
+
+        // De loin en loin, on annule ce qui n'est plus utile. Pas à chaque
+        // image : la construction de l'ensemble et le verrou du pool ont un
+        // coût, et une tuile devenue inutile ne le reste qu'un instant.
+        if (frameIndex % 15L == 0L) {
+            neededKeys.clear()
+            for (tile in selection) neededKeys.add(tile.packed())
+            tilePool.retainOnly(neededKeys)
+        }
+
+        stream.uploadPending(UPLOADS_PER_FRAME, frameIndex)
+        tilesMissing = stream.resolveDrawSet(selection, drawList, frameIndex)
+        tilesDrawn = drawList.size
+        tilesCached = stream.cachedCount
+        if (frameIndex % 30L == 0L) {
+            stream.evictStale(frameIndex, KEEP_FRAMES)
+            gpuPoolSummary = gpuPool.summary()
+        }
+
+        // --- Ciel ---
+        drawSky(snapshot)
+
+        // --- Matrices : l'œil est à l'origine, le monde vient à lui ---
+        val altitude = max(2.0, snapshot.altitudeM)
+        val near = (altitude * 0.02).coerceIn(0.5, 20_000.0).toFloat()
+        // Le plan lointain doit englober l'horizon et les montagnes qui le
+        // dépassent ; le facteur absorbe l'inclinaison et les jupes.
+        val horizonM = sqrt(max(0.0, (radius + altitude) * (radius + altitude) - radius * radius))
+        val far = (horizonM * 1.8 + 80_000.0).toFloat()
+        Matrix.perspectiveM(projection, 0, Math.toDegrees(snapshot.fovRad.toDouble()).toFloat(), aspect, near, far)
+        Matrix.setLookAtM(
+            view, 0,
+            0f, 0f, 0f,
+            snapshot.fwdX, snapshot.fwdY, snapshot.fwdZ,
+            snapshot.upX, snapshot.upY, snapshot.upZ
+        )
+        Matrix.multiplyMM(mvp, 0, projection, 0, view, 0)
+
+        // Soleil dans le repère de la planète : le monde des tuiles ne tourne
+        // pas (pas de matrice modèle), c'est donc le soleil qui est ramené du
+        // repère monde par la rotation propre inverse.
+        val spinRad = spinDeg * DEG
+        val c = cos(spinRad)
+        val s = sin(spinRad)
+        val sunLx = sunX * c - sunZ * s
+        val sunLz = sunX * s + sunZ * c
+
+        GLES20.glUseProgram(tileProgram)
+        GLES20.glUniformMatrix4fv(tUViewProj, 1, false, mvp, 0)
+        GLES20.glUniform3f(tUSun, sunLx, sunY, sunLz)
+
+        // Brume : densité choisie pour ~40 % d'atténuation à l'horizon bas —
+        // repère de profondeur à peu de frais, et elle voile la transition de
+        // niveau de détail au loin en attendant le morphing du lot 2.4.
+        val hazeDensity = (0.5 / max(20_000.0, horizonM)).toFloat()
+        GLES20.glUniform1f(tUHazeDensity, hazeDensity)
+        val dayF = dayFactorAtEye(snapshot, sunLx, sunLz)
+        GLES20.glUniform3f(tUHaze, 0.62f * dayF + 0.01f, 0.72f * dayF + 0.012f, 0.85f * dayF + 0.02f)
+
+        var triangles = 0
+        for (tile in drawList) {
+            GLES20.glUniform3f(
+                tUOffset,
+                (tile.centerXM - snapshot.eyeXM).toFloat(),
+                (tile.centerYM - snapshot.eyeYM).toFloat(),
+                (tile.centerZM - snapshot.eyeZM).toFloat()
+            )
+            GLES20.glUniform3f(
+                tUCenterWorld,
+                tile.centerXM.toFloat(), tile.centerYM.toFloat(), tile.centerZM.toFloat()
+            )
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, tile.vbo)
+            bindTileAttribute(tAPosition, 3, TileMesh.OFFSET_POSITION)
+            bindTileAttribute(tAColor, 3, TileMesh.OFFSET_COLOR)
+            bindTileAttribute(tANormal, 3, TileMesh.OFFSET_NORMAL)
+            bindTileAttribute(tAMaterial, 1, TileMesh.OFFSET_MATERIAL)
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, tile.vertexCount)
+            triangles += tile.vertexCount / 3
+        }
+        disableAttribute(tAPosition)
+        disableAttribute(tAColor)
+        disableAttribute(tANormal)
+        disableAttribute(tAMaterial)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        drawnTriangles = triangles
+    }
+
+    /**
+     * Priorité d'une tuile : proche de l'axe du regard d'abord, proche de la
+     * caméra ensuite. La tuile fixée par l'utilisateur doit se mailler avant
+     * celle qui affleure à l'horizon.
+     */
+    private fun priorityOf(tile: TileId, camUnit: Vec3, forward: Vec3): Float {
+        // tile.center alloue — toléré ici : cette fonction ne tourne que pour
+        // les tuiles manquantes, quelques dizaines par image pendant un
+        // déplacement, zéro à l'arrêt. Rien à voir avec le sélecteur, qui
+        // visite des milliers de noeuds à chaque image.
+        val center = tile.center
+        val dx = center.x - camUnit.x
+        val dy = center.y - camUnit.y
+        val dz = center.z - camUnit.z
+        val dist = max(1e-6f, sqrt(dx * dx + dy * dy + dz * dz))
+        val along = (dx * forward.x + dy * forward.y + dz * forward.z) / dist
+        return along - dist * 0.5f
+    }
+
+    private fun dayFactorAtEye(snapshot: CameraSnapshot, sunLx: Float, sunLz: Float): Float {
+        val len = sqrt(
+            snapshot.eyeXM * snapshot.eyeXM + snapshot.eyeYM * snapshot.eyeYM + snapshot.eyeZM * snapshot.eyeZM
+        )
+        if (len < 1.0) return 0f
+        val dot = (snapshot.eyeXM / len) * sunLx + (snapshot.eyeYM / len) * sunY +
+                (snapshot.eyeZM / len) * sunLz
+        return (dot.toFloat() * 2.2f + 0.22f).coerceIn(0f, 1f)
+    }
+
+    /**
+     * Ciel : simple dégradé plein écran, du bleu d'horizon au bleu de zénith,
+     * fondu vers le noir spatial avec l'altitude et la nuit.
+     *
+     * Version d'attente assumée : ni courbure d'horizon, ni soleil visible, ni
+     * diffusion — c'est le lot 2.10. Son seul rôle est que le sol ne se
+     * découpe pas sur le vide pendant les essais de descente.
+     */
+    private fun drawSky(snapshot: CameraSnapshot) {
+        if (skyProgram == 0 || skyVbo == 0) return
+
+        // Fondu spatial : plein ciel sous 12 km, plus rien au-delà de 90 km.
+        val presence = ((90_000.0 - snapshot.altitudeM) / 78_000.0).coerceIn(0.0, 1.0).toFloat()
+        if (presence <= 0f) return
+
+        val spinRad = spinDeg * DEG
+        val c = cos(spinRad)
+        val s = sin(spinRad)
+        val day = dayFactorAtEye(snapshot, sunX * c - sunZ * s, sunX * s + sunZ * c)
+
+        val topR = 0.10f * day * presence
+        val topG = 0.28f * day * presence
+        val topB = 0.62f * day * presence
+        val botR = (0.55f * day + 0.02f) * presence
+        val botG = (0.66f * day + 0.02f) * presence
+        val botB = (0.82f * day + 0.04f) * presence
+
+        GLES20.glDisable(GLES20.GL_DEPTH_TEST)
+        GLES20.glDepthMask(false)
+        GLES20.glUseProgram(skyProgram)
+        GLES20.glUniform3f(sUTop, topR, topG, topB)
+        GLES20.glUniform3f(sUBottom, botR, botG, botB)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, skyVbo)
+        GLES20.glEnableVertexAttribArray(sAPos)
+        GLES20.glVertexAttribPointer(sAPos, 2, GLES20.GL_FLOAT, false, 8, 0)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES20.glDisableVertexAttribArray(sAPos)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        GLES20.glDepthMask(true)
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+    }
+
+    private fun createSkyQuad(): Int {
+        val ids = IntArray(1)
+        GLES20.glGenBuffers(1, ids, 0)
+        if (ids[0] == 0) return 0
+        val quad = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+        val buf = ByteBuffer.allocateDirect(quad.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        buf.put(quad).position(0)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, ids[0])
+        GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, quad.size * 4, buf, GLES20.GL_STATIC_DRAW)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        return ids[0]
+    }
+
+    private fun bindTileAttribute(location: Int, size: Int, offsetFloats: Int) {
+        if (location < 0) return
+        GLES20.glEnableVertexAttribArray(location)
+        GLES20.glVertexAttribPointer(
+            location, size, GLES20.GL_FLOAT, false,
+            TileMesh.STRIDE_BYTES, offsetFloats * 4
+        )
+    }
+
+    // ---------------------------------------------------------------- globe
+
+    private fun drawGlobe() {
+        if (program == 0 || uploadedVertexCount == 0) return
+
+        Matrix.perspectiveM(projection, 0, 42f, aspect, 0.02f, 60f)
+
+        // Caméra en coordonnées sphériques autour de l'origine.
+        val yawRad = yawDeg * DEG
+        val pitchRad = pitchDeg * DEG
+        val horizontal = cos(pitchRad) * distance
+        eye[0] = horizontal * sin(yawRad)
+        eye[1] = sin(pitchRad) * distance
+        eye[2] = horizontal * cos(yawRad)
+
+        Matrix.setLookAtM(view, 0, eye[0], eye[1], eye[2], 0f, 0f, 0f, 0f, 1f, 0f)
+
+        // La matrice modèle ne porte que la rotation propre de la planète.
+        Matrix.setIdentityM(model, 0)
+        Matrix.rotateM(model, 0, spinDeg, 0f, 1f, 0f)
+
+        Matrix.multiplyMM(temp, 0, view, 0, model, 0)
+        Matrix.multiplyMM(mvp, 0, projection, 0, temp, 0)
+
+        GLES20.glUseProgram(program)
+        GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
+        GLES20.glUniformMatrix4fv(uModel, 1, false, model, 0)
+        GLES20.glUniform3f(uCamera, eye[0], eye[1], eye[2])
+        GLES20.glUniform3f(uSun, sunX, sunY, sunZ)
+
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
+        bindAttribute(aPosition, 3, PlanetMesh.OFFSET_POSITION)
+        bindAttribute(aColor, 3, PlanetMesh.OFFSET_COLOR)
+        bindAttribute(aNormal, 3, PlanetMesh.OFFSET_NORMAL)
+        bindAttribute(aMaterial, 1, PlanetMesh.OFFSET_MATERIAL)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, uploadedVertexCount)
+
+        disableAttribute(aPosition)
+        disableAttribute(aColor)
+        disableAttribute(aNormal)
+        disableAttribute(aMaterial)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+
+        drawnTriangles = uploadedVertexCount / 3
     }
 
     private fun bindAttribute(location: Int, size: Int, offsetFloats: Int) {
@@ -272,6 +630,14 @@ class PlanetRenderer : GLSurfaceView.Renderer {
         private const val TAG = "TerraRenderer"
         private const val DEG = 0.017453292f
 
+        /** Téléversements de tuiles par image : au-delà, à-coups visibles. */
+        private const val UPLOADS_PER_FRAME = 4
+
+        /** Une tuile non vue pendant ~4 s à 30 i/s est rendue au pool. */
+        private const val KEEP_FRAMES = 120L
+
+        // ------------------------------------------------------ shaders globe
+
         private const val VERTEX_SHADER = """
             uniform mat4 uMvp;
             uniform mat4 uModel;
@@ -350,6 +716,107 @@ class PlanetRenderer : GLSurfaceView.Renderer {
                 }
 
                 gl_FragColor = vec4(color, 1.0);
+            }
+        """
+
+        // --------------------------------------------------- shaders descente
+
+        /**
+         * Tout ce qui manipule des mètres vit ici, en highp implicite du
+         * vertex shader. Le fragment ne reçoit que des grandeurs dans [0, 1] :
+         * sur Mali, mediump est un flottant 16 bits qui sature à 65 504, et
+         * une position planétaire y deviendrait infinie.
+         */
+        private const val TILE_VERTEX_SHADER = """
+            uniform mat4 uViewProj;
+            uniform vec3 uOffset;       // centre de tuile - oeil, en metres
+            uniform vec3 uCenterWorld;  // centre de tuile, repere planete
+            uniform vec3 uSun;          // soleil, repere planete
+            uniform float uHazeDensity;
+
+            attribute vec3 aPosition;   // relative au centre de tuile, metres
+            attribute vec3 aColor;
+            attribute vec3 aNormal;
+            attribute float aMaterial;
+
+            varying vec3 vColor;
+            varying float vDiffuse;
+            varying float vDay;
+            varying float vSpec;
+            varying float vFog;
+
+            void main() {
+                vec3 rel = aPosition + uOffset;
+                gl_Position = uViewProj * vec4(rel, 1.0);
+
+                vec3 world = uCenterWorld + aPosition;
+                vec3 sph = normalize(world);
+                vec3 sun = normalize(uSun);
+
+                vDay = clamp(dot(sph, sun) * 2.2 + 0.22, 0.0, 1.0);
+                vDiffuse = max(dot(normalize(aNormal), sun), 0.0);
+
+                float spec = 0.0;
+                if (aMaterial > 0.5) {
+                    vec3 view = normalize(-rel);
+                    vec3 halfway = normalize(sun + view);
+                    spec = pow(max(dot(sph, halfway), 0.0), 160.0) * 0.32;
+                }
+                vSpec = spec;
+
+                float dist = length(rel);
+                vFog = 1.0 - exp(-dist * uHazeDensity);
+                vColor = aColor;
+            }
+        """
+
+        private const val TILE_FRAGMENT_SHADER = """
+            precision mediump float;
+
+            uniform vec3 uHaze;
+
+            varying vec3 vColor;
+            varying float vDiffuse;
+            varying float vDay;
+            varying float vSpec;
+            varying float vFog;
+
+            void main() {
+                vec3 color = vColor * (0.12 + 0.88 * vDiffuse) * vDay;
+                color += vec3(0.90, 0.94, 1.0) * vSpec * vDay;
+                color += vColor * 0.018;
+
+                // Meme genou que le globe : les deux chemins doivent rendre
+                // les zones claires de la meme facon, sinon la bascule de mode
+                // se verrait comme un saut d'exposition.
+                float peak = max(color.r, max(color.g, color.b));
+                float knee = 0.82;
+                if (peak > knee) {
+                    float over = peak - knee;
+                    color *= (knee + over / (1.0 + over * 1.7)) / peak;
+                }
+
+                color = mix(color, uHaze, vFog);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        """
+
+        private const val SKY_VERTEX_SHADER = """
+            attribute vec2 aPos;
+            varying float vY;
+            void main() {
+                vY = aPos.y * 0.5 + 0.5;
+                gl_Position = vec4(aPos, 0.999, 1.0);
+            }
+        """
+
+        private const val SKY_FRAGMENT_SHADER = """
+            precision mediump float;
+            uniform vec3 uTop;
+            uniform vec3 uBottom;
+            varying float vY;
+            void main() {
+                gl_FragColor = vec4(mix(uBottom, uTop, pow(vY, 0.8)), 1.0);
             }
         """
     }
