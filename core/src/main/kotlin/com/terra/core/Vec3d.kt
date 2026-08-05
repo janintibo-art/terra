@@ -100,21 +100,24 @@ object Geodesy {
     fun angleBetween(a: Vec3d, b: Vec3d): Double =
         acos((a.normalized() dot b.normalized()).coerceIn(-1.0, 1.0))
 
+    /**
+     * Vecteur unitaire pointant vers l'est dans le plan tangent en [p].
+     *
+     * Le repère local suit la convention directe (nord, est, haut) :
+     * `nord × est = haut`, `est × haut = nord`, `haut × nord = est`.
+     */
+    fun eastAt(p: Vec3d): Vec3d {
+        val up = p.normalized()
+        // Aux pôles, la direction du nord est indéfinie : on bascule sur une
+        // référence différente pour ne pas produire un vecteur nul.
+        val ref = if (abs(up.y) > 0.999999) Vec3d.UNIT_Z else Vec3d.UNIT_Y
+        return (up cross ref).normalized()
+    }
+
     /** Vecteur unitaire pointant vers le nord dans le plan tangent en [p]. */
     fun northAt(p: Vec3d): Vec3d {
         val up = p.normalized()
-        // Aux pôles, la direction du nord est indéfinie : on choisit une
-        // référence arbitraire mais stable pour éviter un vecteur nul.
-        val ref = if (abs(up.y) > 0.999999) Vec3d.UNIT_Z else Vec3d.UNIT_Y
-        val east = (ref cross up).normalized()
-        return (up cross east).normalized()
-    }
-
-    /** Vecteur unitaire pointant vers l'est dans le plan tangent en [p]. */
-    fun eastAt(p: Vec3d): Vec3d {
-        val up = p.normalized()
-        val ref = if (abs(up.y) > 0.999999) Vec3d.UNIT_Z else Vec3d.UNIT_Y
-        return (ref cross up).normalized()
+        return (eastAt(p) cross up).normalized()
     }
 
     /**
@@ -126,6 +129,9 @@ object Geodesy {
         val up = from.normalized()
         val axis = (up cross tangentDir).normalized()
         if (!axis.isFinite() || axis.lengthSq < 1e-18) return from
-        return up.rotatedAround(axis, -angleRad).normalized()
+        // Rotation positive autour de (haut × direction) : avancer vers le nord
+        // fait bien croître la latitude. Le signe opposé, employé initialement,
+        // envoyait vers le sud.
+        return up.rotatedAround(axis, angleRad).normalized()
     }
 }

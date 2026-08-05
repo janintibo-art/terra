@@ -83,6 +83,48 @@ class Vec3dTest {
     }
 
     @Test
+    fun `le repere local coincide avec les derivees de la parametrisation`() {
+        // Le test qui manquait, et qui aurait attrapé les deux erreurs de signe
+        // de la v0.6.0 : l'est rendait le vecteur opposé, et le déplacement
+        // tournait dans le mauvais sens.
+        //
+        // Plutôt que de raisonner sur des intuitions d'orientation, on compare
+        // le repère aux dérivées de la paramétrisation elle-même : l'est doit
+        // suivre la longitude croissante, le nord la latitude croissante. Toute
+        // erreur de signe devient alors impossible à manquer.
+        val h = 1e-6
+        for (latDeg in -80..80 step 10) {
+            for (lonDeg in -170..170 step 20) {
+                val lat = latDeg * PI / 180.0
+                val lon = lonDeg * PI / 180.0
+                val p = Geodesy.toUnit(lat, lon)
+
+                val expectedEast = (Geodesy.toUnit(lat, lon + h) - p).normalized()
+                val expectedNorth = (Geodesy.toUnit(lat + h, lon) - p).normalized()
+
+                assertTrue(
+                    (Geodesy.eastAt(p) - expectedEast).length < 1e-4,
+                    "est erroné à $latDeg°, $lonDeg°"
+                )
+                assertTrue(
+                    (Geodesy.northAt(p) - expectedNorth).length < 1e-4,
+                    "nord erroné à $latDeg°, $lonDeg°"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `se deplacer vers l est fait croitre la longitude`() {
+        val p = Geodesy.toUnit(0.3, 0.2)
+        val moved = Geodesy.move(p, Geodesy.eastAt(p), 0.05)
+        assertTrue(
+            Geodesy.longitude(moved) > Geodesy.longitude(p),
+            "un déplacement vers l'est doit augmenter la longitude"
+        )
+    }
+
+    @Test
     fun `le nord pointe bien vers le pole`() {
         val p = Geodesy.toUnit(0.0, 0.0)
         val moved = Geodesy.move(p, Geodesy.northAt(p), 0.1)

@@ -328,11 +328,10 @@ class CoarseSamplerTest {
         repeat(1500) {
             val p = Sphere.randomPoint(rng)
 
-            var brute = 0
             var bestDot = p dot world.position(0)
             for (i in 1 until world.vertexCount) {
                 val d = p dot world.position(i)
-                if (d > bestDot) { bestDot = d; brute = i }
+                if (d > bestDot) bestDot = d
             }
 
             val walked = sampler.nearestVertex(p)

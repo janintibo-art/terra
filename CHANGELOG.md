@@ -1,5 +1,24 @@
 # Journal des versions
 
+## v0.6.1 — Correction du repère géodésique
+
+Deux erreurs de signe dans `Geodesy`, révélées par les tests :
+
+- `eastAt` rendait `ref × haut`, soit un vecteur pointant vers l'**ouest**. Le
+  produit correct est `haut × ref`.
+- `move` appliquait une rotation de `−angle` : demander le nord envoyait au sud.
+
+Elles se compensaient exactement pour un déplacement vers l'est, ce qui laissait
+passer le test de glissement latéral, et s'additionnaient vers le nord.
+
+Le repère local suit désormais la convention directe `nord × est = haut`, et
+coïncide avec les dérivées de la paramétrisation à 5·10⁻⁷ près.
+
+**Nouveau test de non-régression** : plutôt que de raisonner sur des intuitions
+d'orientation, le repère est comparé aux dérivées analytiques de la
+paramétrisation en 306 points répartis sur la sphère. Une erreur de signe y
+devient impossible à manquer — c'est le test qui aurait dû exister dès le départ.
+
 ## v0.6.0 — Caméra géodésique et lancer de rayon
 
 Lot A du rendu à niveaux de détail. Kotlin pur, testé, sans aucune modification
