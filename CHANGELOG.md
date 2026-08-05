@@ -1,5 +1,55 @@
 # Journal des versions
 
+## v0.6.0 — Caméra géodésique et lancer de rayon
+
+Lot A du rendu à niveaux de détail. Kotlin pur, testé, sans aucune modification
+du moteur de rendu : rien de ce qui fonctionne ne peut être cassé.
+
+### Le modèle de navigation
+
+Celui des globes virtuels : la caméra vise un **point posé sur le sol**, à une
+certaine distance, sous un cap et une inclinaison. Glisser déplace ce point,
+pincer change la distance.
+
+Ce qui rend la descente naturelle tient dans une seule propriété : **l'amplitude
+d'un glissement est proportionnelle à la distance**. À 10 000 km, un geste de
+300 pixels parcourt 2 130 km ; à 100 m de portée, le même geste parcourt 21 m —
+un rapport de 100 000 pour un rapport de portée de 100 000. Aucun basculement de
+mode, aucun seuil : « faire rouler le globe » et « faire défiler le sol » sont la
+même formule, et la transition est continue.
+
+L'inclinaison s'ouvre progressivement en descendant, sur une échelle
+logarithmique : nulle en orbite, où une vue rasante serait illisible, jusqu'à 82°
+près du sol, où elle donne l'horizon. Elle se replie d'elle-même si l'on remonte.
+
+### Double précision
+
+`Vec3d` et `Geodesy` doublent `Vec3` et `Sphere` en 64 bits. À 6 371 km du
+centre, le flottant 32 bits ne distingue plus rien en deçà de **cinquante
+centimètres** : une caméra posée au sol tremblerait à chaque image. L'état de la
+caméra est purement géodésique — latitude, longitude, portée, cap, inclinaison —
+et la position métrique n'est produite qu'à la demande.
+
+### Lancer de rayon
+
+`TerrainRaycaster` intersecte un rayon avec le relief par *sphere tracing* : à
+chaque pas on avance d'une fraction de la hauteur disponible au-dessus du sol,
+puis une bissection affine le contact. Trois usages :
+
+- **zoom vers le doigt** : le point du sol sous les doigts y reste pendant le
+  pincement, au lieu de dériver vers le centre de l'écran ;
+- **butée de caméra** : `snapToTerrain` empêche l'œil de traverser une montagne,
+  en reculant puis, si nécessaire, en redressant la vue ;
+- **sélection d'entités**, qui servira en Phase 4.
+
+### Tests
+
+Trente-cinq tests nouveaux : orthonormalité du repère local sur toute la sphère
+y compris aux pôles, proportionnalité du glissement à la distance, convergence du
+zoom vers sa cible, repliement de l'inclinaison, stabilité après trois mille
+manipulations aléatoires, passage au-dessus du pôle, exactitude du point
+d'impact, et non-traversée du terrain à inclinaison maximale.
+
 ## v0.5.1 — Correctif
 
 - `Geography` : `LAKE_THRESHOLD` et `INLAND_SEA_THRESHOLD` étaient utilisées sans
