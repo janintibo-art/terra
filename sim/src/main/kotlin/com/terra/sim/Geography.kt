@@ -28,6 +28,7 @@ class Geography private constructor(
     val coastlineEdges: Int,
     val coastlineKm: Float,
     val inlandSeaCount: Int,
+    val lakeCount: Int,
     val meanLandAltitudeM: Float,
     val mountainFraction: Float,
     /** Taille des cinq plus grandes masses continentales, en nombre de cellules. */
@@ -65,10 +66,19 @@ class Geography private constructor(
             // --- Composantes océaniques : détection des mers intérieures ---
             val oceanComponents = connectedComponents(adjacency, n) { !land[it] }
             val oceanCells = n - landCells
-            // Toute étendue d'eau isolée représentant moins de 8 % de l'eau
-            // totale est considérée comme une mer intérieure ou un grand lac.
-            val inlandSeas = oceanComponents.count {
-                it.toFloat() / maxOf(1, oceanCells) < 0.08f
+            // Les étendues d'eau isolées se répartissent en deux catégories :
+            // un plan d'eau de quelques cellules est un lac, une étendue plus
+            // vaste mais close est une mer intérieure. Les confondre donnait
+            // « 19 mers intérieures » là où il s'agissait surtout de mares.
+            var inlandSeas = 0
+            var lakes = 0
+            for (size in oceanComponents) {
+                val share = size.toFloat() / maxOf(1, oceanCells)
+                when {
+                    share >= INLAND_SEA_THRESHOLD -> Unit          // l'océan mondial
+                    share >= LAKE_THRESHOLD -> inlandSeas++
+                    else -> lakes++
+                }
             }
 
             // --- Littoral : arêtes séparant une cellule terrestre d'une marine ---
@@ -104,6 +114,7 @@ class Geography private constructor(
                 coastlineEdges = coastEdges,
                 coastlineKm = coastKm,
                 inlandSeaCount = inlandSeas,
+                lakeCount = lakes,
                 meanLandAltitudeM = meanAlt,
                 mountainFraction = if (landCells > 0) mountainCells.toFloat() / landCells else 0f,
                 topLandmasses = sizes.take(5)

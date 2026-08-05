@@ -213,8 +213,8 @@ class WorldGeneratorTest {
     @Test
     fun `les temperatures restent plausibles`() {
         val w = world(888L)
-        assertTrue(w.stats.hottestC < 55f, "trop chaud : ${w.stats.hottestC} °C")
-        assertTrue(w.stats.coldestC > -95f, "trop froid : ${w.stats.coldestC} °C")
+        assertTrue(w.stats.hottestC < 45f, "trop chaud : ${w.stats.hottestC} °C")
+        assertTrue(w.stats.coldestC > -85f, "trop froid : ${w.stats.coldestC} °C")
     }
 
     @Test
@@ -229,7 +229,7 @@ class WorldGeneratorTest {
         }
         val equator = equatorSum / equatorCount
         val pole = poleSum / poleCount
-        assertTrue(equator - pole > 30.0, "gradient thermique insuffisant : $equator vs $pole")
+        assertTrue(equator - pole > 25.0, "gradient thermique insuffisant : $equator vs $pole")
     }
 
     @Test

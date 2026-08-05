@@ -1,5 +1,64 @@
 # Journal des versions
 
+## v0.4.0 — Climat crédible et rendu maîtrisé
+
+Le premier APK fonctionnel a révélé une planète couverte à 30 % de glace, contre
+7 % sur Terre. Ce lot corrige la cause et instrumente la vérification.
+
+### Le défaut principal
+
+Le profil thermique employait `T = 28 − 62·sin²(latitude)`, qui donne **−3 °C à
+45°** alors que la moyenne annuelle terrestre y est de **+12 °C**. Conséquence :
+toute mer au-delà de 44° gelait, toute terre au-delà de 50° devenait glacier.
+
+Le nouveau profil mélange `sin²` et `sin⁴`, ce qui colle de près aux
+observations :
+
+| Latitude | Modèle | Terre |
+|---|---|---|
+| 0° | 27 °C | 26 °C |
+| 30° | 21 °C | 20 °C |
+| 45° | 12 °C | 12 °C |
+| 60° | −1 °C | 0 °C |
+| 90° | −20 °C | −20 °C |
+
+### Autres corrections climatiques
+
+- **Inertie thermique océanique** : la mer restitue en hiver la chaleur de l'été,
+  ce qui adoucit les hautes latitudes maritimes et repousse la banquise.
+- **Continentalité** : un parcours en largeur depuis le littoral donne
+  l'éloignement de chaque cellule à la mer. L'intérieur des continents devient
+  plus froid aux hautes latitudes et surtout plus sec — c'est ce qui creuse les
+  déserts continentaux, du Gobi au Taklamakan.
+
+### Rendu
+
+- **Compression des hautes lumières** : neige et banquise saturaient dès qu'elles
+  étaient éclairées, transformant la calotte en aplat blanc sans relief. Un genou
+  doux ne comprime que ce qui dépasse et préserve le détail des facettes.
+- **Reflet solaire resserré** : exposant porté de 70 à 160 et intensité réduite.
+  Un glint réel est petit et net, pas une tache couvrant un quart du globe.
+
+### Variété et lisibilité
+
+- **Relief propre à chaque monde** : le calibrage par percentile faisait que
+  toutes les planètes atteignaient exactement +7000 m. Chaque monde tire
+  désormais son amplitude et son caractère — pénéplaine érodée ou massif
+  tourmenté.
+- **Lacs distingués des mers intérieures** : « 19 mers intérieures » comptait
+  surtout des mares de deux cellules.
+- **HUD compact** : les dernières lignes passaient sous la barre de boutons. Un
+  indicateur permanent de couverture glaciaire est ajouté.
+
+### Tests
+
+Sept tests climatiques nouveaux, dont la comparaison du profil thermique aux
+moyennes annuelles observées à cinq latitudes, une borne sur la couverture
+glaciaire, et la vérification que les tropiques ne gèlent jamais.
+
+`GENERATION_VERSION` passe à 2 : les mondes de la v0.3 seront signalés comme
+antérieurs.
+
 ## v0.3.1 — Correctifs de compilation
 
 Le premier passage de la CI a révélé une erreur qui bloquait la compilation

@@ -314,24 +314,40 @@ class PlanetRenderer : GLSurfaceView.Renderer {
 
                 // Terminateur adouci : le passage jour/nuit s'étale au lieu de
                 // trancher net, comme sur une planète pourvue d'atmosphère.
-                float day = clamp(dot(sph, sun) * 2.6 + 0.30, 0.0, 1.0);
+                float day = clamp(dot(sph, sun) * 2.2 + 0.22, 0.0, 1.0);
 
                 float diffuse = max(dot(n, sun), 0.0);
-                vec3 color = vColor * (0.09 + 0.98 * diffuse) * day;
+                vec3 color = vColor * (0.10 + 0.85 * diffuse) * day;
 
-                // Reflet spéculaire réservé aux surfaces d'eau.
+                // Reflet spéculaire réservé aux surfaces d'eau. Exposant élevé
+                // et intensité modérée : un vrai glint solaire est petit et
+                // net, pas une tache blanche couvrant un quart du globe.
                 if (vMaterial > 0.5) {
                     vec3 halfway = normalize(sun + view);
-                    float spec = pow(max(dot(sph, halfway), 0.0), 70.0);
-                    color += vec3(0.95, 0.97, 1.0) * spec * 0.60 * day;
+                    float spec = pow(max(dot(sph, halfway), 0.0), 160.0);
+                    color += vec3(0.90, 0.94, 1.0) * spec * 0.32 * day;
                 }
 
                 // Halo atmosphérique sur le limbe, plus intense côté jour.
                 float rim = pow(1.0 - max(dot(sph, view), 0.0), 3.5);
-                color += vec3(0.28, 0.50, 0.95) * rim * 0.90 * day;
+                color += vec3(0.28, 0.50, 0.95) * rim * 0.55 * day;
 
                 // Faible lueur nocturne pour que la face sombre reste lisible.
-                color += vColor * 0.022;
+                color += vColor * 0.018;
+
+                // Compression douce des hautes lumières.
+                //
+                // La neige et la banquise, presque blanches, atteignaient
+                // saturation dès qu'elles étaient éclairées : toute la calotte
+                // devenait un aplat sans relief. Ce genou ne touche pas les
+                // tons moyens et ne comprime que ce qui dépasse, préservant le
+                // détail des facettes dans les zones claires.
+                float peak = max(color.r, max(color.g, color.b));
+                float knee = 0.82;
+                if (peak > knee) {
+                    float over = peak - knee;
+                    color *= (knee + over / (1.0 + over * 1.7)) / peak;
+                }
 
                 gl_FragColor = vec4(color, 1.0);
             }

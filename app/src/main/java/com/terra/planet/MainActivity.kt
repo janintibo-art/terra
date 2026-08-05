@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.terra.core.SimClock
 import com.terra.core.clamp
+import com.terra.sim.Biome
 import com.terra.sim.MapLayer
 import com.terra.sim.PlanetData
 import com.terra.sim.PlanetParams
@@ -357,60 +358,70 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * HUD compact.
+     *
+     * La version précédente débordait sous la barre de boutons : les dernières
+     * lignes étaient illisibles. On regroupe donc les informations par ligne
+     * plutôt que de les empiler, et on limite la liste des biomes.
+     */
     private fun buildHudText(): String {
         val w = world ?: return "TERRA v$VERSION\ngénération en cours…"
         val s = w.stats
         val g = w.geography
         val sb = StringBuilder()
 
-        renderer.lastError?.let { sb.append("⚠ ").append(it).append("\n\n") }
+        renderer.lastError?.let { sb.append("⚠ ").append(it).append('\n') }
 
-        sb.append("TERRA v").append(VERSION).append("  ·  calque ")
-            .append(currentLayer.label).append('\n')
-        sb.append("monde    ").append(w.name.ifEmpty { "(sans nom)" })
-            .append("   ").append(w.seed.shortCode()).append('\n')
-        sb.append("empreinte ").append(w.fingerprintHex()).append('\n')
-        if (staleSave) sb.append("         (généré par une version antérieure)\n")
-        sb.append("date     ").append(worldTime.format(clock.tick)).append('\n')
-        sb.append("soleil   déclinaison ")
-            .append(fmt(worldTime.sunDeclinationDeg(clock.tick))).append("°\n")
+        sb.append("TERRA v").append(VERSION).append(" · ").append(currentLayer.label)
+        if (staleSave) sb.append(" · monde d'une version antérieure")
         sb.append('\n')
 
-        sb.append("rendu    ").append(fmt(renderer.fps)).append(" i/s   ")
-            .append(fmt(renderer.frameMs)).append(" ms   ")
-            .append(configChooser.chosenSamples).append("× AA\n")
-        sb.append("gpu      ").append(renderer.glRenderer.take(30)).append('\n')
-        sb.append("maillage ").append(renderer.drawnTriangles).append(" triangles   ")
-            .append(w.vertexCount).append(" cellules\n")
-        sb.append("calcul   monde ").append(s.generationMs).append(" ms   maillage ")
-            .append(meshBuildMs).append(" ms\n")
-        sb.append('\n')
+        sb.append(w.name.ifEmpty { "(sans nom)" }).append("  ")
+            .append(w.seed.shortCode()).append("  ").append(w.fingerprintHex().take(8)).append('\n')
 
-        sb.append("océans   ").append(fmt(s.oceanFractionActual * 100f)).append(" %\n")
-        sb.append("terres   ").append(g.continentCount).append(" continents, ")
-            .append(g.islandCount).append(" îles\n")
-        sb.append("         plus grand ")
-            .append(fmt(g.largestLandmassFraction * 100f)).append(" % des terres\n")
-        sb.append("         fragmentation ").append(fmt(g.fragmentation * 100f)).append(" %\n")
-        sb.append("mers int ").append(g.inlandSeaCount).append('\n')
-        sb.append("littoral ").append(g.coastlineKm.roundToInt()).append(" km\n")
-        sb.append("altitude moy ").append(g.meanLandAltitudeM.roundToInt()).append(" m   max +")
-            .append(s.highestAltitudeM.roundToInt()).append(" m\n")
-        sb.append("montagnes ").append(fmt(g.mountainFraction * 100f))
-            .append(" % des terres\n")
-        sb.append("climat   ").append(fmt(s.coldestC)).append(" °C … ")
-            .append(fmt(s.hottestC)).append(" °C\n")
-        sb.append("biomes   ").append(s.distinctBiomes).append(" présents\n")
+        sb.append(worldTime.format(clock.tick))
+            .append(" · δ").append(fmt(worldTime.sunDeclinationDeg(clock.tick))).append("°\n")
+
+        sb.append(fmt(renderer.fps)).append(" i/s · ").append(fmt(renderer.frameMs))
+            .append(" ms · ").append(configChooser.chosenSamples).append("×AA · ")
+            .append(renderer.glRenderer.take(16)).append('\n')
+
+        sb.append(renderer.drawnTriangles).append(" tri · gen ").append(s.generationMs)
+            .append(" ms · maille ").append(meshBuildMs).append(" ms\n\n")
+
+        sb.append("océans ").append(fmt(s.oceanFractionActual * 100f)).append(" % · littoral ")
+            .append(g.coastlineKm.roundToInt()).append(" km\n")
+
+        sb.append(g.continentCount).append(" continents · ").append(g.islandCount)
+            .append(" îles · ").append(g.inlandSeaCount).append(" mers · ")
+            .append(g.lakeCount).append(" lacs\n")
+
+        sb.append("plus grand ").append(fmt(g.largestLandmassFraction * 100f))
+            .append(" % · fragmentation ").append(fmt(g.fragmentation * 100f)).append(" %\n")
+
+        sb.append("alt moy ").append(g.meanLandAltitudeM.roundToInt()).append(" m · max ")
+            .append(s.highestAltitudeM.roundToInt()).append(" m · mont ")
+            .append(fmt(g.mountainFraction * 100f)).append(" %\n")
+
+        sb.append("climat ").append(fmt(s.coldestC)).append(" … ").append(fmt(s.hottestC))
+            .append(" °C · ").append(s.distinctBiomes).append(" biomes\n")
+
+        // Part de la surface sous la glace : l'indicateur qui a révélé la
+        // planète boule de neige de la v0.3. On le garde en vue permanente.
+        val iceShare = listOf(Biome.SEA_ICE, Biome.GLACIER, Biome.SNOW)
+            .sumOf { s.biomeCounts[it] ?: 0 }
+            .toFloat() * 100f / w.vertexCount
+        sb.append("glaces ").append(fmt(iceShare)).append(" % de la surface\n")
 
         s.biomeCounts.entries
             .sortedByDescending { it.value }
-            .take(5)
+            .take(4)
             .forEach { (biome, count) ->
-                sb.append("  ").append(biome.label.padEnd(17))
+                sb.append("  ").append(biome.label).append(' ')
                     .append(fmt(count * 100f / w.vertexCount)).append(" %\n")
             }
 
-        sb.append("\ndeux doigts (tape) : masquer ce panneau")
         return sb.toString()
     }
 
@@ -498,6 +509,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.3.1"
+        const val VERSION = "0.4.0"
     }
 }

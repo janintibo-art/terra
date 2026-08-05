@@ -363,3 +363,176 @@ class FingerprintTest {
         assertTrue(a.fingerprint != b.fingerprint, "un changement de paramètre passe inaperçu")
     }
 }
+
+/**
+ * Tests climatiques — verrouillent la correction de la « planète boule de neige ».
+ *
+ * La v0.3 employait un profil thermique en sin², qui donnait −3 °C à 45° de
+ * latitude contre +12 °C dans la réalité. Résultat : toute mer au-delà de 44°
+ * gelait, toute terre au-delà de 50° devenait glacier, et près de 30 % de la
+ * surface finissait sous la glace contre 7 % sur Terre.
+ *
+ * Ces tests comparent le modèle aux moyennes annuelles observées et fixent des
+ * bornes de plausibilité. Ils échoueront si un réglage futur refait dériver le
+ * climat.
+ */
+class ClimateRealismTest {
+
+    private fun world(name: String, sub: Int = 4) =
+        WorldGenerator.fromName(name, PlanetParams(subdivisions = sub)).generate()
+
+    private val referenceNames = listOf("Alpha", "Gaia", "Orion", "Vesta", "Thule", "Nyx")
+
+    /** Température moyenne des cellules dont la latitude est proche de la cible. */
+    private fun meanTempAtLatitude(w: PlanetData, targetDeg: Float, toleranceDeg: Float): Float {
+        val target = kotlin.math.sin(targetDeg * com.terra.core.DEG_TO_RAD)
+        val tol = kotlin.math.sin((targetDeg + toleranceDeg) * com.terra.core.DEG_TO_RAD) - target
+        var sum = 0.0
+        var count = 0
+        for (i in 0 until w.vertexCount) {
+            // Au niveau de la mer uniquement : l'altitude fausserait la mesure.
+            if (w.altitudeM[i] > 400f) continue
+            if (abs(abs(w.position(i).y) - target) <= abs(tol)) {
+                sum += w.temperatureC[i]
+                count++
+            }
+        }
+        return if (count > 0) (sum / count).toFloat() else Float.NaN
+    }
+
+    @Test
+    fun `le profil thermique suit les moyennes annuelles terrestres`() {
+        // Cibles observées sur Terre, avec une marge généreuse : on vérifie
+        // l'ordre de grandeur, pas une reproduction au degré près.
+        val expectations = listOf(
+            Triple(0f, 20f, 32f),      // équateur    : environ 26 °C
+            Triple(30f, 13f, 26f),     // tropiques   : environ 20 °C
+            Triple(45f, 4f, 18f),      // tempéré     : environ 12 °C  <-- le cas fautif
+            Triple(60f, -8f, 8f),      // subpolaire  : environ  0 °C
+            Triple(80f, -28f, -6f)     // polaire     : environ −18 °C
+        )
+        for (name in referenceNames.take(3)) {
+            val w = world(name)
+            for ((lat, low, high) in expectations) {
+                val t = meanTempAtLatitude(w, lat, 6f)
+                if (t.isNaN()) continue
+                assertTrue(
+                    t in low..high,
+                    "$name à $lat° : $t °C, attendu entre $low et $high"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `la planete n est pas une boule de neige`() {
+        for (name in referenceNames) {
+            val w = world(name)
+            val ice = listOf(Biome.SEA_ICE, Biome.GLACIER, Biome.SNOW)
+                .sumOf { w.stats.biomeCounts[it] ?: 0 }
+                .toFloat() / w.vertexCount
+            assertTrue(
+                ice < 0.16f,
+                "$name : ${(ice * 100).toInt()} % de la surface sous la glace (Terre : ~7 %)"
+            )
+        }
+    }
+
+    @Test
+    fun `la banquise reste cantonnee aux hautes latitudes`() {
+        for (name in referenceNames) {
+            val w = world(name)
+            for (i in 0 until w.vertexCount) {
+                if (w.biome(i) != Biome.SEA_ICE) continue
+                val lat = abs(w.position(i).y)
+                assertTrue(
+                    lat > 0.72f,
+                    "$name : banquise à sin(lat) = $lat, soit une latitude trop basse"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `les tropiques ne gelent jamais`() {
+        for (name in referenceNames) {
+            val w = world(name)
+            for (i in 0 until w.vertexCount) {
+                if (abs(w.position(i).y) > 0.34f) continue   // au-delà de 20°
+                if (w.altitudeM[i] > 2500f) continue          // hors haute montagne
+                assertTrue(
+                    w.temperatureC[i] > 8f,
+                    "$name : ${w.temperatureC[i]} °C sous les tropiques au sommet $i"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `la continentalite asseche et refroidit l interieur des terres`() {
+        // On compare, à latitude tempérée comparable, les cellules côtières aux
+        // cellules intérieures. Sans continentalité, les deux seraient
+        // identiques et ce test échouerait.
+        val w = world("Gaia", sub = 5)
+        val adjacency = w.sphere.buildAdjacency()
+
+        var coastalPrecip = 0.0; var coastalCount = 0
+        var interiorPrecip = 0.0; var interiorCount = 0
+
+        for (i in 0 until w.vertexCount) {
+            if (!w.isLand(i)) continue
+            val lat = abs(w.position(i).y)
+            if (lat < 0.35f || lat > 0.85f) continue
+            val touchesSea = adjacency[i].any { !w.isLand(it) }
+            if (touchesSea) {
+                coastalPrecip += w.precipMm[i]; coastalCount++
+            }
+        }
+        // Cellules très éloignées de toute mer : au moins 5 pas de distance.
+        val stepsToSea = IntArray(w.vertexCount) { Int.MAX_VALUE }
+        val queue = IntArray(w.vertexCount)
+        var head = 0; var tail = 0
+        for (i in 0 until w.vertexCount) if (!w.isLand(i)) { stepsToSea[i] = 0; queue[tail++] = i }
+        while (head < tail) {
+            val v = queue[head++]
+            for (x in adjacency[v]) if (stepsToSea[x] > stepsToSea[v] + 1) {
+                stepsToSea[x] = stepsToSea[v] + 1; queue[tail++] = x
+            }
+        }
+        for (i in 0 until w.vertexCount) {
+            if (!w.isLand(i)) continue
+            val lat = abs(w.position(i).y)
+            if (lat < 0.35f || lat > 0.85f) continue
+            if (stepsToSea[i] >= 5) { interiorPrecip += w.precipMm[i]; interiorCount++ }
+        }
+
+        if (interiorCount > 20 && coastalCount > 20) {
+            val coastal = coastalPrecip / coastalCount
+            val interior = interiorPrecip / interiorCount
+            assertTrue(
+                interior < coastal,
+                "l'intérieur ($interior mm) n'est pas plus sec que la côte ($coastal mm)"
+            )
+        }
+    }
+
+    @Test
+    fun `le relief varie d un monde a l autre`() {
+        // La v0.3 produisait exactement +7000 m sur chaque planète, effet
+        // mécanique du calibrage par percentile.
+        val peaks = referenceNames.map { world(it).stats.highestAltitudeM }
+        assertTrue(
+            peaks.toSet().size >= referenceNames.size - 1,
+            "les sommets sont identiques d'un monde à l'autre : $peaks"
+        )
+        val spread = (peaks.max() - peaks.min()) / peaks.max()
+        assertTrue(spread > 0.15f, "amplitude de relief trop uniforme : $spread")
+    }
+
+    @Test
+    fun `les lacs ne sont plus comptes comme des mers interieures`() {
+        val g = world("Triovild", sub = 5).geography
+        assertTrue(g.inlandSeaCount < 8, "trop de mers intérieures : ${g.inlandSeaCount}")
+        assertTrue(g.inlandSeaCount + g.lakeCount > 0, "aucun plan d'eau isolé détecté")
+    }
+}

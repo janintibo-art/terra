@@ -40,8 +40,9 @@ object WorldSave {
      *
      * Historique :
      *   1 — v0.2.0 : Perlin, calibrage du niveau de la mer, biomes de Whittaker
+     *   2 — v0.4.0 : profil thermique réaliste, continentalité, variété du relief
      */
-    const val GENERATION_VERSION = 1
+    const val GENERATION_VERSION = 2
 
     data class Snapshot(
         val worldName: String,

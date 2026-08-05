@@ -121,11 +121,27 @@ data class PlanetParams(
     /** Inclinaison de l'axe de rotation, en degrés. Terre : 23,44. */
     val axialTiltDeg: Float = 23.4f,
 
-    /** Température moyenne à l'équateur au niveau de la mer, en °C. */
-    val equatorTempC: Float = 28f,
+    /** Température moyenne à l'équateur au niveau de la mer, en °C. Terre : 26. */
+    val equatorTempC: Float = 27f,
 
-    /** Écart de température entre l'équateur et les pôles, en °C. */
-    val poleTempDropC: Float = 62f,
+    /**
+     * Écart de température entre l'équateur et les pôles, en °C.
+     * Terre : environ 46 (de +26 à −20 en moyenne annuelle).
+     */
+    val poleTempDropC: Float = 47f,
+
+    /**
+     * Atténuation du gradient thermique au-dessus des océans, qui restituent en
+     * hiver la chaleur accumulée en été. 1 = aucune inertie, 0,8 = forte.
+     */
+    val oceanThermalInertia: Float = 0.88f,
+
+    /**
+     * Refroidissement supplémentaire au cœur des continents, en °C, appliqué
+     * proportionnellement à la latitude. Terre : environ 12 (Iakoutsk contre
+     * une côte norvégienne à latitude égale).
+     */
+    val continentalityC: Float = 12f,
 
     /** Refroidissement avec l'altitude, en °C par kilomètre. Terre : 6,5. */
     val lapseRateCPerKm: Float = 6.5f,
