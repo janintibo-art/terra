@@ -4,6 +4,7 @@ import com.terra.core.PI_F
 import com.terra.core.Vec3
 import kotlin.math.abs
 import kotlin.math.atan
+import kotlin.math.sqrt
 import kotlin.math.tan
 
 /**
@@ -77,6 +78,32 @@ object CubeSphere {
             FACE_POS_Z -> Vec3(u, v, 1f)
             else -> Vec3(-u, v, -1f)
         }.normalized()
+    }
+
+    /**
+     * Variante sans allocation : écrit le point directement dans un tableau.
+     *
+     * La sélection des tuiles évalue plusieurs milliers de nœuds par image, à
+     * quatre coins chacun. Passer par [toSphere] y allouerait des millions
+     * d'objets par seconde et saturerait le ramasse-miettes. Cette version
+     * travaille sur des flottants bruts et un tampon réutilisé.
+     */
+    fun toSphereInto(face: Int, s: Float, t: Float, out: FloatArray, offset: Int) {
+        val u = warp(s)
+        val v = warp(t)
+        val x: Float; val y: Float; val z: Float
+        when (face) {
+            FACE_POS_X -> { x = 1f; y = v; z = -u }
+            FACE_NEG_X -> { x = -1f; y = v; z = u }
+            FACE_POS_Y -> { x = u; y = 1f; z = -v }
+            FACE_NEG_Y -> { x = u; y = -1f; z = v }
+            FACE_POS_Z -> { x = u; y = v; z = 1f }
+            else -> { x = -u; y = v; z = -1f }
+        }
+        val inv = 1f / sqrt(x * x + y * y + z * z)
+        out[offset] = x * inv
+        out[offset + 1] = y * inv
+        out[offset + 2] = z * inv
     }
 
     /**

@@ -1,5 +1,61 @@
 # Journal des versions
 
+## v0.7.0 — Fondations de performance
+
+Lot préparatoire au rendu à tuiles, issu d'un audit du projet. Rien de visible :
+tout sert à ce que le lot suivant soit un assemblage de pièces éprouvées plutôt
+qu'un pari.
+
+### Le défaut principal, trouvé avant qu'il ne frappe
+
+`TileId` exposait sa géométrie en propriétés calculées. Chaque lecture de
+`corners` alloue neuf objets ; `center` et `boundingRadius` la rappellent, et
+`splitFactor` comme `isVisible` les rappellent à leur tour — soit **environ 85
+allocations par tuile évaluée**.
+
+Une sélection visite quelques milliers de nœuds. À soixante images par seconde,
+cela aurait représenté **quinze millions d'objets alloués par seconde**. La
+descente aurait saccadé alors que le nombre de triangles serait resté correct,
+et le diagnostic aurait été long.
+
+`TileSelector` calcule la géométrie une seule fois par nœud, dans des champs
+primitifs, avec une pile d'identifiants compactés en entiers longs. Un test
+vérifie qu'il rend exactement le même résultat que la version naïve : le coût
+change, pas le rendu.
+
+### Élimination par le cône de vision
+
+L'horizon seul ne suffit pas : au ras du sol, tout le tour de la planète reste
+géométriquement visible alors que l'écran n'en montre qu'une fraction. `ViewCone`
+ajoute un test conservateur — il ne rejette jamais une tuile visible, un test le
+vérifie — et retire au moins un quart de la charge au sol.
+
+### Pool de fils d'exécution
+
+Le fil unique convenait pour générer un monde toutes les dix secondes. Le rendu à
+tuiles en demande des dizaines par seconde. `TileWorkerPool` répartit sur les
+cœurs disponibles, en laissant toujours un cœur au rendu, et **classe les travaux
+par priorité** : la tuile au centre de l'écran passe avant celle qui affleure à
+l'horizon. Les travaux devenus inutiles sont annulés par un drapeau plutôt que
+retirés de la file, opération coûteuse.
+
+### Recyclage des tampons GPU
+
+Lot 0.10, resté en dette depuis la Phase 0. Créer et détruire des centaines de
+tampons par seconde force une synchronisation avec le pilote à chaque appel et
+fragmente la mémoire. `GpuBufferPool` recycle par casiers de capacité arrondie à
+la puissance de deux : une demande de 42 Ko réutilise un tampon de 64 Ko sans
+réallouer.
+
+### Banc d'essai automatisé
+
+Lot 0.14, également en dette. Vingt mondes générés, contrôlés individuellement
+puis **en distribution**, avec rapport publié dans `build/reports/worlds.txt`.
+
+Sa raison d'être : la planète boule de neige de la v0.3 avait franchi la CI parce
+qu'aucun test ne regardait la moyenne sur plusieurs graines. Un contrôle par
+monde ne voit pas qu'un défaut est systématique.
+
 ## v0.6.1 — Correction du repère géodésique
 
 Deux erreurs de signe dans `Geodesy`, révélées par les tests :
