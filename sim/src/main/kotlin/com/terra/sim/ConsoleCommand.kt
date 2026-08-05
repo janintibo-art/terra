@@ -19,6 +19,9 @@ sealed class ConsoleCommand {
     /** `mode sol` / `mode globe` — basculer entre descente et globe. */
     data class SetMode(val descent: Boolean) : ConsoleCommand()
 
+    /** `soleil <heure>` — avancer l'horloge jusqu'à cette heure locale. */
+    data class SetLocalHour(val hour: Double) : ConsoleCommand()
+
     /** `aide` — texte d'aide. */
     object Help : ConsoleCommand()
 
@@ -31,6 +34,7 @@ sealed class ConsoleCommand {
             "tp <lat> <lon> [portée]   ex : tp 45.5 -73.6 500\n" +
             "   portée en mètres, suffixe k pour km : tp 12 34 80k\n" +
             "monde <nom>               régénère depuis ce nom-graine\n" +
+            "soleil <heure>            avance jusqu'à cette heure locale, ex : soleil 12\n" +
             "mode sol | mode globe     bascule la vue\n" +
             "aide                      ce texte"
 
@@ -50,6 +54,14 @@ sealed class ConsoleCommand {
                 "monde", "seed" -> {
                     if (parts.size < 2) Invalid("Usage : monde <nom>")
                     else LoadWorld(parts.drop(1).joinToString(" "))
+                }
+                "soleil" -> {
+                    val h = parts.getOrNull(1)?.let { parseNumber(it) }
+                    when {
+                        h == null -> Invalid("Usage : soleil <heure entre 0 et 24>")
+                        h < 0.0 || h >= 24.0 -> Invalid("Heure hors de [0, 24) : $h")
+                        else -> SetLocalHour(h)
+                    }
                 }
                 "mode" -> when (parts.getOrNull(1)?.lowercase()) {
                     "sol", "descente" -> SetMode(descent = true)

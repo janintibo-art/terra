@@ -60,6 +60,21 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande soleil`() {
+        val c = ConsoleCommand.parse("soleil 12")
+        assertTrue(c is ConsoleCommand.SetLocalHour)
+        assertEquals(12.0, c.hour, 1e-9)
+
+        val virgule = ConsoleCommand.parse("soleil 6,5")
+        assertTrue(virgule is ConsoleCommand.SetLocalHour)
+        assertEquals(6.5, virgule.hour, 1e-9)
+
+        assertTrue(ConsoleCommand.parse("soleil") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("soleil 24") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("soleil -1") is ConsoleCommand.Invalid)
+    }
+
+    @Test
     fun `aide et commandes inconnues`() {
         assertTrue(ConsoleCommand.parse("aide") is ConsoleCommand.Help)
         assertTrue(ConsoleCommand.parse("?") is ConsoleCommand.Help)

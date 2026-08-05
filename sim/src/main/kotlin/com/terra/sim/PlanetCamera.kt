@@ -138,6 +138,25 @@ class PlanetCamera(
         return t * MAX_TILT_RAD
     }
 
+    // ---------------------------------------------------------------- temps
+
+    /**
+     * Facteur d'écoulement du temps recommandé à cette distance.
+     *
+     * Un jour en quarante-huit secondes est un choix contemplatif pensé pour
+     * l'orbite ; au ras du sol, c'est un stroboscope — le cycle jour/nuit
+     * défile plus vite qu'on ne cadre une capture d'écran. Plutôt qu'un
+     * réglage de plus, la même philosophie que le glissement proportionnel :
+     * une formule continue, sans seuil ni bascule. En orbite rien ne change ;
+     * la dilatation s'installe sous [TILT_OPEN_RANGE_M] — là où l'inclinaison
+     * s'ouvre, où l'on cesse de regarder une planète pour se poser dessus —
+     * et plafonne au sol à un jour pour trente-huit heures réelles, où le
+     * soleil est perçu comme immobile. Les multiplicateurs ×20 et ×200
+     * restent actifs par-dessus pour qui veut accélérer.
+     */
+    fun timeDilationFactor(): Double =
+        (rangeM / TILT_OPEN_RANGE_M).coerceIn(MIN_TIME_DILATION, 1.0)
+
     // ------------------------------------------------------------- commandes
 
     /**
@@ -338,6 +357,13 @@ class PlanetCamera(
 
         /** Distance à partir de laquelle l'inclinaison commence à s'ouvrir. */
         const val TILT_OPEN_RANGE_M = 2_000_000.0
+
+        /**
+         * Plancher de la dilatation temporelle : 1/2880 fait durer le jour
+         * planétaire 38,4 heures réelles à ×1 — un soleil immobile à l'œil.
+         * Atteint dès que la caméra passe sous 700 m de portée.
+         */
+        const val MIN_TIME_DILATION = 1.0 / 2880.0
 
         fun normalizeAngle(a: Double): Double {
             var x = a

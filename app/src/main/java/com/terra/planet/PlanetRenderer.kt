@@ -153,6 +153,14 @@ class PlanetRenderer(
     private var sAPos = -1
     private var sUTop = -1
     private var sUBottom = -1
+    private var sUGround = -1
+    private var sUFwd = -1
+    private var sURight = -1
+    private var sUUpCam = -1
+    private var sUPlanetUp = -1
+    private var sUHorizonSin = -1
+    private var sUTanHalf = -1
+    private var sUAspect = -1
 
     private val gpuPool = GpuBufferPool()
     private val stream = TileStream(gpuPool)
@@ -230,6 +238,14 @@ class PlanetRenderer(
             sAPos = GLES20.glGetAttribLocation(skyProgram, "aPos")
             sUTop = GLES20.glGetUniformLocation(skyProgram, "uTop")
             sUBottom = GLES20.glGetUniformLocation(skyProgram, "uBottom")
+            sUGround = GLES20.glGetUniformLocation(skyProgram, "uGround")
+            sUFwd = GLES20.glGetUniformLocation(skyProgram, "uFwd")
+            sURight = GLES20.glGetUniformLocation(skyProgram, "uRight")
+            sUUpCam = GLES20.glGetUniformLocation(skyProgram, "uUpCam")
+            sUPlanetUp = GLES20.glGetUniformLocation(skyProgram, "uPlanetUp")
+            sUHorizonSin = GLES20.glGetUniformLocation(skyProgram, "uHorizonSin")
+            sUTanHalf = GLES20.glGetUniformLocation(skyProgram, "uTanHalf")
+            sUAspect = GLES20.glGetUniformLocation(skyProgram, "uAspect")
             skyVbo = createSkyQuad()
         }
 
@@ -336,8 +352,6 @@ class PlanetRenderer(
             gpuPoolSummary = gpuPool.summary()
         }
 
-        // --- Ciel ---
-        drawSky(snapshot)
 
         // --- Matrices : l'œil est à l'origine, le monde vient à lui ---
         val altitude = max(2.0, snapshot.altitudeM)
@@ -363,6 +377,9 @@ class PlanetRenderer(
         val s = sin(spinRad)
         val sunLx = sunX * c - sunZ * s
         val sunLz = sunX * s + sunZ * c
+
+        // --- Ciel, avant le terrain, une fois l'éclairement connu ---
+        drawSky(snapshot, radius, dayFactorAtEye(snapshot, sunLx, sunLz))
 
         GLES20.glUseProgram(tileProgram)
         GLES20.glUniformMatrix4fv(tUViewProj, 1, false, mvp, 0)
@@ -434,39 +451,72 @@ class PlanetRenderer(
     }
 
     /**
-     * Ciel : simple dégradé plein écran, du bleu d'horizon au bleu de zénith,
-     * fondu vers le noir spatial avec l'altitude et la nuit.
+     * Ciel calé sur l'horizon géométrique réel.
      *
-     * Version d'attente assumée : ni courbure d'horizon, ni soleil visible, ni
-     * diffusion — c'est le lot 2.10. Son seul rôle est que le sol ne se
-     * découpe pas sur le vide pendant les essais de descente.
+     * ## Pourquoi ce n'est plus un simple dégradé d'écran
+     *
+     * La première version peignait un dégradé vertical plaqué sur l'écran :
+     * plein cadre, il était indiscernable d'un écran vide — l'utilisateur ne
+     * pouvait littéralement pas dire s'il regardait le ciel ou un bug. Le
+     * ciel reconstruit désormais la direction de visée par pixel et compare
+     * son élévation à celle de l'horizon, abaissé sous l'horizontale de
+     * l'angle exact dû à l'altitude (5° à 27 km, presque rien au sol).
+     *
+     * Sous l'horizon, couleur de brume : c'est aussi le fond de secours des
+     * tuiles pas encore maillées — un manque se voit en brume cohérente, plus
+     * jamais en trou noir. La vraie diffusion atmosphérique reste au lot 2.10.
      */
-    private fun drawSky(snapshot: CameraSnapshot) {
+    private fun drawSky(snapshot: CameraSnapshot, radiusM: Double, dayF: Float) {
         if (skyProgram == 0 || skyVbo == 0) return
 
-        // Fondu spatial : plein ciel sous 12 km, plus rien au-delà de 90 km.
+        // Le ciel bleu s'éteint avec l'altitude ; le fond de brume, lui,
+        // subsiste atténué — en orbite, il dessine le disque planétaire
+        // derrière les tuiles manquantes.
         val presence = ((90_000.0 - snapshot.altitudeM) / 78_000.0).coerceIn(0.0, 1.0).toFloat()
-        if (presence <= 0f) return
 
-        val spinRad = spinDeg * DEG
-        val c = cos(spinRad)
-        val s = sin(spinRad)
-        val day = dayFactorAtEye(snapshot, sunX * c - sunZ * s, sunX * s + sunZ * c)
+        val eyeLen = kotlin.math.sqrt(
+            snapshot.eyeXM * snapshot.eyeXM + snapshot.eyeYM * snapshot.eyeYM +
+                    snapshot.eyeZM * snapshot.eyeZM
+        ).coerceAtLeast(1.0)
+        val horizonSin = kotlin.math.sqrt(
+            (1.0 - (radiusM / eyeLen) * (radiusM / eyeLen)).coerceIn(0.0, 1.0)
+        ).toFloat()
 
-        // Plancher nocturne : un ciel strictement noir se confond avec un
-        // écran en panne. Un bleu très sombre suffit à donner l'horizon.
-        val topR = (0.10f * day + 0.004f) * presence
-        val topG = (0.28f * day + 0.008f) * presence
-        val topB = (0.62f * day + 0.022f) * presence
-        val botR = (0.55f * day + 0.016f) * presence
-        val botG = (0.66f * day + 0.022f) * presence
-        val botB = (0.82f * day + 0.045f) * presence
+        // Repère caméra : la droite se déduit des deux vecteurs de l'instantané.
+        val rx = snapshot.fwdY * snapshot.upZ - snapshot.fwdZ * snapshot.upY
+        val ry = snapshot.fwdZ * snapshot.upX - snapshot.fwdX * snapshot.upZ
+        val rz = snapshot.fwdX * snapshot.upY - snapshot.fwdY * snapshot.upX
+
+        val night = 1f - dayF
+        val topR = 0.10f * dayF * presence + 0.004f
+        val topG = 0.28f * dayF * presence + 0.008f
+        val topB = 0.62f * dayF * presence + 0.022f
+        val botR = (0.55f * dayF + 0.016f) * presence + 0.004f
+        val botG = (0.66f * dayF + 0.022f) * presence + 0.006f
+        val botB = (0.82f * dayF + 0.045f) * presence + 0.016f
+        val groundFade = (0.25f + 0.75f * presence)
+        val gR = (0.50f * dayF + 0.020f * night + 0.008f) * groundFade
+        val gG = (0.58f * dayF + 0.024f * night + 0.010f) * groundFade
+        val gB = (0.72f * dayF + 0.040f * night + 0.020f) * groundFade
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         GLES20.glDepthMask(false)
         GLES20.glUseProgram(skyProgram)
         GLES20.glUniform3f(sUTop, topR, topG, topB)
         GLES20.glUniform3f(sUBottom, botR, botG, botB)
+        GLES20.glUniform3f(sUGround, gR, gG, gB)
+        GLES20.glUniform3f(sUFwd, snapshot.fwdX, snapshot.fwdY, snapshot.fwdZ)
+        GLES20.glUniform3f(sURight, rx, ry, rz)
+        GLES20.glUniform3f(sUUpCam, snapshot.upX, snapshot.upY, snapshot.upZ)
+        GLES20.glUniform3f(
+            sUPlanetUp,
+            (snapshot.eyeXM / eyeLen).toFloat(),
+            (snapshot.eyeYM / eyeLen).toFloat(),
+            (snapshot.eyeZM / eyeLen).toFloat()
+        )
+        GLES20.glUniform1f(sUHorizonSin, horizonSin)
+        GLES20.glUniform1f(sUTanHalf, kotlin.math.tan(snapshot.fovRad * 0.5f))
+        GLES20.glUniform1f(sUAspect, aspect)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, skyVbo)
         GLES20.glEnableVertexAttribArray(sAPos)
         GLES20.glVertexAttribPointer(sAPos, 2, GLES20.GL_FLOAT, false, 8, 0)
@@ -808,20 +858,52 @@ class PlanetRenderer(
 
         private const val SKY_VERTEX_SHADER = """
             attribute vec2 aPos;
-            varying float vY;
+
+            uniform vec3 uFwd;
+            uniform vec3 uRight;
+            uniform vec3 uUpCam;
+            uniform float uTanHalf;
+            uniform float uAspect;
+
+            varying vec3 vDir;
+
             void main() {
-                vY = aPos.y * 0.5 + 0.5;
+                // Direction de visee du pixel, reconstruite depuis le repere
+                // camera ; normalisee au fragment, comme toute skybox.
+                vDir = uFwd
+                     + uRight * (aPos.x * uTanHalf * uAspect)
+                     + uUpCam * (aPos.y * uTanHalf);
                 gl_Position = vec4(aPos, 0.999, 1.0);
             }
         """
 
         private const val SKY_FRAGMENT_SHADER = """
             precision mediump float;
+
             uniform vec3 uTop;
             uniform vec3 uBottom;
-            varying float vY;
+            uniform vec3 uGround;
+            uniform vec3 uPlanetUp;
+            uniform float uHorizonSin;
+
+            varying vec3 vDir;
+
             void main() {
-                gl_FragColor = vec4(mix(uBottom, uTop, pow(vY, 0.8)), 1.0);
+                vec3 d = normalize(vDir);
+                // Sinus de l'elevation au-dessus de l'horizontale locale.
+                float elev = dot(d, uPlanetUp);
+                // L'horizon est abaisse sous l'horizontale par l'altitude.
+                float horizon = -uHorizonSin;
+
+                if (elev >= horizon) {
+                    float t = clamp((elev - horizon) / (1.0 - horizon), 0.0, 1.0);
+                    gl_FragColor = vec4(mix(uBottom, uTop, pow(t, 0.6)), 1.0);
+                } else {
+                    // Sous l'horizon : brume. C'est aussi le fond de secours
+                    // des tuiles pas encore pretes — un manque se voit en
+                    // brume, plus jamais en trou noir.
+                    gl_FragColor = vec4(uGround, 1.0);
+                }
             }
         """
     }

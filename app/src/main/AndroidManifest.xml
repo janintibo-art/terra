@@ -5,6 +5,7 @@
 
     <application
         android:label="Terra"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
         android:allowBackup="true"
         android:hardwareAccelerated="true">

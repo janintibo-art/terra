@@ -1,5 +1,41 @@
 # Journal des versions
 
+## v0.7.3 — Le temps à l'échelle de l'observateur, l'horizon comme repère
+
+Réponse directe aux retours d'essai : cycle jour/nuit trop rapide au sol, et
+un rendu « trop brouillon » pour distinguer le ciel d'un écran vide.
+
+### Dilatation temporelle continue
+
+Un jour en 48 s est un choix contemplatif pensé pour l'orbite ; au sol, c'est
+un stroboscope. Même philosophie que le glissement proportionnel : une formule
+continue, sans bouton ni bascule. L'écoulement du temps suit
+`portée / 2 000 km`, borné à [1/2880, 1] — rien ne change en orbite, un jour
+dure ~1 h à 27 km, et au sol le soleil est perçu comme immobile (jour = 38 h
+réelles). ❚❚, ×20 et ×200 restent actifs par-dessus. Trois tests.
+
+### Commande `soleil <heure>`
+
+Avance l'horloge — jamais en arrière — jusqu'à l'heure locale voulue au point
+visé : `soleil 12` pour tester en pleine lumière. Le sens de défilement de
+l'heure est **mesuré** sur l'horloge plutôt que déduit des conventions de
+signe (leçon v0.6), et un test vérifie la propriété physique elle-même :
+après `soleil 12`, le méridien reçoit l'éclairement maximal de sa journée.
+
+### Ciel calé sur l'horizon géométrique
+
+Le dégradé plaqué sur l'écran est remplacé par un ciel reconstruisant la
+direction de visée par pixel : l'horizon apparaît à son élévation exacte
+(abaissé de 5° à 27 km d'altitude, affleurant au sol). Sous l'horizon, un fond
+de brume qui sert aussi de secours aux tuiles pas encore maillées — un manque
+se voit désormais en brume cohérente, plus jamais en trou noir indiscernable
+d'une panne.
+
+### Aussi
+
+- Icône de l'application intégrée (cinq densités, manifest).
+- 7 tests ajoutés — 194 attendus en CI.
+
 ## v0.7.2 — Correctif : écran noir à l'approche du sol
 
 ### La cause, démontrée avant correction

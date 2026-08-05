@@ -471,6 +471,13 @@ class MainActivity : Activity() {
             is ConsoleCommand.SetMode -> {
                 if (cmd.descent != descentActive) toggleDescent()
             }
+            is ConsoleCommand.SetLocalHour -> {
+                val lon = camera?.focusLonRad ?: 0.0
+                val jump = com.terra.sim.SolarTime.ticksUntilLocalHour(
+                    worldTime, clock.tick, lon, cmd.hour
+                )
+                clock.restore(clock.tick + jump)
+            }
             is ConsoleCommand.Help -> showConsoleMessage(ConsoleCommand.HELP_TEXT)
             is ConsoleCommand.Invalid -> showConsoleMessage(cmd.message)
         }
@@ -510,7 +517,13 @@ class MainActivity : Activity() {
                  else ((now - lastTickNanos) / 1_000_000_000f).coerceIn(0f, 0.5f)
         lastTickNanos = now
 
-        clock.advance(dt) { }
+        // En descente, le temps s'écoule à l'échelle de l'observateur : la
+        // dilatation continue de PlanetCamera évite que le cycle jour/nuit ne
+        // stroboscope au sol. Les multiplicateurs restent appliqués par-dessus.
+        val dilation = if (descentActive) {
+            (camera?.timeDilationFactor() ?: 1.0).toFloat()
+        } else 1f
+        clock.advance(dt * dilation) { }
 
         renderer.spinDeg = worldTime.spinDegrees(clock.tick)
         val sun = worldTime.sunDirection(clock.tick)
@@ -719,6 +732,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.7.2"
+        const val VERSION = "0.7.3"
     }
 }
