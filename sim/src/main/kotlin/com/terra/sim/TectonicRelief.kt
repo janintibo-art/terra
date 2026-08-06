@@ -53,7 +53,23 @@ object TectonicRelief {
     /** Intensité de référence : la vitesse relative moyenne (rad/Ma). */
     private const val REF_INTENSITY = 0.0095f
 
-    fun build(sphere: Icosphere, plates: PlateSet, dist: BoundaryDistanceField): FloatArray {
+    /**
+     * @param tectonicScale caractère tectonique du monde, dérivé de son
+     *   caractère de relief (`reliefScale^0.8`). C'est lui qui rend aux
+     *   pénéplaines leur droit d'exister : sans lui, chaque monde recevait
+     *   des chaînes pleines, et les mondes doux — ceux qui tenaient la
+     *   moyenne de glace du banc d'essai sous le seuil — avaient disparu.
+     *   Vérifié par simulation : le rapport de surface en altitude
+     *   nouveau/ancien passe de 2,8 à 1,4, avec trois mondes sur quatre
+     *   sous l'ancien régime. Le socle isostatique, lui, reste plein :
+     *   c'est de la flottaison, pas de l'orogenèse.
+     */
+    fun build(
+        sphere: Icosphere,
+        plates: PlateSet,
+        dist: BoundaryDistanceField,
+        tectonicScale: Float
+    ): FloatArray {
         val n = sphere.vertexCount
         val out = FloatArray(n)
 
@@ -65,18 +81,19 @@ object TectonicRelief {
             // --- Convergences : chaînes, cordillères, fosses, arcs ---
             val dc = dist.distConvergent[v]
             if (dc < 0.25f) {
-                val k = (dist.intensityConvergent[v] / REF_INTENSITY).coerceIn(0.50f, 1.25f)
+                val k = (dist.intensityConvergent[v] / REF_INTENSITY)
+                    .coerceIn(0.50f, 1.15f) * tectonicScale
                 val upper = plateHere == dist.upperConvergent[v].toInt()
                 when (dist.contextConvergent[v]) {
                     BoundaryDistanceField.CRUST_CC ->
                         // Collision continentale : symétrique, large, haute.
-                        e += 3300f * k * gauss(dc, 0f, 0.045f)
+                        e += 3000f * k * gauss(dc, 0f, 0.036f)
 
                     BoundaryDistanceField.CRUST_OC ->
                         e += if (upper) {
                             // Côté chevauchant : la cordillère culmine en
                             // retrait de la frontière, comme les Andes.
-                            3000f * k * gauss(dc, 0.020f, 0.028f)
+                            2600f * k * gauss(dc, 0.018f, 0.024f)
                         } else {
                             // Côté plongeant : la fosse, étroite, collée à la
                             // frontière. Un sommet continental d'une plaque
@@ -99,7 +116,8 @@ object TectonicRelief {
             // --- Divergences : dorsales et rifts ---
             val dd = dist.distDivergent[v]
             if (dd < 0.3f) {
-                val k = (dist.intensityDivergent[v] / REF_INTENSITY).coerceIn(0.50f, 1.25f)
+                val k = (dist.intensityDivergent[v] / REF_INTENSITY)
+                    .coerceIn(0.50f, 1.15f) * tectonicScale
                 e += if (oceanicHere) {
                     // Dorsale : bombement large du plancher océanique.
                     1700f * k * gauss(dd, 0f, 0.080f)

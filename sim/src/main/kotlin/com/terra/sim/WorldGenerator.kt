@@ -7,6 +7,8 @@ import com.terra.core.clamp
 import com.terra.core.clamp01
 import com.terra.core.lerp
 import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.max
 
 /**
@@ -57,10 +59,19 @@ class WorldGenerator(
         // Avant l'élévation désormais : depuis le lot 1.6, le relief DÉRIVE
         // des plaques. Flux de graine toujours indépendant du bruit.
         onProgress(Stage.TECTONICS, 0f)
+        // Le caractère de relief du monde est tiré ici (flux « relief »
+        // inchangé, simplement consommé plus tôt) : depuis la v0.9.3, la
+        // tectonique le suit aussi — un monde doux a une tectonique douce.
+        val reliefRng = masterSeed.derive("relief").rng()
+        val reliefScale = reliefRng.nextFloatRange(0.45f, 1.0f)
+        val peakiness = reliefRng.nextFloatRange(1.6f, 3.2f)
+        val trenchScale = reliefRng.nextFloatRange(0.6f, 1.0f)
+        val tectonicScale = exp(0.8f * ln(reliefScale))
+
         val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
         val boundaries = BoundarySet.classify(sphere, plates)
         val boundaryDistance = BoundaryDistanceField.generate(sphere, plates, boundaries)
-        val structuralM = TectonicRelief.build(sphere, plates, boundaryDistance)
+        val structuralM = TectonicRelief.build(sphere, plates, boundaryDistance, tectonicScale)
         val structuralSampler = FieldSampler(sphere)
         onProgress(Stage.TECTONICS, 1f)
 
@@ -105,11 +116,6 @@ class WorldGenerator(
         // être une pénéplaine érodée ou un massif tourmenté. Sans ce tirage, le
         // calibrage par percentile faisait que toutes les planètes atteignaient
         // exactement le plafond d'altitude, ce qui les rendait interchangeables.
-        val reliefRng = masterSeed.derive("relief").rng()
-        val reliefScale = reliefRng.nextFloatRange(0.45f, 1.0f)
-        val peakiness = reliefRng.nextFloatRange(1.6f, 3.2f)
-        val trenchScale = reliefRng.nextFloatRange(0.6f, 1.0f)
-
         // --- Second calibrage : la mer de la somme (lot 1.6) ---
         //
         // Le premier percentile calibre le BRUIT ; mais l'altitude finale y

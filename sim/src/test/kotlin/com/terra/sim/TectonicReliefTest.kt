@@ -6,9 +6,10 @@ import kotlin.test.assertTrue
 /**
  * Le relief a désormais une cause — lot 1.6. Ces tests vérifient les
  * conséquences statistiques du modèle sur de vrais mondes, avec des seuils
- * calibrés par simulation à la **moitié** de l'effet attendu : assez hauts
- * pour attraper un modèle débranché, assez bas pour absorber l'écart entre le
- * bruit de calibrage et le champ réel.
+ * calibrés par simulation au **tiers** de l'effet attendu : depuis que la
+ * tectonique suit le caractère du monde (v0.9.3), un monde doux atténue tous
+ * les effets — les seuils doivent attraper un modèle débranché sans rougir
+ * sur une pénéplaine légitime.
  */
 class TectonicReliefTest {
 
@@ -49,7 +50,7 @@ class TectonicReliefTest {
             }
             assertTrue(nearCount > 30, "${w.name} : échantillon trop maigre ($nearCount)")
             val lift = nearSum / nearCount - landSum / landCount
-            assertTrue(lift > 600.0, "${w.name} : soulèvement de ${lift.toInt()} m seulement")
+            assertTrue(lift > 450.0, "${w.name} : soulèvement de ${lift.toInt()} m seulement")
         }
     }
 
@@ -75,7 +76,7 @@ class TectonicReliefTest {
             if (trenchMin == Float.MAX_VALUE || openFloorCount < 100) continue
             val floor = openFloorSum / openFloorCount
             assertTrue(
-                trenchMin < floor - 800.0,
+                trenchMin < floor - 600.0,
                 "${w.name} : fosse à ${trenchMin.toInt()} m pour un plancher à ${floor.toInt()} m"
             )
         }
@@ -99,7 +100,7 @@ class TectonicReliefTest {
             if (ridgeCount < 50 || farCount < 50) continue
             tested++
             val rise = ridgeSum / ridgeCount - farSum / farCount
-            assertTrue(rise > 500.0, "${w.name} : bombement de ${rise.toInt()} m seulement")
+            assertTrue(rise > 320.0, "${w.name} : bombement de ${rise.toInt()} m seulement")
         }
         assertTrue(tested >= 1, "aucun monde n'a fourni d'échantillon de dorsale")
     }

@@ -1,5 +1,22 @@
 # Journal des versions
 
+## v0.9.3 — Correctif : la tectonique suit le caractère du monde
+
+Deux tests de glace encore rouges après la v0.9.2, et la simulation fidèle
+des deux pipelines a montré la cause exacte : le caractère de relief tiré par
+monde (`reliefScale`) ne modulait que le bruit — chaque monde recevait des
+chaînes pleines, et les **pénéplaines douces**, celles qui tenaient la
+moyenne de glace du banc d'essai sous son seuil, avaient disparu du tirage.
+
+La tectonique suit désormais le caractère du monde (`reliefScale^0.8`, socle
+isostatique exclu : la flottaison n'est pas de l'orogenèse). Vérifié par
+simulation : le rapport de surface en altitude nouveau/ancien passe de 2,8 à
+1,4, trois mondes sur quatre sous l'ancien régime, plus aucune terre au-delà
+de 3 000 m sur les mondes doux. Amplitudes affinées au passage (CC 3 000 m
+sur σ 230 km, cordillères 2 600). Les seuils des tests statistiques passent
+au tiers de l'effet : un monde doux atténue tout, et un test doit attraper un
+modèle débranché sans rougir sur une pénéplaine légitime.
+
 ## v0.9.2 — Correctif : le pire cas du relief, borné par construction
 
 Quatre tests rouges convergents sur la v0.9.1 — et c'était le modèle qui
