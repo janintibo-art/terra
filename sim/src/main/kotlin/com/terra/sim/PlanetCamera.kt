@@ -356,6 +356,28 @@ class PlanetCamera(
         /** Champ de vision vertical par défaut, 42 degrés. */
         const val DEFAULT_FOV_RAD = 0.733038
 
+        /**
+         * Plan de coupe proche, à partir de la hauteur **au-dessus du sol**.
+         *
+         * ## Le bug que cette fonction corrige (v0.10.1)
+         *
+         * Le plan était calculé sur l'altitude au-dessus du **niveau de la
+         * mer**. Sur un plateau à 390 m, la caméra ancrée à deux mètres du
+         * sol se voyait donc attribuer un plan de coupe à 7,8 m : tout le
+         * premier plan — le sol sous ses pieds, à cinq ou six mètres en visée
+         * rasante — était supprimé, et le fond de brume apparaissait sous
+         * l'horizon. Le défaut grandissait à mesure qu'on descendait, la
+         * hauteur réelle diminuant pendant que l'altitude marine, elle,
+         * restait celle du plateau.
+         *
+         * La règle : le plan reste sous le dixième de la hauteur au-dessus du
+         * sol, ce qui garantit de voir ses propres pieds, avec un plancher de
+         * dix centimètres pour ne pas ruiner la précision du tampon de
+         * profondeur. Un test vérifie la propriété plutôt que la formule.
+         */
+        fun nearPlaneFor(heightAboveGroundM: Double): Double =
+            (heightAboveGroundM * 0.05).coerceIn(0.1, 5_000.0)
+
         /** Inclinaison maximale, 82 degrés : au-delà, la vue rase le sol. */
         const val MAX_TILT_RAD = 1.431170
 

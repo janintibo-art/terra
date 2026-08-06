@@ -411,6 +411,11 @@ class MainActivity : Activity() {
     private fun settleCamera(cam: PlanetCamera) {
         raycaster?.let { cam.snapToTerrain(it) }
         val eye = cam.eyePositionM()
+        // Hauteur réelle au-dessus du relief, mesurée par le lancer de rayon
+        // sur la surface RENDUE — la même que voit le mailleur. Sans elle, le
+        // plan de coupe proche se calait sur l'altitude marine et rognait le
+        // premier plan (v0.10.1).
+        val heightAboveGround = raycaster?.heightAboveTerrain(eye) ?: cam.eyeAltitudeM()
         val fwd = cam.forward()
         val up = cam.up()
         renderer.cameraSnapshot = CameraSnapshot(
@@ -418,6 +423,7 @@ class MainActivity : Activity() {
             fwd.x.toFloat(), fwd.y.toFloat(), fwd.z.toFloat(),
             up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
             cam.eyeAltitudeM(),
+            heightAboveGround,
             PlanetCamera.DEFAULT_FOV_RAD.toFloat()
         )
     }
@@ -732,6 +738,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.10.0"
+        const val VERSION = "0.10.1"
     }
 }

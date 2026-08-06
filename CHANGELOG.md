@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.10.1 — Le premier plan manquant : le plan de coupe
+
+Diagnostic enfin ferme. Le sélecteur, reproduit fidèlement en Python et
+balayé direction par direction aux altitudes signalées, couvre **la totalité
+du champ de vision** — la sélection était donc innocente, et j'avais patché
+deux fois au mauvais endroit.
+
+Le coupable est le **plan de coupe proche**, calculé sur l'altitude au-dessus
+du niveau de la mer au lieu de la hauteur au-dessus du sol. Sur un plateau à
+390 m, la caméra ancrée à deux mètres du sol recevait un plan à 7,8 m : le
+sol visible au bas de l'écran, à cinq ou six mètres en visée rasante, était
+supprimé. Le défaut grandissait à la descente — la hauteur réelle diminuant
+pendant que l'altitude marine restait celle du plateau — ce qui correspond
+exactement au symptôme rapporté (« le bleu apparaît quand on zoome »).
+
+`CameraSnapshot` porte désormais la hauteur au-dessus du terrain, mesurée par
+le lancer de rayon sur la surface rendue, et `PlanetCamera.nearPlaneFor` en
+dérive un plan qui reste sous le dixième de cette hauteur, plancher à dix
+centimètres pour préserver le tampon de profondeur. Trois tests portent sur
+la propriété — « voit-on le sol sous ses pieds ? » — plutôt que sur la
+formule.
+
 ## v0.10.0 — Diagnostic du premier plan, et filet de sécurité
 
 Le défaut du bas d'écran en visée rasante résiste au correctif de la v0.9.5,

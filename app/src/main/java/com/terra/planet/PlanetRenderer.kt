@@ -6,6 +6,7 @@ import android.opengl.Matrix
 import android.util.Log
 import com.terra.core.Vec3
 import com.terra.sim.CoarseSampler
+import com.terra.sim.PlanetCamera
 import com.terra.sim.TerrainProfile
 import com.terra.sim.TileId
 import com.terra.sim.TileMesh
@@ -36,6 +37,12 @@ class CameraSnapshot(
     val fwdX: Float, val fwdY: Float, val fwdZ: Float,
     val upX: Float, val upY: Float, val upZ: Float,
     val altitudeM: Double,
+    /**
+     * Hauteur au-dessus du TERRAIN, distincte de [altitudeM] qui se compte
+     * depuis le niveau de la mer. C'est elle qui commande le plan de coupe
+     * proche : les confondre supprimait tout le premier plan au sol (v0.10.1).
+     */
+    val heightAboveGroundM: Double,
     val fovRad: Float
 )
 
@@ -393,7 +400,7 @@ class PlanetRenderer(
 
         // --- Matrices : l'œil est à l'origine, le monde vient à lui ---
         val altitude = max(2.0, snapshot.altitudeM)
-        val near = (altitude * 0.02).coerceIn(0.5, 20_000.0).toFloat()
+        val near = PlanetCamera.nearPlaneFor(snapshot.heightAboveGroundM).toFloat()
         // Le plan lointain doit englober l'horizon et les montagnes qui le
         // dépassent ; le facteur absorbe l'inclinaison et les jupes.
         val horizonM = sqrt(max(0.0, (radius + altitude) * (radius + altitude) - radius * radius))

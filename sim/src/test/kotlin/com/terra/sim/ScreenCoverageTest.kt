@@ -133,3 +133,51 @@ class ScreenCoverageTest {
         }
     }
 }
+
+/**
+ * Plan de coupe proche — le vrai coupable du premier plan manquant (v0.10.1).
+ *
+ * Ces tests portent sur la **propriété** (voit-on le sol sous ses pieds ?)
+ * plutôt que sur la formule : c'est elle qui compte, et c'est elle qui était
+ * violée quand le plan se calculait sur l'altitude marine.
+ */
+class NearPlaneTest {
+
+    /**
+     * Distance œil-sol au bas de l'écran, en visée horizontale : le rayon du
+     * bord inférieur descend de la moitié du champ vertical.
+     */
+    private fun groundDistanceAtScreenBottom(heightM: Double): Double =
+        heightM / kotlin.math.sin(PlanetCamera.DEFAULT_FOV_RAD * 0.5)
+
+    @Test
+    fun `le sol au bas de l ecran est toujours devant le plan de coupe`() {
+        // Le cas signalé à l'essai : caméra ancrée à deux mètres du sol sur un
+        // plateau de 390 m. L'ancien calcul plaçait le plan à 7,8 m pour un
+        // sol visible à 5,6 m — tout le premier plan disparaissait.
+        for (height in doubleArrayOf(2.0, 5.0, 20.0, 100.0, 450.0, 27_000.0)) {
+            val near = PlanetCamera.nearPlaneFor(height)
+            val groundDist = groundDistanceAtScreenBottom(height)
+            assertTrue(
+                near < groundDist,
+                "hauteur $height m : plan de coupe à $near m devant un sol visible à $groundDist m"
+            )
+        }
+    }
+
+    @Test
+    fun `le plan de coupe reste sous le dixieme de la hauteur`() {
+        for (height in doubleArrayOf(2.0, 50.0, 1_000.0)) {
+            assertTrue(PlanetCamera.nearPlaneFor(height) <= height * 0.1)
+        }
+    }
+
+    @Test
+    fun `le plan de coupe ne descend jamais sous dix centimetres`() {
+        // Plancher indispensable : la précision du tampon de profondeur
+        // s'effondre avec le rapport lointain/proche.
+        for (height in doubleArrayOf(0.0, 0.5, 1.0, 2.0)) {
+            assertTrue(PlanetCamera.nearPlaneFor(height) >= 0.1)
+        }
+    }
+}
