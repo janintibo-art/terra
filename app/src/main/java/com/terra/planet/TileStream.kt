@@ -229,6 +229,17 @@ class TileStream(private val gpu: GpuBufferPool) {
         }
     }
 
+    /**
+     * Maintient les six tuiles racines en vie. Elles sont le dernier échelon
+     * du repli : sans elles, une direction de l'écran dont toute la chaîne
+     * d'ancêtres a été évincée ne montre rien du tout.
+     */
+    fun touchRoots(currentFrame: Long) {
+        for (face in 0 until 6) {
+            cache[TileId(face, 0, 0, 0).packed()]?.let { it.lastUsedFrame = currentFrame }
+        }
+    }
+
     companion object {
         private fun parentKey(key: Long): Long = TileId.parentKey(key)
     }

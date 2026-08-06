@@ -1,5 +1,28 @@
 # Journal des versions
 
+## v0.10.0 — Diagnostic du premier plan, et filet de sécurité
+
+Le défaut du bas d'écran en visée rasante résiste au correctif de la v0.9.5,
+et les compteurs du HUD l'innocentent : tuiles sélectionnées et dessinées
+coïncident (208/208). J'avais corrigé à l'aveugle ; je ne recommence pas.
+
+### Un test qui localise au lieu de deviner
+
+`ScreenCoverageTest` reproduit la situation exacte — caméra à 3 m, 500 m,
+1,8 km et 27 km, visée de rasante à plongeante — et **échantillonne l'écran**
+direction par direction : chaque rayon visant le sol doit tomber dans une
+tuile sélectionnée. En cas d'échec, le message donne la fraction manquante et
+la hauteur d'écran concernée ; en cas de succès, la sélection est innocentée
+et le rendu désigné. Le prochain rapport de CI tranchera.
+
+### Filet de sécurité, indépendamment du diagnostic
+
+Le repli sur l'ancêtre suppose que la chaîne remonte jusqu'à quelque chose.
+Les six tuiles racines couvrent la planète entière pour 460 Ko : elles sont
+désormais demandées d'office et **jamais évincées**. Au pire, une direction
+montre un terrain très grossier — ce qui se voit infiniment moins qu'un trou
+de ciel sous l'horizon.
+
 ## v0.9.9 — Roche et eau enfin distinguées
 
 Erreur de **conception**, pas de calibrage : je publiais comme relief le

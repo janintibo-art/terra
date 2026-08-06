@@ -323,6 +323,26 @@ class PlanetRenderer(
         selector.select(camUnit, selection, cone)
         tilesSelected = selection.size
 
+        // --- Filet de sécurité : les six racines, toujours ---
+        //
+        // Le repli sur l'ancêtre ne peut fonctionner que si la chaîne remonte
+        // jusqu'à quelque chose. Six tuiles de niveau 0 couvrent la planète
+        // entière pour 460 Ko : elles sont demandées d'office et jamais
+        // évincées. Ainsi, aucune direction de l'écran ne peut plus tomber
+        // sur du vide — au pire elle montre un terrain très grossier, ce qui
+        // se voit infiniment moins qu'un trou de ciel sous l'horizon.
+        for (face in 0 until 6) {
+            val rootKey = TileId(face, 0, 0, 0).packed()
+            if (stream.isCached(rootKey)) continue
+            val root = TileId(face, 0, 0, 0)
+            val profileRoot = ctx.profile
+            val samplerRoot = ctx.sampler
+            val epochRoot = ctx.epoch
+            tilePool.submit(rootKey, 1000f) {
+                stream.offer(TileMesh(root, profileRoot, samplerRoot, radius), epochRoot)
+            }
+        }
+
         // --- Demandes de maillage, priorisées par l'axe du regard ---
         for (tile in selection) {
             val key = tile.packed()
@@ -365,6 +385,7 @@ class PlanetRenderer(
             // L'ordre compte : raviver les ancêtres de la sélection AVANT
             // l'éviction, sinon le filet du repli part avec l'eau du bain.
             stream.touchAncestors(selection, frameIndex)
+            stream.touchRoots(frameIndex)
             stream.evictStale(frameIndex, KEEP_FRAMES)
             gpuPoolSummary = gpuPool.summary()
         }
