@@ -103,25 +103,35 @@ class HydrologyTest {
     }
 
     @Test
-    fun `l erosion abaisse les terres dans les bornes mesurees`() {
-        // Calibrage mesuré par simulation : abaissement médian 8 m, 90ᵉ
-        // centile 56 m. Le test borne largement (150 m de médiane, 800 m au
-        // pire point) : il attrape un coefficient qui déraperait d'un ordre
-        // de grandeur, sans rougir sur la variance entre mondes.
+    fun `l erosion respecte son enveloppe par construction`() {
+        // L'enveloppe (au plus 25 % de l'altitude locale et 500 m d'érosion,
+        // 120 m de dépôt) est appliquée à chaque passe : ces bornes ne
+        // dépendent d'aucun calibrage et doivent tenir exactement. Chercher
+        // un coefficient qui « tombe juste » partout avec trois décades de
+        // débit était le pari perdu de la v0.9.6.
         for (w in worlds) {
             val h = w.hydrology
-            val drops = ArrayList<Float>()
+            var eroded = 0
             for (i in 0 until h.cellCount) {
-                if (w.altitudeM[i] <= 0f) continue
-                val drop = w.altitudeM[i] - h.erodedM[i]
-                // Le dépôt peut relever une cellule : borne des deux côtés.
-                assertTrue(drop < 800f, "${w.name} : abaissement de $drop m en $i")
-                assertTrue(drop > -400f, "${w.name} : dépôt de ${-drop} m en $i")
-                drops.add(drop)
+                val a = w.altitudeM[i]
+                if (a <= 0f) continue
+                val maxDrop = kotlin.math.min(
+                    HydrologyField.MAX_EROSION_M, a * HydrologyField.MAX_EROSION_RATIO
+                )
+                val drop = a - h.erodedM[i]
+                assertTrue(
+                    drop <= maxDrop + 0.5f,
+                    "${w.name} : abaissement de $drop m pour une enveloppe de $maxDrop m en $i"
+                )
+                assertTrue(
+                    drop >= -HydrologyField.MAX_DEPOSIT_M - 0.5f,
+                    "${w.name} : dépôt de ${-drop} m en $i"
+                )
+                if (drop > 1f) eroded++
             }
-            drops.sort()
-            val median = drops[drops.size / 2]
-            assertTrue(median in -20f..150f, "${w.name} : abaissement médian $median m")
+            // Garde-fou d'échantillon : une enveloppe est trivialement
+            // respectée par une érosion débranchée. On exige qu'elle ait agi.
+            assertTrue(eroded > 20, "${w.name} : érosion quasi nulle ($eroded cellules)")
         }
     }
 

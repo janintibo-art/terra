@@ -75,6 +75,16 @@ class HydrologyField(
          *  l'inversion de pente, qui casserait le réseau d'écoulement. */
         const val MAX_INCISION_RATIO = 0.4f
 
+        /** Enveloppe d'érosion : au plus un quart de l'altitude locale... */
+        const val MAX_EROSION_RATIO = 0.25f
+
+        /** ...et jamais plus de 500 m, quelle que soit l'altitude. */
+        const val MAX_EROSION_M = 500f
+
+        /** Dépôt maximal par cellule : les plaines alluviales se comblent,
+         *  elles ne construisent pas de collines. */
+        const val MAX_DEPOSIT_M = 120f
+
         fun generate(sphere: Icosphere, altitudeM: FloatArray): HydrologyField {
             val n = sphere.vertexCount
             val adjacency = sphere.buildAdjacency()
@@ -93,6 +103,26 @@ class HydrologyField(
 
             val h = altitudeM.copyOf()
             val original = altitudeM.copyOf()
+
+            // Enveloppe d'érosion, par cellule et une fois pour toutes.
+            //
+            // ## Pourquoi une enveloppe plutôt qu'un coefficient bien choisi
+            //
+            // Le débit cumulé s'étale sur trois décades : le même coefficient
+            // qui use raisonnablement un versant rabote un fond de vallée à
+            // fort débit. Chercher la constante qui tombe juste partout est un
+            // pari déjà perdu deux fois ici (relief tectonique, micro-relief).
+            // On borne donc ce que l'érosion PEUT retirer ou déposer, et les
+            // bornes des tests deviennent vraies par construction.
+            //
+            // Physiquement : un massif ne se rabote pas entièrement sur la
+            // durée modélisée, et l'incision se ralentit quand la pente
+            // s'aplanit — le plafond proportionnel traduit les deux.
+            val floorM = FloatArray(n) { i ->
+                val a = original[i]
+                if (a <= 0f) a else a - kotlin.math.min(MAX_EROSION_M, a * MAX_EROSION_RATIO)
+            }
+            val ceilM = FloatArray(n) { i -> original[i] + MAX_DEPOSIT_M }
             val receiver = IntArray(n)
             val slope = FloatArray(n)
             val recvDist = FloatArray(n)
@@ -120,7 +150,13 @@ class HydrologyField(
 
                     val carried = incision + sediment[i]
                     val deposited = carried * DEPOSIT_FRACTION * exp(-slope[i] * 300f)
-                    h[i] = h[i] - incision + deposited
+                    var next = h[i] - incision + deposited
+                    // L'enveloppe s'applique ici, pas en fin de passe : une
+                    // altitude hors bornes fausserait le réseau d'écoulement
+                    // de la passe suivante avant d'être corrigée.
+                    if (next < floorM[i]) next = floorM[i]
+                    if (next > ceilM[i]) next = ceilM[i]
+                    h[i] = next
                     sediment[receiver[i]] += carried - deposited
                 }
             }

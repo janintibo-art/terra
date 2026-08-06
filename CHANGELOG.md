@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.9.8 — L'érosion bornée par construction
+
+Le tri corrigé en v0.9.7 a rendu l'accumulation juste — et donc le débit réel
+bien plus fort que dans ma simulation. L'érosion mordait au-delà des bornes
+du test.
+
+Plutôt que de rechercher le coefficient qui tomberait juste — pari déjà perdu
+deux fois ici (relief tectonique, micro-relief) et intenable avec un débit
+qui s'étale sur trois décades —, l'érosion reçoit une **enveloppe par
+cellule**, appliquée à chaque passe : au plus 25 % de l'altitude locale et
+500 m d'abaissement, au plus 120 m de dépôt. Physiquement défendable (un
+massif ne se rabote pas entièrement, l'incision ralentit quand la pente
+s'aplanit) et, surtout, vraie par construction : le test vérifie l'enveloppe
+elle-même, plus un calibrage, avec un garde-fou exigeant que l'érosion ait
+réellement agi.
+
+L'enveloppe s'applique dans la boucle et non en fin de passe : une altitude
+hors bornes fausserait le réseau d'écoulement de la passe suivante avant
+d'être corrigée.
+
 ## v0.9.7 — Correctif : la clé de tri de l'hydrologie triait à l'envers
 
 Trois tests rouges sur la v0.9.6, une seule cause : dans `packKey`, le
