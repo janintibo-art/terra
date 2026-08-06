@@ -1,5 +1,32 @@
 # Journal des versions
 
+## v0.10.6 — Premier plan résolu, diagnostic éteint
+
+Confirmé à l'essai : `sol 2 m · near 0,10 m · niv max 23`, et le terrain
+couvre l'écran jusqu'en bas. La teinte par niveau a montré la structure
+attendue — des anneaux concentriques de niveaux décroissants autour de
+l'observateur.
+
+**Cause finale** : le sélecteur mesurait ses distances par rapport à la
+sphère au niveau de la mer. Bloqué au niveau 14, il entourait l'observateur
+de tuiles de 152 m dont le maillage n'échantillonnait le sol que tous les
+9,5 mètres — bien trop grossier pour une caméra posée à deux mètres, qui
+passait sous la surface interpolée. En mesurant par rapport au terrain local,
+la subdivision atteint le niveau 23 et les tuiles proches font un mètre.
+
+Cette version éteint la teinte de diagnostic, conservée derrière son drapeau.
+
+### Ce que ce chantier aura appris
+
+Sept versions pour un défaut. La cause tenait en une ligne, mais quatre
+correctifs ont visé à côté faute de mesure : le plan de coupe, deux fois le
+cône, la course entre fils — chacun un vrai défaut, aucun *le* défaut. Ce qui
+a débloqué la situation, ce sont les trois instruments : le magenta (l'aplat
+est-il du ciel ?), le HUD (que valent réellement `sol` et `near` ?) et la
+teinte par niveau (où s'arrête la couverture ?). Règle retenue et appliquée
+désormais : **au deuxième correctif inefficace, on cesse de corriger et l'on
+instrumente.**
+
 ## v0.10.5 — Le détail suit le sol, et un diagnostic par couleur
 
 Les captures innocentent définitivement le plan de coupe (`sol 10 m ·

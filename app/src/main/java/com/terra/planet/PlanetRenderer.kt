@@ -799,11 +799,15 @@ class PlanetRenderer(
         const val DIAGNOSTIC_SKY_GROUND = false
 
         /**
-         * Teinte chaque tuile selon son niveau de subdivision — diagnostic
-         * v0.10.5. Montre où s'arrête la couverture proche, question à
-         * laquelle aucun compteur ne répond.
+         * Teinte chaque tuile selon son niveau de subdivision.
+         *
+         * A résolu le défaut du premier plan (v0.10.5) : les bandes colorées
+         * ont montré d'un coup d'œil que la couverture proche existait enfin,
+         * en anneaux concentriques autour de l'observateur, là où aucun
+         * compteur ne pouvait le dire. Conservé, éteint — inspecter la
+         * structure du niveau de détail coûte un booléen.
          */
-        const val DIAGNOSTIC_LEVEL_TINT = true
+        const val DIAGNOSTIC_LEVEL_TINT = false
         private const val DEG = 0.017453292f
 
         /** Téléversements de tuiles par image : au-delà, à-coups visibles. */
