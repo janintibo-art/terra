@@ -170,6 +170,7 @@ class PlanetRenderer(
     private var tUHaze = -1
     private var tUHazeDensity = -1
     private var tURimStrength = -1
+    private var tULevelTint = -1
 
     private var skyProgram = 0
     private var skyVbo = 0
@@ -255,6 +256,7 @@ class PlanetRenderer(
             tUHaze = GLES20.glGetUniformLocation(tileProgram, "uHaze")
             tUHazeDensity = GLES20.glGetUniformLocation(tileProgram, "uHazeDensity")
             tURimStrength = GLES20.glGetUniformLocation(tileProgram, "uRimStrength")
+            tULevelTint = GLES20.glGetUniformLocation(tileProgram, "uLevelTint")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -342,6 +344,14 @@ class PlanetRenderer(
         )
         val forward = Vec3(snapshot.fwdX, snapshot.fwdY, snapshot.fwdZ)
         val cone = ViewCone.fromCamera(camUnit, forward, snapshot.fovRad, aspect)
+        // Rayon du terrain sous la caméra, en unités de sphère unité : c'est
+        // par rapport à LUI que se jugent les distances de subdivision.
+        val eyeLenUnit = sqrt(
+            snapshot.eyeXM * snapshot.eyeXM + snapshot.eyeYM * snapshot.eyeYM +
+                    snapshot.eyeZM * snapshot.eyeZM
+        ) / radius
+        selector.groundRadiusUnit =
+            (eyeLenUnit - snapshot.heightAboveGroundM / radius).coerceIn(0.9, 1.1).toFloat()
         selector.select(camUnit, selection, cone)
         tilesSelected = selection.size
         var deepest = 0
@@ -466,6 +476,21 @@ class PlanetRenderer(
 
         var triangles = 0
         for (tile in drawList) {
+            // Diagnostic : teinte par niveau de subdivision, pour voir d'un
+            // coup d'œil où s'arrête la couverture proche. Cycle de six
+            // teintes vives, le niveau se lit à la couleur.
+            if (DIAGNOSTIC_LEVEL_TINT) {
+                val lvl = TileId.unpack(tile.key).level
+                val h = (lvl % 6) / 6f
+                GLES20.glUniform3f(
+                    tULevelTint,
+                    kotlin.math.abs(h * 6f - 3f) - 1f,
+                    2f - kotlin.math.abs(h * 6f - 2f),
+                    2f - kotlin.math.abs(h * 6f - 4f)
+                )
+            } else {
+                GLES20.glUniform3f(tULevelTint, -1f, -1f, -1f)
+            }
             GLES20.glUniform3f(
                 tUOffset,
                 (tile.centerXM - snapshot.eyeXM).toFloat(),
@@ -772,6 +797,13 @@ class PlanetRenderer(
          * un booléen.
          */
         const val DIAGNOSTIC_SKY_GROUND = false
+
+        /**
+         * Teinte chaque tuile selon son niveau de subdivision — diagnostic
+         * v0.10.5. Montre où s'arrête la couverture proche, question à
+         * laquelle aucun compteur ne répond.
+         */
+        const val DIAGNOSTIC_LEVEL_TINT = true
         private const val DEG = 0.017453292f
 
         /** Téléversements de tuiles par image : au-delà, à-coups visibles. */
@@ -878,6 +910,7 @@ class PlanetRenderer(
             uniform vec3 uSun;          // soleil, repere planete
             uniform float uHazeDensity;
             uniform float uRimStrength;
+            uniform vec3 uLevelTint;   // composantes < 0 : teinte desactivee
 
             attribute vec3 aPosition;   // relative au centre de tuile, metres
             attribute vec3 aColor;
@@ -918,7 +951,8 @@ class PlanetRenderer(
 
                 float dist = length(rel);
                 vFog = 1.0 - exp(-dist * uHazeDensity);
-                vColor = aColor;
+                vColor = uLevelTint.r < 0.0 ? aColor
+                       : mix(aColor, clamp(uLevelTint, 0.0, 1.0), 0.75);
             }
         """
 

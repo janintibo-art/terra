@@ -156,3 +156,45 @@ class NadirCoverageTest {
         }
     }
 }
+
+
+/**
+ * Le niveau de subdivision doit suivre la hauteur au-dessus du SOL — et non
+ * l'altitude au-dessus du niveau de la mer (v0.10.5). Sur un plateau élevé,
+ * la seconde faisait plafonner le détail très au-dessus de ce que l'œil
+ * réclame.
+ */
+class GroundRelativeDetailTest {
+
+    @Test
+    fun `a hauteur egale le niveau ne depend pas de l altitude du plateau`() {
+        val selector = TileSelector()
+        val out = ArrayList<TileId>()
+        val r = 6_371_000.0
+
+        fun deepestAt(plateauM: Double, heightM: Double): Int {
+            val eyeLen = ((r + plateauM + heightM) / r).toFloat()
+            val cam = com.terra.core.Vec3(0f, eyeLen, 0f)
+            selector.groundRadiusUnit = ((r + plateauM) / r).toFloat()
+            selector.select(cam, out, null)
+            var deepest = 0
+            for (t in out) if (t.level > deepest) deepest = t.level
+            return deepest
+        }
+
+        // Dix mètres au-dessus du sol : même finesse, que le sol soit au
+        // niveau de la mer ou à 2 000 m d'altitude.
+        val auNiveauDeLaMer = deepestAt(0.0, 10.0)
+        val surPlateau = deepestAt(2_000.0, 10.0)
+        assertTrue(
+            kotlin.math.abs(auNiveauDeLaMer - surPlateau) <= 1,
+            "niveau $auNiveauDeLaMer au niveau de la mer contre $surPlateau sur plateau"
+        )
+
+        // Et la finesse doit bien croître quand on descend.
+        assertTrue(
+            deepestAt(2_000.0, 10.0) > deepestAt(2_000.0, 10_000.0),
+            "le niveau ne s'affine pas en descendant"
+        )
+    }
+}

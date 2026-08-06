@@ -125,6 +125,17 @@ class TileSelector(
      * @param cameraUnit position de la caméra en unités de sphère unité
      * @param cone champ de vision ; null pour ne filtrer que par l'horizon
      */
+    /**
+     * Rayon de référence pour juger les distances, en unités de sphère unité.
+     *
+     * Le sélecteur mesurait la distance à la sphère au NIVEAU DE LA MER : à
+     * dix mètres d'un plateau de 874 m, il croyait la caméra à 874 m du sol
+     * et s'arrêtait à un niveau grossier (v0.10.5). En donnant ici le rayon
+     * du terrain sous la caméra, les distances redeviennent celles que l'œil
+     * perçoit, et la subdivision descend là où il faut.
+     */
+    var groundRadiusUnit: Float = 1f
+
     fun select(cameraUnit: Vec3, out: MutableList<TileId>, cone: ViewCone? = null) {
         out.clear()
         visitedNodes = 0
@@ -166,10 +177,14 @@ class TileSelector(
             }
 
             // Subdivision.
-            val dx = cameraUnit.x - centerX
-            val dy = cameraUnit.y - centerY
-            val dz = cameraUnit.z - centerZ
-            val distance = max(1e-7f, sqrt(dx * dx + dy * dy + dz * dz) - radius)
+            // Le centre de tuile est ramené au rayon du terrain local : sans
+            // cela, la distance est mesurée jusqu'au niveau de la mer, très
+            // au-dessous du sol réel sur un plateau.
+            val g = groundRadiusUnit
+            val dx = cameraUnit.x - centerX * g
+            val dy = cameraUnit.y - centerY * g
+            val dz = cameraUnit.z - centerZ * g
+            val distance = max(1e-7f, sqrt(dx * dx + dy * dy + dz * dz) - radius * g)
             val factor = (radius * 2f) / distance
 
             if (level < maxLevel && factor > threshold) {

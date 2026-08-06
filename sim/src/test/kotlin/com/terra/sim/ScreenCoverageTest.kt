@@ -78,6 +78,10 @@ class ScreenCoverageTest {
         val aspect = 2.2f
         val cone = ViewCone.fromCamera(cam, fwd, fovRad, aspect)
         val tiles = ArrayList<TileId>()
+        // Comme le renderer : les distances se jugent par rapport au sol, pas
+        // au niveau de la mer. Ici le terrain d'essai EST la sphère unité, la
+        // hauteur au-dessus du sol vaut donc l'altitude.
+        selector.groundRadiusUnit = 1f
         selector.select(cam, tiles, cone)
 
         // Repère caméra pour balayer le rectangle de l'écran.

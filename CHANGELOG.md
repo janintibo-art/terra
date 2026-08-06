@@ -1,5 +1,28 @@
 # Journal des versions
 
+## v0.10.5 — Le détail suit le sol, et un diagnostic par couleur
+
+Les captures innocentent définitivement le plan de coupe (`sol 10 m ·
+near 0,50 m`, et le bas manque quand même) et révèlent le motif : le terrain
+s'arrête à 150–300 m, **la taille exacte d'une tuile** au niveau affiché.
+
+### Le sélecteur mesurait au niveau de la mer
+
+À dix mètres au-dessus d'un plateau de 874 m, il jugeait la caméra à 874 m du
+sol et plafonnait la subdivision au niveau 14 — d'où des tuiles de 152 m
+autour de l'observateur. Les distances se mesurent désormais par rapport au
+rayon du terrain local, et la finesse suit la hauteur réelle. Un test vérifie
+la propriété : à hauteur égale, le niveau atteint ne doit pas dépendre de
+l'altitude du plateau.
+
+### Diagnostic : une teinte par niveau
+
+Aucun compteur ne dit *où* s'arrête la couverture proche. Chaque tuile est
+donc peinte selon son niveau de subdivision, en six teintes vives cycliques.
+Une capture montrera si les tuiles voisines sont dessinées, et où la
+couverture cesse — la question à laquelle je n'arrive pas à répondre par
+déduction. Drapeau `DIAGNOSTIC_LEVEL_TINT`, à éteindre ensuite.
+
 ## v0.10.4 — Une seule surface de terrain
 
 Le HUD de diagnostic a donné la réponse : `sol 2 m · near 0,10 m` — la
