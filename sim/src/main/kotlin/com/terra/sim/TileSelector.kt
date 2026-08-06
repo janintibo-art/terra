@@ -38,7 +38,9 @@ class ViewCone(
         val dy = center.y - apex.y
         val dz = center.z - apex.z
         val distSq = dx * dx + dy * dy + dz * dz
-        if (distSq <= radius * radius) return true          // caméra dans la tuile
+        // Trois rayons : même garde que la copie du sélecteur — les deux
+        // écritures doivent rester jumelles, le test du nadir y veille.
+        if (distSq <= radius * radius * 9f) return true     // caméra dans ou contre la tuile
 
         val dist = sqrt(distSq)
         val cosAngle = ((dx * axis.x + dy * axis.y + dz * axis.z) / dist)
@@ -187,7 +189,20 @@ class TileSelector(
         val dx = centerX - cone.apex.x
         val dy = centerY - cone.apex.y
         val dz = centerZ - cone.apex.z
-        val distSq = dx * dx + dy * dy + dz * dz
+
+        // Garde-fou des tuiles proches — v0.9.5. Cette copie sans allocation
+        // de [ViewCone.mayContain] avait PERDU le cas « caméra dans la
+        // tuile » : au ras du sol en vue rasante, les tuiles qui contiennent
+        // l'observateur ont leur centre derrière l'œil, toute la pile était
+        // rejetée, et le premier plan disparaissait (fond de brume visible
+        // sous l'horizon). Le garde est élargi à trois rayons : une tuile
+        // voisine immédiate remplit l'écran même le centre hors du cône.
+        // Deux écritures du même test ont divergé une fois de plus — le test
+        // de couverture du nadir les verrouille désormais ensemble.
+        val distSqEarly = dx * dx + dy * dy + dz * dz
+        val nearGuard = radius * 3f
+        if (distSqEarly <= nearGuard * nearGuard) return true
+        val distSq = distSqEarly
         if (distSq <= radius * radius) return true
         val dist = sqrt(distSq)
         val cosAngle = ((dx * cone.axis.x + dy * cone.axis.y + dz * cone.axis.z) / dist)

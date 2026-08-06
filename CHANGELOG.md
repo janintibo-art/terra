@@ -1,5 +1,23 @@
 # Journal des versions
 
+## v0.9.5 — Correctif : le premier plan disparaissait en vue rasante
+
+Signalé à l'essai : au ras du sol, un aplat bleu-gris sous l'horizon — le
+fond de brume, là où l'eau proche aurait dû se dessiner. Diagnostic : la
+copie sans allocation du test de cône dans le sélecteur avait **perdu le
+garde-fou « caméra dans la tuile »** que la version de `ViewCone` possède.
+En vue rasante, les tuiles qui contiennent l'observateur ont leur centre
+derrière l'œil : toute la pile, jusqu'à la racine, était rejetée, et le
+premier plan n'existait pas.
+
+Le garde est restauré et élargi à trois rayons (une tuile voisine immédiate
+remplit l'écran même le centre hors du cône), les deux écritures du test sont
+réalignées, et un test de **couverture du nadir** — 24 caméras au ras du sol
+en visée tangente, le point sous chacune doit appartenir à une tuile
+sélectionnée — verrouille l'ensemble. C'est la troisième fois qu'une double
+écriture diverge (gestes, parenté, cône) : chacune a désormais son test
+jumeau.
+
 ## v0.9.4 — Qualité graphique : rivages fondus et halo de limbe
 
 Lot graphique ciblé sur les deux défauts que les captures d'essai désignaient.

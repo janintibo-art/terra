@@ -100,3 +100,59 @@ class TileKeyTest {
         kotlin.test.assertEquals(TileId.MAX_LEVEL + 1, steps)
     }
 }
+
+/**
+ * Couverture du premier plan — v0.9.5. Au ras du sol en vue rasante, les
+ * tuiles qui contiennent l'observateur ont leur centre derrière l'œil : sans
+ * garde-fou de proximité, le cône les rejetait et le bas de l'écran montrait
+ * le fond de brume au lieu du sol (rapport d'essai, capture à l'appui).
+ */
+class NadirCoverageTest {
+
+    @Test
+    fun `le point sous la camera est toujours couvert en vue rasante`() {
+        val selector = TileSelector()
+        val out = ArrayList<TileId>()
+        val rng = kotlin.random.Random(31)
+
+        repeat(24) {
+            // Position au ras du sol, direction de visée tangente (rasante).
+            val d = randomUnit(rng)
+            val t0 = randomUnit(rng)
+            val fwd = com.terra.core.Vec3(
+                t0.x - d.x * (t0.x * d.x + t0.y * d.y + t0.z * d.z),
+                t0.y - d.y * (t0.x * d.x + t0.y * d.y + t0.z * d.z),
+                t0.z - d.z * (t0.x * d.x + t0.y * d.y + t0.z * d.z)
+            ).normalized()
+            val eyeAltUnit = 2f / 6_371_000f
+            val cam = com.terra.core.Vec3(
+                d.x * (1f + eyeAltUnit), d.y * (1f + eyeAltUnit), d.z * (1f + eyeAltUnit)
+            )
+            val cone = ViewCone.fromCamera(cam, fwd, 0.733f, 2.2f)
+            selector.select(cam, out, cone)
+
+            val (face, sN, tN) = CubeSphere.fromSphere(d)
+            val covered = out.any { tile ->
+                if (tile.face != face) return@any false
+                val grid = 1 shl tile.level
+                val tx = (((sN + 1f) * 0.5f) * grid).toInt().coerceIn(0, grid - 1)
+                val ty = (((tN + 1f) * 0.5f) * grid).toInt().coerceIn(0, grid - 1)
+                tile.x == tx && tile.y == ty
+            }
+            assertTrue(covered, "nadir non couvert à l'essai $it (${out.size} tuiles)")
+        }
+    }
+
+    private fun randomUnit(rng: kotlin.random.Random): com.terra.core.Vec3 {
+        while (true) {
+            val x = rng.nextFloat() * 2f - 1f
+            val y = rng.nextFloat() * 2f - 1f
+            val z = rng.nextFloat() * 2f - 1f
+            val l = x * x + y * y + z * z
+            if (l in 1e-4f..1f) {
+                val inv = 1f / kotlin.math.sqrt(l)
+                return com.terra.core.Vec3(x * inv, y * inv, z * inv)
+            }
+        }
+    }
+}
