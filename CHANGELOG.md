@@ -1,5 +1,20 @@
 # Journal des versions
 
+## v0.8.4 — Correctif : glissement vertical inversé en mode sol
+
+Signalé à l'essai : gauche-droite correct, haut-bas à rebours. La cause est
+un signe manquant sur la composante verticale de `pan` — la première version
+inversait l'axe horizontal (« le terrain suit le doigt ») mais pas le
+vertical, et l'enchaînement cap → repère caméra → axes écran rend ce genre de
+signe indécidable sur le papier : seul un doigt sur l'écran tranche.
+
+La convention mesurée est désormais **figée par trois tests** (signe de
+chaque axe, aller-retour en carré) : si un refactor retourne un signe, la CI
+rougit au lieu que le bug ressurgisse à l'écran.
+
+Au passage, la capture d'essai a validé visuellement le lot 1.5 : frontières
+continues autour des plaques, trois types présents et mélangés.
+
 ## v0.8.3 — Lot 1.5 : les frontières de plaques classées
 
 Chaque arête de la grille séparant deux plaques est désormais classée

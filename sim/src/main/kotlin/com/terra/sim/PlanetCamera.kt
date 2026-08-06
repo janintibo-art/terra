@@ -184,10 +184,14 @@ class PlanetCamera(
         val visibleHeightM = 2.0 * rangeM * tan(verticalFovRad * 0.5)
         val metresPerPixel = visibleHeightM / viewportHeightPx
 
-        // Un glissement vers la droite doit faire venir le terrain de droite :
-        // le point visé se déplace donc vers la gauche, d'où les signes.
+        // Le terrain suit le doigt, comme sur une carte : le point visé part
+        // à l'opposé du glissement, sur les DEUX axes. Les signes ci-dessous
+        // sont fixés par l'essai sur appareil (v0.8.4) et verrouillés par un
+        // test : l'enchaînement cap → repère caméra → axes écran rend tout
+        // raisonnement de salon sur ces signes non fiable — la première
+        // version avait le vertical inversé, indétectable hors appareil.
         var eastM = -dxPixels * metresPerPixel
-        var northM = dyPixels * metresPerPixel
+        var northM = -dyPixels * metresPerPixel
 
         // L'inclinaison écrase la composante verticale de l'écran : plus la vue
         // est rasante, plus un pixel vers le haut couvre de terrain.
