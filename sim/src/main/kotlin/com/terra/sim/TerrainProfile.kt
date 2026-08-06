@@ -87,31 +87,51 @@ class TerrainProfile(
     /** Exposant de la courbe d'altitude : plus il est haut, plus les pics sont rares. */
     val peakiness: Float,
     /** Facteur de profondeur des fosses. */
-    val trenchScale: Float
+    val trenchScale: Float,
+    /** Relief structural par sommet de grille — socle de croûte et profils
+     *  tectoniques du lot 1.6, en mètres. */
+    val structuralM: FloatArray,
+    /** Échantillonneur qui fait de [structuralM] une fonction continue. */
+    val structuralSampler: FieldSampler,
+    /** Amortissement du bruit, devenu habillage ([TectonicRelief.NOISE_DAMP]). */
+    val noiseDamp: Float,
+    /** Décalage du niveau de la mer, second calibrage global : percentile de
+     *  la somme bruit + structure, pour que la fraction océanique demandée
+     *  survive à l'addition du relief tectonique. */
+    val seaOffsetM: Float
 ) {
 
     private val detail = Noise(seed.derive("terrain/detail"))
     private val micro = Noise(seed.derive("terrain/micro"))
 
-    /** Puissance à exposant réel, sans dépendre de java.lang.Math. */
-    private fun pow(base: Float, exponent: Float): Float =
-        if (base <= 0f) 0f else exp(exponent * ln(base))
+    /**
+     * Indice de départ de la recherche du sampler, par fil d'exécution : les
+     * requêtes d'un même fil sont spatialement cohérentes (sommets voisins
+     * d'une même tuile), la descente devient quasi constante. Un état par fil,
+     * jamais partagé : le maillage parallèle des tuiles reste sans verrou, et
+     * l'indice n'influe jamais sur la valeur — seulement sur le temps.
+     */
+    private val structuralHint = ThreadLocal.withInitial { intArrayOf(0) }
 
-    /** Altitude en mètres, négative sous le niveau de la mer. */
-    fun altitudeAt(x: Float, y: Float, z: Float): Float =
-        altitudeFromRaw(field.rawAt(x, y, z))
+    /**
+     * Altitude en mètres, négative sous le niveau de la mer.
+     *
+     * Depuis le lot 1.6 : bruit d'habillage amorti, plus le relief structural
+     * interpolé, moins le décalage de mer. Sur un sommet de la grille, le
+     * sampler rend `structuralM[v]` au bit près : la grille et cette fonction
+     * ne peuvent pas diverger — l'invariant n°3 tient par construction.
+     */
+    fun altitudeAt(p: Vec3): Float =
+        convertRaw(
+            field.rawAt(p.x, p.y, p.z),
+            seaLevel, landSpan, seaSpan,
+            params.maxAltitudeM, params.maxDepthM,
+            reliefScale, peakiness, trenchScale
+        ) * noiseDamp +
+                structuralSampler.sample(structuralM, p, structuralHint.get()) -
+                seaOffsetM
 
-    fun altitudeAt(p: Vec3): Float = altitudeAt(p.x, p.y, p.z)
-
-    /** Conversion du champ brut en altitude physique. */
-    fun altitudeFromRaw(raw: Float): Float =
-        if (raw >= seaLevel) {
-            val t = (raw - seaLevel) / landSpan
-            pow(t, peakiness) * params.maxAltitudeM * reliefScale
-        } else {
-            val t = (seaLevel - raw) / seaSpan
-            -t * params.maxDepthM * trenchScale
-        }
+    fun altitudeAt(x: Float, y: Float, z: Float): Float = altitudeAt(Vec3(x, y, z))
 
     /**
      * Altitude enrichie de détail haute fréquence.
@@ -201,6 +221,28 @@ class TerrainProfile(
     }
 
     companion object {
+
+        /**
+         * Conversion du champ de bruit brut en mètres — la formule unique que
+         * partagent le générateur (grille) et [altitudeAt] (fonction). Vivre
+         * dans le companion la rend appelable AVANT la construction du profil,
+         * dont deux paramètres ([seaOffsetM]) dépendent d'elle : le second
+         * calibrage a besoin de la somme bruit + structure sur toute la grille.
+         */
+        fun convertRaw(
+            raw: Float,
+            seaLevel: Float, landSpan: Float, seaSpan: Float,
+            maxAltitudeM: Float, maxDepthM: Float,
+            reliefScale: Float, peakiness: Float, trenchScale: Float
+        ): Float =
+            if (raw >= seaLevel) {
+                val t = (raw - seaLevel) / landSpan
+                (if (t <= 0f) 0f else exp(peakiness * ln(t))) * maxAltitudeM * reliefScale
+            } else {
+                val t = (seaLevel - raw) / seaSpan
+                -t * maxDepthM * trenchScale
+            }
+
         /**
          * Amplitude crête-à-crête maximale du micro-relief, pour dimensionner
          * la sphère englobante du lancer de rayon et la borne du test.

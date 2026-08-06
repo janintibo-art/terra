@@ -1,5 +1,37 @@
 # Journal des versions
 
+## v0.9.1 — Lot 1.6 : le relief a une cause
+
+**Tous les mondes changent** (`GENERATION_VERSION = 4`) : les chaînes de
+montagnes naissent désormais des collisions, les fosses des subductions, les
+dorsales des divergences. Le bruit est rétrogradé au rôle d'habillage (amorti
+à 45 %).
+
+### Le modèle
+
+Par sommet de grille : un socle isostatique (+250 m continental, −900 m
+océanique, qui tire les côtes vers les frontières sans les rendre
+polygonales), plus les profils tectoniques calibrés contre la Terre —
+collision continentale +3 800 m sur 290 km de mi-hauteur (Tibet ~5 000 avec
+le bruit), cordillère culminant à 130 km de sa fosse (−4 300, largeur 70 km,
+Pérou-Chili), arcs insulaires, dorsales larges de 400 km, rifts à
+épaulements. L'ampleur suit la vitesse relative de chaque frontière.
+
+### L'architecture tient l'invariant
+
+Le champ structural entre dans `TerrainProfile` par le `FieldSampler`, exact
+au bit près sur les sommets : grille et fonction restent le même objet
+(TerrainLodTest le vérifie). Un **second calibrage** — percentile de la somme
+bruit + structure — garantit la fraction océanique demandée malgré l'addition
+du relief. La conversion du bruit devient une fonction de companion, partagée
+entre le générateur et le profil : aucune formule dupliquée.
+
+### Tests
+
+5 tests statistiques sur trois mondes réels, seuils à la moitié de l'effet
+calibré : soulèvement aux convergences, fosses sous le plancher, bombement
+des dorsales, fraction océanique, bornes physiques.
+
 ## v0.9.0 — L'infrastructure du relief tectonique (lot 1.8, remonté)
 
 Prérequis du lot 1.6, livré seul pour garder le risque maîtrisé : rien ne

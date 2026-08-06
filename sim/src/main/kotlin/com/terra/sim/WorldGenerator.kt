@@ -52,6 +52,18 @@ class WorldGenerator(
         val n = sphere.vertexCount
         onProgress(Stage.GEOMETRY, 1f)
 
+        // --- Étape 1 bis : tectonique (lots 1.4, 1.5, 1.8, 1.6) ---
+        //
+        // Avant l'élévation désormais : depuis le lot 1.6, le relief DÉRIVE
+        // des plaques. Flux de graine toujours indépendant du bruit.
+        onProgress(Stage.TECTONICS, 0f)
+        val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
+        val boundaries = BoundarySet.classify(sphere, plates)
+        val boundaryDistance = BoundaryDistanceField.generate(sphere, plates, boundaries)
+        val structuralM = TectonicRelief.build(sphere, plates, boundaryDistance)
+        val structuralSampler = FieldSampler(sphere)
+        onProgress(Stage.TECTONICS, 1f)
+
         // --- Étape 2 : élévation brute ---
         // Chaque champ tire sa propre graine : ajouter la tectonique en lot 1.4
         // ne décalera pas le climat déjà généré.
@@ -98,6 +110,24 @@ class WorldGenerator(
         val peakiness = reliefRng.nextFloatRange(1.6f, 3.2f)
         val trenchScale = reliefRng.nextFloatRange(0.6f, 1.0f)
 
+        // --- Second calibrage : la mer de la somme (lot 1.6) ---
+        //
+        // Le premier percentile calibre le BRUIT ; mais l'altitude finale y
+        // ajoute le relief structural, qui déplace terre et mer. Un second
+        // percentile, sur la somme, redonne exactement la fraction océanique
+        // demandée — deux constantes globales plutôt qu'un système d'équations.
+        val combined = FloatArray(n)
+        for (i in 0 until n) {
+            combined[i] = TerrainProfile.convertRaw(
+                raw[i], seaLevel, landSpan, seaSpan,
+                params.maxAltitudeM, params.maxDepthM,
+                reliefScale, peakiness, trenchScale
+            ) * TectonicRelief.NOISE_DAMP + structuralM[i]
+        }
+        val sortedCombined = combined.copyOf()
+        sortedCombined.sort()
+        val seaOffsetM = sortedCombined[cut]
+
         // Le profil rassemble les constantes issues du calibrage global. À
         // partir d'ici, l'altitude redevient une fonction pure de la position,
         // évaluable partout et à toute résolution.
@@ -110,14 +140,19 @@ class WorldGenerator(
             seaSpan = seaSpan,
             reliefScale = reliefScale,
             peakiness = peakiness,
-            trenchScale = trenchScale
+            trenchScale = trenchScale,
+            structuralM = structuralM,
+            structuralSampler = structuralSampler,
+            noiseDamp = TectonicRelief.NOISE_DAMP,
+            seaOffsetM = seaOffsetM
         )
 
-        // On passe par le profil plutôt que de recopier la formule : c'est ce
-        // qui garantit que grille grossière et terrain fin ne peuvent pas
-        // diverger, même après une modification future.
+        // La grille reprend la même somme, terme à terme : la même conversion
+        // (companion), le même tableau structural que le sampler rend au bit
+        // près sur ses sommets, le même décalage de mer. Grille et fonction ne
+        // peuvent pas diverger — TerrainLodTest le vérifie à chaque poussée.
         val altitudeM = FloatArray(n)
-        for (i in 0 until n) altitudeM[i] = profile.altitudeFromRaw(raw[i])
+        for (i in 0 until n) altitudeM[i] = combined[i] - seaOffsetM
 
         // --- Étape 3 bis : distance à l'océan ---
         //
@@ -268,17 +303,6 @@ class WorldGenerator(
             hottestC = hottest,
             biomeCounts = counts
         )
-
-        // --- Étape 6 : plaques tectoniques (lot 1.4) ---
-        //
-        // Volontairement en fin de chaîne et sur son propre flux de graine :
-        // le monde jusqu'ici est bit à bit identique à la version précédente,
-        // et le test d'empreinte le vérifie contre les références figées.
-        onProgress(Stage.TECTONICS, 0f)
-        val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
-        val boundaries = BoundarySet.classify(sphere, plates)
-        val boundaryDistance = BoundaryDistanceField.generate(sphere, plates, boundaries)
-        onProgress(Stage.TECTONICS, 1f)
 
         onProgress(Stage.DONE, 1f)
 

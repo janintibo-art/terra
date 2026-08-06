@@ -44,7 +44,15 @@ class BoundaryDistanceField(
     val intensityConvergent: FloatArray,
     val intensityDivergent: FloatArray,
     /** Croûtes en présence à la convergente la plus proche. */
-    val contextConvergent: ByteArray
+    val contextConvergent: ByteArray,
+    /**
+     * Plaque **chevauchante** de la convergente la plus proche : celle qui
+     * porte la cordillère ou l'arc, l'autre portant la fosse. Convention :
+     * la continentale en subduction océan-continent ; la plus petite par
+     * identifiant sinon — arbitraire mais déterministe, et documentée pour
+     * que personne ne cherche une physique qui n'y est pas.
+     */
+    val upperConvergent: ByteArray
 ) {
     companion object {
 
@@ -63,6 +71,7 @@ class BoundaryDistanceField(
             val n = sphere.vertexCount
 
             val dConv = FloatArray(n) { Float.MAX_VALUE }
+            val upConv = ByteArray(n)
             val dDiv = FloatArray(n) { Float.MAX_VALUE }
             val dTrans = FloatArray(n) { Float.MAX_VALUE }
             val iConv = FloatArray(n)
@@ -73,6 +82,7 @@ class BoundaryDistanceField(
             val convSeeds = ArrayList<Int>()
             val convInt = ArrayList<Float>()
             val convCtx = ArrayList<Byte>()
+            val convUp = ArrayList<Byte>()
             val divSeeds = ArrayList<Int>()
             val divInt = ArrayList<Float>()
             val transSeeds = ArrayList<Int>()
@@ -90,8 +100,15 @@ class BoundaryDistanceField(
                             oa || ob -> CRUST_OC
                             else -> CRUST_CC
                         }
-                        convSeeds.add(a); convInt.add(speed); convCtx.add(ctx)
-                        convSeeds.add(b); convInt.add(speed); convCtx.add(ctx)
+                        val pa = plates.plateId[a]
+                        val pb = plates.plateId[b]
+                        val upper: Byte = when {
+                            oa && !ob -> pb.toByte()      // la continentale chevauche
+                            ob && !oa -> pa.toByte()
+                            else -> minOf(pa, pb).toByte() // convention déterministe
+                        }
+                        convSeeds.add(a); convInt.add(speed); convCtx.add(ctx); convUp.add(upper)
+                        convSeeds.add(b); convInt.add(speed); convCtx.add(ctx); convUp.add(upper)
                     }
                     BoundaryType.DIVERGENT.ordinal -> {
                         divSeeds.add(a); divInt.add(speed)
@@ -103,11 +120,11 @@ class BoundaryDistanceField(
                 }
             }
 
-            dijkstra(adjacency, verts, convSeeds, convInt, convCtx, dConv, iConv, ctxConv)
-            dijkstra(adjacency, verts, divSeeds, divInt, null, dDiv, iDiv, null)
-            dijkstra(adjacency, verts, transSeeds, null, null, dTrans, null, null)
+            dijkstra(adjacency, verts, convSeeds, convInt, convCtx, convUp, dConv, iConv, ctxConv, upConv)
+            dijkstra(adjacency, verts, divSeeds, divInt, null, null, dDiv, iDiv, null, null)
+            dijkstra(adjacency, verts, transSeeds, null, null, null, dTrans, null, null, null)
 
-            return BoundaryDistanceField(dConv, dDiv, dTrans, iConv, iDiv, ctxConv)
+            return BoundaryDistanceField(dConv, dDiv, dTrans, iConv, iDiv, ctxConv, upConv)
         }
 
         /**
@@ -121,9 +138,11 @@ class BoundaryDistanceField(
             seeds: List<Int>,
             seedIntensity: List<Float>?,
             seedContext: List<Byte>?,
+            seedUpper: List<Byte>?,
             outDist: FloatArray,
             outIntensity: FloatArray?,
-            outContext: ByteArray?
+            outContext: ByteArray?,
+            outUpper: ByteArray?
         ) {
             if (seeds.isEmpty()) return
 
@@ -142,6 +161,7 @@ class BoundaryDistanceField(
                     outDist[s] = 0f
                     outIntensity?.set(s, seedIntensity!![k])
                     outContext?.set(s, seedContext!![k])
+                    outUpper?.set(s, seedUpper!![k])
                     queue.add(pack(0f, s))
                 } else if (outIntensity != null) {
                     // Sommet déjà source : une frontière plus rapide au même
@@ -150,6 +170,7 @@ class BoundaryDistanceField(
                     if (seedIntensity!![k] > outIntensity[s]) {
                         outIntensity[s] = seedIntensity[k]
                         outContext?.set(s, seedContext!![k])
+                        outUpper?.set(s, seedUpper!![k])
                     }
                 }
             }
@@ -169,6 +190,7 @@ class BoundaryDistanceField(
                         outDist[m] = next
                         if (outIntensity != null) outIntensity[m] = outIntensity[node]
                         if (outContext != null) outContext[m] = outContext[node]
+                        if (outUpper != null) outUpper[m] = outUpper[node]
                         queue.add(pack(next, m))
                     }
                 }

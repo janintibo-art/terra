@@ -95,6 +95,13 @@ class FieldSampler(private val sphere: Icosphere) {
         val verts = sphere.vertices
         val f = sphere.faces
 
+        // Coïncidence bit à bit avec un sommet de la grille : la valeur du
+        // sommet, EXACTEMENT. C'est ce qui transporte l'invariant n°3 — la
+        // grille et la fonction rendent le même nombre, pas deux nombres à
+        // un epsilon d'interpolation près.
+        val vv = verts[v]
+        if (p.x == vv.x && p.y == vv.y && p.z == vv.z) return field[v]
+
         // Meilleur triangle : celui dont le plus petit déterminant est le plus
         // grand — positif s'il contient p, à peine négatif au pire cas limite.
         var bestTri = -1
@@ -127,6 +134,18 @@ class FieldSampler(private val sphere: Icosphere) {
         val ib = f[bestTri * 3 + 1]
         val ic = f[bestTri * 3 + 2]
         return (field[ia] * wA + field[ib] * wB + field[ic] * wC) / sum
+    }
+
+    /**
+     * Variante avec indice de départ mutable : `holder[0]` est lu puis mis à
+     * jour avec le sommet trouvé. Un tableau d'une case par appelant (ou par
+     * fil) suffit à rendre la descente quasi constante sur des requêtes
+     * spatialement cohérentes, sans partager le moindre état entre fils.
+     */
+    fun sample(field: FloatArray, p: Vec3, hintHolder: IntArray): Float {
+        val v = nearestVertex(p, hintHolder[0])
+        hintHolder[0] = v
+        return sample(field, p, v)
     }
 
     private fun dot(a: Vec3, b: Vec3): Float = a.x * b.x + a.y * b.y + a.z * b.z
