@@ -293,16 +293,36 @@ class TerrainProfileTest {
     }
 
     @Test
-    fun `l amplitude de detail croit avec le niveau sans jamais sauter`() {
+    fun `la surface rendue ne depend pas du niveau de detail`() {
+        // Remplace l'ancien test de croissance d'amplitude par niveau, devenu
+        // sans objet — et qui décrivait précisément le défaut de conception
+        // corrigé en v0.10.4 : autant de surfaces que de niveaux, donc une
+        // caméra ancrée sur l'une pouvant se retrouver sous une autre.
+        // La propriété qui compte maintenant est l'unicité de la surface.
         val w = world("Beta", sub = 3)
-        var previous = 0f
-        for (level in 0..TileId.MAX_LEVEL) {
-            val a = w.terrain.detailAmplitudeForLevel(level)
-            assertTrue(a >= previous, "l'amplitude recule au niveau $level")
-            assertTrue(a - previous <= 8f, "saut d'amplitude au niveau $level")
-            previous = a
+        val rng = kotlin.random.Random(17)
+        var moved = 0
+        repeat(500) {
+            val d = randomUnitVec(rng)
+            val a = w.terrain.renderedAltitudeAt(d)
+            val b = w.terrain.renderedAltitudeAt(d)
+            assertEquals(a, b, 0f, "la surface rendue n'est pas une fonction")
+            if (kotlin.math.abs(a - w.terrain.altitudeAt(d)) > 1f) moved++
         }
-        assertEquals(0f, w.terrain.detailAmplitudeForLevel(0))
+        assertTrue(moved > 50, "le détail ne produit aucun effet sur la surface")
+    }
+
+    private fun randomUnitVec(rng: kotlin.random.Random): com.terra.core.Vec3 {
+        while (true) {
+            val x = rng.nextFloat() * 2f - 1f
+            val y = rng.nextFloat() * 2f - 1f
+            val z = rng.nextFloat() * 2f - 1f
+            val l = x * x + y * y + z * z
+            if (l in 1e-4f..1f) {
+                val inv = 1f / kotlin.math.sqrt(l)
+                return com.terra.core.Vec3(x * inv, y * inv, z * inv)
+            }
+        }
     }
 
     @Test

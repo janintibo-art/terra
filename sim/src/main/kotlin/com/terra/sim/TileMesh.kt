@@ -111,7 +111,7 @@ class TileMesh(
             for (i in 0..n) {
                 val d = CubeSphere.gridDirection(tile.face, tile.level, baseGx + i, baseGy + j, n)
                 val df = d.toVec3()
-                val a = profile.renderedAltitudeAt(df, tile.level)
+                val a = profile.renderedAltitudeAt(df)
 
                 // L'eau fait partie du maillage, à rayon constant — décision
                 // notée dans l'état du projet ; une surface d'eau dédiée
@@ -366,7 +366,7 @@ class TileMesh(
             val d = CubeSphere.gridDirection(
                 tile.face, tile.level, tile.x * MESH_N + i, tile.y * MESH_N + j, MESH_N
             )
-            val a = profile.renderedAltitudeAt(d.toVec3(), tile.level)
+            val a = profile.renderedAltitudeAt(d.toVec3())
             return d * (planetRadiusM + max(a, 0f).toDouble())
         }
 

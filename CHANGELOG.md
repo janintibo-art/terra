@@ -1,5 +1,33 @@
 # Journal des versions
 
+## v0.10.4 — Une seule surface de terrain
+
+Le HUD de diagnostic a donné la réponse : `sol 2 m · near 0,10 m` — la
+caméra et le plan de coupe étaient corrects — mais **`niv max 16`**. Le
+sélecteur raisonne sur la sphère au niveau de la mer : à 332 m d'altitude
+marine, il croit la caméra à 332 m du sol et s'arrête au niveau 16, alors
+qu'elle est à deux mètres d'un plateau.
+
+Or l'amplitude du détail dépendait du niveau de tuile : 24 m au niveau 16,
+52 m au niveau 23. Le lancer de rayon ancrait donc la caméra sur la surface
+du niveau maximal pendant que l'écran affichait celle du niveau 16 — deux
+surfaces distantes de plusieurs dizaines de mètres. Quand la seconde passait
+au-dessus, la caméra se retrouvait **enfouie** : toutes les faces vues de
+dos, éliminées, écran vidé. C'est le défaut de la v0.7.1 revenu par une autre
+porte, mon correctif d'alors ayant supposé que les tuiles étaient rendues au
+niveau maximal.
+
+`renderedAltitudeAt` ne prend plus de niveau : il n'y a **qu'une surface**,
+partagée par le mailleur, la collision et tout le reste. Une caméra ne peut
+plus se retrouver sous le sol qu'elle regarde, et le terrain ne change plus
+d'altitude à chaque bascule de niveau de détail.
+
+Le prix, assumé et documenté : les tuiles lointaines échantillonnent le
+relief fin avec un pas grossier, d'où un moiré possible au loin — le morphing
+entre niveaux (lot 2.4) le traitera. La cohérence vaut ce prix.
+
+`GENERATION_VERSION` passe à 5 : l'aspect du terrain change.
+
 ## v0.10.3 — Le premier plan, cause trouvée : une course entre fils
 
 Le magenta a tranché : l'aplat du bas d'écran était bien le ciel, donc un

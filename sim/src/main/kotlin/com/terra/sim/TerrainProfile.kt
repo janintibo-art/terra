@@ -170,15 +170,31 @@ class TerrainProfile(
      * Croît avec le niveau, en restant toujours petite devant le pas du maillage
      * pour ne jamais créer de géométrie plus fine que ce qui est affiché.
      */
-    fun detailAmplitudeForLevel(level: Int): Float {
-        if (level < 10) return 0f
-        val steps = (level - 10).coerceAtMost(13)
-        return max(0f, 4f * steps)
-    }
+    @Deprecated(
+        "L'amplitude ne dépend plus du niveau : une seule surface (v0.10.4).",
+        ReplaceWith("TerrainProfile.DETAIL_AMPLITUDE_M")
+    )
+    fun detailAmplitudeForLevel(level: Int): Float = DETAIL_AMPLITUDE_M
 
     /**
      * Altitude telle que la surface est **rendue** au niveau de tuile donné —
      * l'unique vérité que partagent le mailleur et la collision de caméra.
+     *
+     * ## Une surface, pas une famille de surfaces (v0.10.4)
+     *
+     * Cette fonction ne prend **plus** le niveau de tuile. Elle en dépendait,
+     * pour éviter de créer du relief plus fin que le maillage qui le porte —
+     * une optimisation classique, mais qui donnait autant de surfaces
+     * différentes que de niveaux. Conséquences vécues : la caméra, ancrée sur
+     * la surface du niveau maximal, se retrouvait **enfouie** sous les tuiles
+     * affichées à un niveau plus grossier (écran vidé, faces vues de dos), et
+     * le sol changeait d'altitude à chaque bascule de niveau de détail.
+     *
+     * Il n'y a désormais qu'une surface, celle-ci, partagée par le mailleur,
+     * la collision et tout le reste. Le prix est un échantillonnage grossier
+     * du relief fin sur les tuiles lointaines — un moiré possible, que le
+     * morphing entre niveaux (lot 2.4) traitera. La cohérence vaut ce prix :
+     * une caméra ne peut plus se retrouver sous le sol qu'elle regarde.
      *
      * ## Pourquoi le micro-relief existe (v0.8.1)
      *
@@ -191,11 +207,11 @@ class TerrainProfile(
      * visuel. La montée par niveau (12 → 18) évite tout ressaut : chaque
      * cran ajoute ±0,62 m, très en deçà de la marge de 4 m des jupes.
      */
-    fun renderedAltitudeAt(p: Vec3, level: Int): Float {
-        val base = detailedAltitudeAt(p, detailAmplitudeForLevel(level))
-        if (level < 12 || base <= 0f) return base
+    fun renderedAltitudeAt(p: Vec3): Float {
+        val base = detailedAltitudeAt(p, DETAIL_AMPLITUDE_M)
+        if (base <= 0f) return base
 
-        val fade = clamp01((level - 12) / 6f)
+        val fade = 1f
         // Fondu de rivage plus court que celui du détail : les plages
         // doivent onduler un peu, pas devenir des falaises.
         val shoreFade = clamp01(base / 40f)
@@ -223,6 +239,13 @@ class TerrainProfile(
     }
 
     companion object {
+
+        /**
+         * Amplitude du détail haute fréquence, en mètres. Unique, désormais :
+         * voir [renderedAltitudeAt]. Valeur de l'ancien niveau maximal, pour
+         * que le relief fin reste aussi marqué qu'avant de près.
+         */
+        const val DETAIL_AMPLITUDE_M = 52f
 
         /**
          * Conversion du champ de bruit brut en mètres — la formule unique que

@@ -77,7 +77,7 @@ class TileMeshTest {
                 val radius = sqrt(px * px + py * py + pz * pz)
 
                 val dir = Vec3d(px, py, pz).normalized().toVec3()
-                val expected = max(w.terrain.renderedAltitudeAt(dir, level), 0f).toDouble()
+                val expected = max(w.terrain.renderedAltitudeAt(dir), 0f).toDouble()
 
                 worst = max(worst, abs(radius - r - expected))
                 maxRel = max(maxRel, sqrt(rx * rx + ry * ry + rz * rz))
@@ -351,7 +351,7 @@ class CollisionSurfaceTest {
 
             val fromCaster = caster.altitudeAlong(dir)
             val rendered = world.terrain
-                .renderedAltitudeAt(dir.toVec3(), TileId.MAX_LEVEL)
+                .renderedAltitudeAt(dir.toVec3())
                 .toDouble()
             assertEquals(rendered, fromCaster, 1e-6, "surfaces divergentes")
 

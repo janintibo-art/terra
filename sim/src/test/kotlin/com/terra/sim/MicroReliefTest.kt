@@ -28,8 +28,8 @@ class MicroReliefTest {
         var maxSeen = 0f
         repeat(4000) {
             val d = randomDir(rng)
-            val base = t.detailedAltitudeAt(d, t.detailAmplitudeForLevel(23))
-            val rendered = t.renderedAltitudeAt(d, 23)
+            val base = t.detailedAltitudeAt(d, TerrainProfile.DETAIL_AMPLITUDE_M)
+            val rendered = t.renderedAltitudeAt(d)
             val delta = abs(rendered - base)
             assertTrue(
                 delta <= TerrainProfile.MICRO_TOTAL_AMPLITUDE_M * 0.5f + 1e-3f,
@@ -43,22 +43,19 @@ class MicroReliefTest {
     }
 
     @Test
-    fun `nul en mer et absent aux niveaux grossiers`() {
+    fun `nul en mer, et surface unique quel que soit l appelant`() {
         val t = world.terrain
         val rng = Random(9)
         var seaChecked = 0
         repeat(6000) {
             val d = randomDir(rng)
-            val base = t.detailedAltitudeAt(d, t.detailAmplitudeForLevel(23))
+            val base = t.detailedAltitudeAt(d, TerrainProfile.DETAIL_AMPLITUDE_M)
             if (base <= 0f) {
-                assertEquals(base, t.renderedAltitudeAt(d, 23), 0f, "la mer doit rester plane")
+                assertEquals(base, t.renderedAltitudeAt(d), 0f, "la mer doit rester plane")
                 seaChecked++
             }
-            // Sous le niveau 12, la surface rendue est exactement l'ancienne.
-            assertEquals(
-                t.detailedAltitudeAt(d, t.detailAmplitudeForLevel(8)),
-                t.renderedAltitudeAt(d, 8), 0f
-            )
+            // En mer, la surface rendue est exactement le champ de base :
+            // ni détail ni micro-relief ne doivent rider le plan d'eau.
         }
         assertTrue(seaChecked > 1000, "échantillon marin trop maigre : $seaChecked")
     }

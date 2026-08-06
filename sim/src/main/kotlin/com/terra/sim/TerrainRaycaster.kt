@@ -76,7 +76,7 @@ class TerrainRaycaster(
     /** Rayon de la sphère englobant tout relief émergé, détail et micro compris. */
     private val outerRadius: Double =
         planetRadiusM + terrain.params.maxAltitudeM.toDouble() +
-                terrain.detailAmplitudeForLevel(TileId.MAX_LEVEL).toDouble() +
+                TerrainProfile.DETAIL_AMPLITUDE_M.toDouble() +
                 TerrainProfile.MICRO_TOTAL_AMPLITUDE_M.toDouble() + 1.0
 
     /** Rayon de la sphère sous laquelle aucun terrain ne peut se trouver. */
@@ -92,8 +92,7 @@ class TerrainRaycaster(
      * maximal.
      */
     fun altitudeAlong(direction: Vec3d): Double =
-        terrain.renderedAltitudeAt(direction.normalized().toVec3(), TileId.MAX_LEVEL)
-            .toDouble()
+        terrain.renderedAltitudeAt(direction.normalized().toVec3()).toDouble()
 
     /**
      * Hauteur d'un point au-dessus du terrain. Négative sous la surface.
