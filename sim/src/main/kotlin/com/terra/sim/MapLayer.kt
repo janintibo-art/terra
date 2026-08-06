@@ -55,6 +55,18 @@ object LayerPalette {
      * confirmer le trait de côte issu du bruit.
      */
     private fun plate(data: PlanetData, i: Int, out: FloatArray) {
+        // Les frontières priment sur la teinte de plaque : c'est leur nature
+        // qui décidera du relief au lot 1.6, autant la voir dès maintenant.
+        // Rouge : convergence ; turquoise : divergence ; jaune : coulissage.
+        val bt = data.boundaries.vertexType[i].toInt()
+        if (bt >= 0) {
+            when (bt) {
+                BoundaryType.CONVERGENT.ordinal -> { out[0] = 0.86f; out[1] = 0.16f; out[2] = 0.10f }
+                BoundaryType.DIVERGENT.ordinal -> { out[0] = 0.10f; out[1] = 0.74f; out[2] = 0.62f }
+                else -> { out[0] = 0.92f; out[1] = 0.80f; out[2] = 0.16f }
+            }
+            return
+        }
         val p = data.plates.plateOf(i)
         val dim = if (data.altitudeM[i] < 0f) 0.55f else 1f
         out[0] = p.r * dim; out[1] = p.g * dim; out[2] = p.b * dim

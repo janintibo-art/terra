@@ -48,7 +48,10 @@ class PlanetData(
      * le relief n'en dérivera qu'au lot 1.6. Flux de graine indépendant, donc
      * aucune influence sur les champs ci-dessus ni sur l'empreinte.
      */
-    val plates: PlateSet
+    val plates: PlateSet,
+
+    /** Frontières de plaques classées — lot 1.5. Même statut que [plates]. */
+    val boundaries: BoundarySet
 ) {
 
     /**

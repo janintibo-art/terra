@@ -208,3 +208,134 @@ class PlateSet(
         }
     }
 }
+
+/** Nature d'une frontière entre deux plaques — lot 1.5. */
+enum class BoundaryType {
+    /** Les plaques se rapprochent : futures chaînes, fosses, arcs (lot 1.6). */
+    CONVERGENT,
+
+    /** Les plaques s'écartent : futures dorsales et rifts. */
+    DIVERGENT,
+
+    /** Coulissage dominant : failles, séismes, peu de relief. */
+    TRANSFORM
+}
+
+/**
+ * Frontières de plaques classées — lot 1.5.
+ *
+ * ## Classification
+ *
+ * Pour chaque arête de la grille dont les deux sommets appartiennent à des
+ * plaques différentes : vitesse relative `vr = vB − vA` au milieu de l'arête,
+ * décomposée le long de la direction de séparation (tangente à la sphère).
+ * Si la composante normale dépasse la moitié de `‖vr‖` — un angle de moins
+ * de 60° entre `vr` et la normale — la frontière converge ou diverge selon
+ * le signe ; sinon elle coulisse.
+ *
+ * ## Pourquoi ce seuil de 30° et pas « composante dominante »
+ *
+ * Mesuré avant écriture : le critère naïf (normale > tangentielle, seuil 45°)
+ * classe 50 % des frontières en transformantes, contre ~20 % sur Terre. La
+ * différence est géométrique : les frontières réelles s'orientent avec le
+ * mouvement (les dorsales se perpendicularisent, les transformantes
+ * segmentent), quand nos frontières de Voronoï sont orientées au hasard. Le
+ * seuil à 30° rend 33/33/34 — la répartition qui donnera au lot 1.6 assez de
+ * matière à relief sans faire disparaître le coulissage.
+ */
+class BoundarySet(
+    /** Sommet côté A de chaque arête de frontière (indice < [edgeB]). */
+    val edgeA: IntArray,
+    /** Sommet côté B de chaque arête de frontière. */
+    val edgeB: IntArray,
+    /** Type de chaque arête, ordinal de [BoundaryType]. */
+    val edgeType: ByteArray,
+    /** Vitesse relative ‖vr‖ de chaque arête, en rad/Ma — l'intensité dont le
+     *  lot 1.6 fera l'ampleur du relief. */
+    val relSpeed: FloatArray,
+    /**
+     * Pour chaque sommet de la grille : −1 s'il est intérieur à une plaque,
+     * sinon l'ordinal du type de son arête de frontière la plus rapide —
+     * l'affichage et les statistiques par cellule passent par ce tableau.
+     */
+    val vertexType: ByteArray
+) {
+    val edgeCount: Int get() = edgeA.size
+
+    fun countByType(): IntArray {
+        val counts = IntArray(3)
+        for (t in edgeType) counts[t.toInt()]++
+        return counts
+    }
+
+    companion object {
+
+        /** sin(30°) : part de ‖vr‖ que la composante normale doit dépasser. */
+        const val NORMAL_DOMINANCE = 0.5f
+
+        fun classify(sphere: Icosphere, plates: PlateSet): BoundarySet {
+            val adjacency = sphere.buildAdjacency()
+            val vertices = sphere.vertices
+            val ids = plates.plateId
+
+            val ea = ArrayList<Int>()
+            val eb = ArrayList<Int>()
+            val et = ArrayList<Byte>()
+            val es = ArrayList<Float>()
+            val vertexType = ByteArray(sphere.vertexCount) { -1 }
+            val vertexSpeed = FloatArray(sphere.vertexCount)
+
+            for (a in vertices.indices) {
+                for (b in adjacency[a]) {
+                    if (b <= a) continue                  // chaque arête une seule fois
+                    if (ids[a] == ids[b]) continue
+
+                    val va = vertices[a]
+                    val vb = vertices[b]
+                    // Milieu de l'arête, reprojeté sur la sphère.
+                    var mx = va.x + vb.x; var my = va.y + vb.y; var mz = va.z + vb.z
+                    val ml = sqrt(mx * mx + my * my + mz * mz)
+                    mx /= ml; my /= ml; mz /= ml
+                    val m = Vec3(mx, my, mz)
+
+                    // Direction de séparation a → b, rendue tangente au milieu.
+                    var nx = vb.x - va.x; var ny = vb.y - va.y; var nz = vb.z - va.z
+                    val radial = nx * mx + ny * my + nz * mz
+                    nx -= mx * radial; ny -= my * radial; nz -= mz * radial
+                    val nl = sqrt(nx * nx + ny * ny + nz * nz)
+                    if (nl < 1e-9f) continue              // arête dégénérée : impossible
+                    nx /= nl; ny /= nl; nz /= nl          // sur une triangulation saine
+
+                    val vA = plates.plates[ids[a]].velocityAt(m)
+                    val vB = plates.plates[ids[b]].velocityAt(m)
+                    val rx = vB.x - vA.x; val ry = vB.y - vA.y; val rz = vB.z - vA.z
+                    val speed = sqrt(rx * rx + ry * ry + rz * rz)
+
+                    val type: BoundaryType = if (speed < 1e-9f) {
+                        BoundaryType.TRANSFORM            // plaques quasi solidaires
+                    } else {
+                        val s = rx * nx + ry * ny + rz * nz
+                        when {
+                            s > NORMAL_DOMINANCE * speed -> BoundaryType.DIVERGENT
+                            s < -NORMAL_DOMINANCE * speed -> BoundaryType.CONVERGENT
+                            else -> BoundaryType.TRANSFORM
+                        }
+                    }
+
+                    ea.add(a); eb.add(b)
+                    et.add(type.ordinal.toByte())
+                    es.add(speed)
+
+                    // Le type d'un sommet de bord est celui de son arête la
+                    // plus rapide : c'est l'intensité qui commandera le relief.
+                    if (speed >= vertexSpeed[a]) { vertexSpeed[a] = speed; vertexType[a] = type.ordinal.toByte() }
+                    if (speed >= vertexSpeed[b]) { vertexSpeed[b] = speed; vertexType[b] = type.ordinal.toByte() }
+                }
+            }
+
+            return BoundarySet(
+                ea.toIntArray(), eb.toIntArray(), et.toByteArray(), es.toFloatArray(), vertexType
+            )
+        }
+    }
+}

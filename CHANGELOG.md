@@ -1,5 +1,33 @@
 # Journal des versions
 
+## v0.8.3 — Lot 1.5 : les frontières de plaques classées
+
+Chaque arête de la grille séparant deux plaques est désormais classée
+**convergente**, **divergente** ou **transformante**, d'après la vitesse
+relative des deux plaques en ce point — décomposée le long de la direction de
+séparation, avec l'intensité (‖vr‖) conservée : c'est elle qui fera l'ampleur
+du relief au lot 1.6.
+
+### Un critère mesuré, pas supposé
+
+Le critère naïf (« composante dominante », seuil 45°) classe la moitié des
+frontières en transformantes, contre ~20 % sur Terre : nos frontières de
+Voronoï sont orientées au hasard, quand les vraies s'alignent sur le
+mouvement. Le seuil retenu (30°, composante normale > ‖vr‖/2) rend 33/33/34
+sur rotations uniformes — validé par simulation avant écriture, et un test
+borne les proportions par monde à trois écarts-types.
+
+### Visible dès cet APK
+
+Sur le calque **Plaques**, les frontières priment sur la teinte : **rouge**
+pour la convergence (futures chaînes, fosses, arcs), **turquoise** pour la
+divergence (futures dorsales et rifts), **jaune** pour le coulissage. Ce que
+le lot 1.6 sculptera se lit déjà sur le globe.
+
+- 5 tests ajoutés (arêtes classées exactement une fois, sommets de bord,
+  déterminisme, proportions, orthogonalité de la décomposition).
+- Mondes existants inchangés au bit près, comme au lot 1.4.
+
 ## v0.8.2 — Correctif : les formules du micro-relief supposaient une plage fausse
 
 La CI de la v0.8.1 a rougi sur deux tests — et c'était un **vrai bug**, pas

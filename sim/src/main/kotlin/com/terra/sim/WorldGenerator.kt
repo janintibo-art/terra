@@ -276,6 +276,7 @@ class WorldGenerator(
         // et le test d'empreinte le vérifie contre les références figées.
         onProgress(Stage.TECTONICS, 0f)
         val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
+        val boundaries = BoundarySet.classify(sphere, plates)
         onProgress(Stage.TECTONICS, 1f)
 
         onProgress(Stage.DONE, 1f)
@@ -291,7 +292,8 @@ class WorldGenerator(
             biomeId = biomeId,
             stats = stats,
             terrain = profile,
-            plates = plates
+            plates = plates,
+            boundaries = boundaries
         )
     }
 
