@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.9.9 — Roche et eau enfin distinguées
+
+Erreur de **conception**, pas de calibrage : je publiais comme relief le
+terrain dont les cuvettes avaient été comblées par le priority-flood. Or ce
+comblement — plusieurs centaines de mètres — n'est pas du dépôt sédimentaire,
+c'est un artefact nécessaire au routage de l'eau. Chaque cuvette devenait
+donc une colline, et l'enveloppe de dépôt sautait légitimement.
+
+Deux terrains désormais distincts :
+
+- **la roche** (`erodedM`), seule chose que l'érosion modifie et seule chose
+  publiée comme relief ;
+- **le terrain de routage**, roche + cuvettes comblées, reconstruit à chaque
+  passe (sinon les comblements s'empileraient) et utilisé uniquement pour
+  décider où va l'eau.
+
+`fillDepthM` porte la hauteur de comblement : c'est exactement la profondeur
+d'eau que le lot 1.11 posera par-dessus la roche. Un lac n'est pas de la
+roche — la structure de données le dit maintenant.
+
+Les tests de réseau suivent la même distinction : l'écoulement descend sur
+« roche + comblement », le terrain que l'eau voit, et tout chemin terrestre
+atteint bien la mer.
+
 ## v0.9.8 — L'érosion bornée par construction
 
 Le tri corrigé en v0.9.7 a rendu l'accumulation juste — et donc le débit réel

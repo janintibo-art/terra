@@ -23,17 +23,22 @@ class HydrologyTest {
     }
 
     @Test
-    fun `tout ecoulement descend strictement`() {
-        // Sans cette propriété, l'eau remonterait les pentes et le débit
-        // cumulé n'aurait aucun sens.
+    fun `tout ecoulement descend sur le terrain de routage`() {
+        // Le réseau est calculé sur la roche dont les cuvettes sont comblées
+        // — le trajet réel de l'eau, lacs traversés compris. Sur la roche
+        // nue, un écoulement peut donc franchir un seuil ; la propriété
+        // vérifiable est qu'il descend sur le terrain « roche + comblement »,
+        // qui est celui que l'eau voit.
         for (w in worlds) {
             val h = w.hydrology
             for (i in 0 until h.cellCount) {
                 val r = h.receiver[i]
                 if (r == i) continue
+                val here = h.erodedM[i] + h.fillDepthM[i]
+                val there = h.erodedM[r] + h.fillDepthM[r]
                 assertTrue(
-                    h.erodedM[r] < h.erodedM[i],
-                    "${w.name} : la cellule $i s'écoule vers $r plus haut"
+                    there < here + 1e-3f,
+                    "${w.name} : la cellule $i s'écoule vers $r plus haut ($here vs $there)"
                 )
             }
         }
@@ -57,8 +62,8 @@ class HydrologyTest {
                     assertTrue(steps <= h.cellCount, "${w.name} : chemin sans fin depuis $start")
                 }
                 assertTrue(
-                    h.erodedM[cur] <= 0f || h.fillDepthM[cur] > 0f,
-                    "${w.name} : le chemin depuis $start s'arrête à ${h.erodedM[cur]} m sans être en mer"
+                    h.erodedM[cur] <= 0f,
+                    "${w.name} : le chemin depuis $start s'arrête à ${h.erodedM[cur]} m sans atteindre la mer"
                 )
             }
         }

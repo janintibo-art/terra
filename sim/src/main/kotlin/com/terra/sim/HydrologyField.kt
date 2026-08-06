@@ -101,7 +101,21 @@ class HydrologyField(
                 }
             }
 
-            val h = altitudeM.copyOf()
+            // Deux terrains distincts — la correction de conception de la
+            // v0.9.9 :
+            //
+            //  - `bedrock` est la ROCHE, seule chose que l'érosion modifie et
+            //    seule chose publiée comme relief ;
+            //  - `routing` est la roche dont les cuvettes ont été comblées,
+            //    utilisée uniquement pour router l'eau.
+            //
+            // Les confondre revenait à transformer chaque cuvette comblée en
+            // colline de plusieurs centaines de mètres — un lac n'est pas de
+            // la roche. Le comblement est publié séparément dans
+            // [fillDepthM] : c'est exactement la profondeur d'eau que le lot
+            // 1.11 posera par-dessus le terrain.
+            val bedrock = altitudeM.copyOf()
+            val routing = altitudeM.copyOf()
             val original = altitudeM.copyOf()
 
             // Enveloppe d'érosion, par cellule et une fois pour toutes.
@@ -131,9 +145,12 @@ class HydrologyField(
             val order = IntArray(n)
 
             repeat(PASSES) {
-                priorityFlood(adjacency, h)
-                computeFlow(adjacency, edgeLen, h, receiver, slope, recvDist)
-                sortByDescendingAltitude(h, order)
+                // Le routage repart de la roche à chaque passe : sinon les
+                // comblements s'empileraient d'une passe à l'autre.
+                System.arraycopy(bedrock, 0, routing, 0, n)
+                priorityFlood(adjacency, routing)
+                computeFlow(adjacency, edgeLen, routing, receiver, slope, recvDist)
+                sortByDescendingAltitude(routing, order)
                 accumulate(order, receiver, accum)
 
                 // Incision, puis dépôt en remontant l'ordre : le sédiment
@@ -142,40 +159,42 @@ class HydrologyField(
                 java.util.Arrays.fill(sediment, 0f)
                 for (idx in 0 until n) {
                     val i = order[idx]
-                    if (receiver[i] == i || h[i] <= 0f) continue
-                    val drop = h[i] - h[receiver[i]]
+                    if (receiver[i] == i || bedrock[i] <= 0f) continue
+                    // Le dénivelé se lit sur le terrain de routage — c'est
+                    // lui qui décrit le trajet réel de l'eau, cuvettes
+                    // noyées comprises.
+                    val drop = routing[i] - routing[receiver[i]]
                     var incision = INCISION_K * sqrt(accum[i]) * slope[i]
                     if (incision > drop * MAX_INCISION_RATIO) incision = drop * MAX_INCISION_RATIO
                     if (incision < 0f) incision = 0f
 
                     val carried = incision + sediment[i]
                     val deposited = carried * DEPOSIT_FRACTION * exp(-slope[i] * 300f)
-                    var next = h[i] - incision + deposited
+                    var next = bedrock[i] - incision + deposited
                     // L'enveloppe s'applique ici, pas en fin de passe : une
                     // altitude hors bornes fausserait le réseau d'écoulement
                     // de la passe suivante avant d'être corrigée.
                     if (next < floorM[i]) next = floorM[i]
                     if (next > ceilM[i]) next = ceilM[i]
-                    h[i] = next
+                    bedrock[i] = next
                     sediment[receiver[i]] += carried - deposited
                 }
             }
 
-            // État final : un dernier comblement et un dernier réseau, pour
-            // que le débit publié décrive bien le terrain publié.
-            val beforeFill = h.copyOf()
-            priorityFlood(adjacency, h)
-            val fillDepth = FloatArray(n) { max(0f, h[it] - beforeFill[it]) }
-            computeFlow(adjacency, edgeLen, h, receiver, slope, recvDist)
-            sortByDescendingAltitude(h, order)
-            accumulate(order, receiver, accum)
-
             // La mer garde son altitude d'origine : l'érosion est un
             // phénomène terrestre, et modifier le plancher océanique ici
             // déplacerait le trait de côte sans raison physique.
-            for (i in 0 until n) if (original[i] <= 0f) h[i] = original[i]
+            for (i in 0 until n) if (original[i] <= 0f) bedrock[i] = original[i]
 
-            return HydrologyField(h, receiver, accum, fillDepth)
+            // État final : le réseau publié décrit le terrain publié.
+            System.arraycopy(bedrock, 0, routing, 0, n)
+            priorityFlood(adjacency, routing)
+            val fillDepth = FloatArray(n) { max(0f, routing[it] - bedrock[it]) }
+            computeFlow(adjacency, edgeLen, routing, receiver, slope, recvDist)
+            sortByDescendingAltitude(routing, order)
+            accumulate(order, receiver, accum)
+
+            return HydrologyField(bedrock, receiver, accum, fillDepth)
         }
 
         /**
