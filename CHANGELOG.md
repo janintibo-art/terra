@@ -1,5 +1,44 @@
 # Journal des versions
 
+## v0.11.0 — Lot 1.10b : les vallées
+
+Le terrain rendu se creuse enfin de vallées kilométriques, là où l'hydrologie
+dit que l'eau se concentre.
+
+### Le nœud, et comment il se dénoue
+
+Le débit de l'hydrologie sait **où** l'eau passe, mais à 115 km de
+résolution — mille fois trop grossier pour une vallée. Un bruit en crêtes
+fournit donc le **tracé** fin, naturellement ramifié, et le débit en règle la
+**profondeur** : une vallée existe là où le tracé est plausible ET où la
+simulation fait passer de l'eau.
+
+Quant à l'ordre — l'hydrologie a besoin des altitudes, le terrain a besoin du
+débit — il se dénoue en remarquant que l'incision est un **enjolivement du
+terrain rendu**, pas une entrée de la simulation. Grille, climat, érosion
+travaillent tous sur `altitudeAt`, que l'incision ne touche pas. On calcule
+donc l'hydrologie sur le terrain nu, puis on branche son débit pour le seul
+rendu : pas de boucle, et la grille ne peut pas diverger de la fonction.
+
+### Calibrage mesuré avant écriture
+
+Longueur d'onde 40 km, seuil 0,35 : vallées d'environ 1,5 km de large
+couvrant 7 % du sol. Creusement de 15 m pour un affluent, 68 m pour un
+fleuve, versants à 4° au plus — lisibles en descente, jamais des canyons.
+Fondus aux extrémités : rien sous 25 m d'altitude (les plaines littorales
+sont déjà plates, et creuser au rivage ferait entrer la mer), atténuation
+au-dessus de 2 500 m (les hautes crêtes sont glaciaires, pas fluviales).
+
+### Borné par construction
+
+Les deux facteurs du creusement vivent dans [0, 1] : il ne peut pas dépasser
+140 m, quoi qu'il arrive. Leçon des lots précédents, où le calibrage seul
+avait échoué trois fois. Cinq tests : borne respectée et incision agissante,
+jamais de mer ouverte, rivage intact, monde simulé inchangé, déterminisme.
+
+`GENERATION_VERSION` passe à 6 — les empreintes de grille restent valides,
+mais l'aspect du terrain change. À re-figer si la CI le demande.
+
 ## v0.10.7 — Le garde du cône mesurait au niveau de la mer
 
 Le défaut revenait sur un plateau : `sol 2 m` mais `niv max 17` à 387 m

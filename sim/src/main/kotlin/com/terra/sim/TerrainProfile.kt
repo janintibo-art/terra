@@ -98,11 +98,23 @@ class TerrainProfile(
     /** Décalage du niveau de la mer, second calibrage global : percentile de
      *  la somme bruit + structure, pour que la fraction océanique demandée
      *  survive à l'addition du relief tectonique. */
-    val seaOffsetM: Float
+    val seaOffsetM: Float,
+
+    /**
+     * Débit cumulé par cellule de grille — lot 1.10b, source de l'incision.
+     *
+     * Nul tant que l'hydrologie n'est pas calculée : le profil doit exister
+     * AVANT elle, puisqu'elle travaille sur les altitudes qu'il produit. Le
+     * générateur le renseigne ensuite par [attachFlow]. Les mondes d'essai
+     * qui construisent un profil à la main gardent simplement des vallées
+     * inactives.
+     */
+    private var flowAccum: FloatArray? = null
 ) {
 
     private val detail = Noise(seed.derive("terrain/detail"))
     private val micro = Noise(seed.derive("terrain/micro"))
+    private val valleys = Noise(seed.derive("terrain/valleys"))
 
     /**
      * Indice de départ de la recherche du sampler, par fil d'exécution : les
@@ -112,6 +124,9 @@ class TerrainProfile(
      * l'indice n'influe jamais sur la valeur — seulement sur le temps.
      */
     private val structuralHint = ThreadLocal.withInitial { intArrayOf(0) }
+
+    /** Même mécanique pour l'échantillonnage du débit : un état par fil. */
+    private val valleyHint = ThreadLocal.withInitial { intArrayOf(0) }
 
     /**
      * Altitude en mètres, négative sous le niveau de la mer.
@@ -223,7 +238,80 @@ class TerrainProfile(
         val hills = micro.fbm(p.x * 26_000f, p.y * 26_000f, p.z * 26_000f, 3)
         val breaks = micro.ridged(p.x * 300_000f + 51f, p.y * 300_000f, p.z * 300_000f - 17f, 2) - 0.5f
 
-        return base + (hills * 4.4f + breaks * 1.2f) * fade * shoreFade
+        val surface = base + (hills * 4.4f + breaks * 1.2f) * fade * shoreFade
+
+        // Les vallées creusent la surface, sans jamais la faire passer sous
+        // le niveau de la mer : une vallée qui se remplirait d'océan serait
+        // un bras de mer, pas une vallée, et déplacerait le trait de côte
+        // par rapport à la grille — donc par rapport au climat et aux biomes.
+        val cut = valleyDepthAt(p, surface)
+        return if (cut <= 0f) surface else max(1f, surface - cut)
+    }
+
+    /**
+     * Branche le débit de l'hydrologie, après coup.
+     *
+     * ## L'ordre, et pourquoi il est ainsi
+     *
+     * L'hydrologie a besoin des altitudes, qui viennent du profil ; le profil
+     * a besoin du débit pour creuser ses vallées. Le nœud se dénoue en
+     * remarquant que l'incision est un ENJOLIVEMENT du terrain rendu, pas une
+     * entrée de la simulation : la grille, le climat et l'érosion travaillent
+     * tous sur `altitudeAt`, que l'incision ne touche pas. On calcule donc
+     * l'hydrologie sur le terrain nu, puis on branche son débit pour le seul
+     * rendu — sans boucle, et sans que la grille et la fonction divergent.
+     */
+    fun attachFlow(accum: FloatArray) {
+        flowAccum = accum
+    }
+
+    /**
+     * Creusement des vallées en un point, en mètres (positif = à retrancher).
+     *
+     * ## Ce que ce champ combine
+     *
+     * Le débit de l'hydrologie dit **où** l'eau se concentre, mais à 115 km
+     * de résolution — mille fois trop grossier pour une vallée. Un bruit en
+     * crêtes fournit donc le **tracé** fin, naturellement ramifié, et le
+     * débit en règle la **profondeur**. Une vallée existe donc là où le bruit
+     * dessine une ligne d'écoulement plausible ET où la simulation dit que
+     * l'eau passe.
+     *
+     * ## Calibrage, mesuré avant écriture
+     *
+     * Longueur d'onde 40 km et seuil 0,35 donnent des vallées de ~1,5 km de
+     * large occupant 7 % du sol ; le creusement va de 15 m pour un affluent à
+     * 68 m pour un fleuve, avec des versants à 4° au plus — lisibles en
+     * descente, jamais des canyons.
+     *
+     * ## Borné par construction
+     *
+     * Les deux facteurs vivent dans [0, 1] : le creusement ne peut pas
+     * dépasser [VALLEY_DEPTH_MAX_M], quoi qu'il arrive. Leçon des lots
+     * précédents, où le calibrage seul avait échoué trois fois.
+     */
+    fun valleyDepthAt(p: Vec3, altitudeM: Float): Float {
+        val accum = flowAccum ?: return 0f
+        if (altitudeM <= VALLEY_MIN_ALTITUDE_M) return 0f
+
+        // Tracé : le bruit en crêtes, seuillé, donne des lignes ramifiées.
+        val ridge = valleys.ridged(
+            p.x * VALLEY_FREQ, p.y * VALLEY_FREQ + 19f, p.z * VALLEY_FREQ - 7f, 4
+        )
+        val line = (ridge - VALLEY_THRESHOLD) / (1f - VALLEY_THRESHOLD)
+        if (line <= 0f) return 0f
+
+        // Débit : racine, normalisée sur un fleuve de référence.
+        val flow = structuralSampler.sample(accum, p, valleyHint.get())
+        val strength = clamp01(sqrtApprox(flow / VALLEY_FLOW_REFERENCE))
+
+        // Fondus d'altitude : pas de vallée sur les plaines littorales déjà
+        // plates, ni sur les hautes crêtes, qui sont glaciaires et non
+        // fluviales.
+        val lowFade = clamp01((altitudeM - VALLEY_MIN_ALTITUDE_M) / 35f)
+        val highFade = 1f - clamp01((altitudeM - 2_500f) / 1_200f)
+
+        return VALLEY_DEPTH_MAX_M * clamp01(line) * strength * lowFade * highFade
     }
 
     /**
@@ -246,6 +334,27 @@ class TerrainProfile(
          * que le relief fin reste aussi marqué qu'avant de près.
          */
         const val DETAIL_AMPLITUDE_M = 52f
+
+        /** Creusement maximal d'une vallée, en mètres. Borne stricte. */
+        const val VALLEY_DEPTH_MAX_M = 140f
+
+        /** Fréquence du réseau : longueur d'onde ~40 km sur la sphère unité. */
+        const val VALLEY_FREQ = 1_000f
+
+        /** Seuil du bruit en crêtes : règle la largeur (~1,5 km) et la
+         *  couverture (~7 % du sol). */
+        const val VALLEY_THRESHOLD = 0.35f
+
+        /** Débit d'un fleuve de référence, en cellules drainées. */
+        const val VALLEY_FLOW_REFERENCE = 400f
+
+        /** Pas de vallée sous cette altitude : les plaines littorales sont
+         *  déjà plates, et creuser près du rivage ferait entrer la mer. */
+        const val VALLEY_MIN_ALTITUDE_M = 25f
+
+        /** Racine carrée sans dépendance à java.lang.Math. */
+        private fun sqrtApprox(x: Float): Float =
+            if (x <= 0f) 0f else kotlin.math.sqrt(x)
 
         /**
          * Conversion du champ de bruit brut en mètres — la formule unique que

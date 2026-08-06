@@ -325,6 +325,12 @@ class WorldGenerator(
         // lot suivant portera l'érosion dans le terrain fin lui-même.
         onProgress(Stage.HYDROLOGY, 0f)
         val hydrology = HydrologyField.generate(sphere, altitudeM)
+
+        // Le débit revient enjoliver le terrain RENDU : les vallées (lot
+        // 1.10b) se creusent là où la simulation dit que l'eau se concentre.
+        // Aucune boucle — l'incision ne touche pas `altitudeAt`, donc ni la
+        // grille, ni le climat, ni l'érosion qui viennent d'être calculés.
+        profile.attachFlow(hydrology.flowAccum)
         onProgress(Stage.HYDROLOGY, 1f)
 
         onProgress(Stage.DONE, 1f)
