@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.9.4 — Qualité graphique : rivages fondus et halo de limbe
+
+Lot graphique ciblé sur les deux défauts que les captures d'essai désignaient.
+
+### Fin des côtes en dents de scie
+
+Le trait de côte sautait de la couleur terre à la couleur mer au pas de la
+maille, et le reflet de l'eau était binaire par facette. Le matériau devient
+**continu par sommet** (0 terre, 1 eau, fondu sur ~23 m d'altitude autour du
+rivage) : le reflet s'éteint en dégradé sur la frange littorale. Côté
+couleur, une **frange humide** fond la terre vers l'eau claire sous douze
+mètres d'altitude. L'escalier devient un dégradé de plage.
+
+### Halo atmosphérique en mode sol
+
+Vu d'orbite, le rendu à tuiles n'avait pas le halo bleu du limbe que le globe
+classique possède — d'où son aspect « sec » de loin. Le même halo entre dans
+le shader des tuiles, calculé au sommet et **modulé par l'altitude** : plein
+au-delà de 300 km, nul au sol, car en vue rasante la direction de visée frôle
+la sphère partout et le halo voilerait la scène entière de bleu.
+
+Aucun changement de génération : `GENERATION_VERSION` reste à 4, les
+empreintes figées restent valides.
+
 ## v0.9.3 — Correctif : la tectonique suit le caractère du monde
 
 Deux tests de glace encore rouges après la v0.9.2, et la simulation fidèle

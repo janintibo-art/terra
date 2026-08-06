@@ -100,6 +100,7 @@ class TileMesh(
         val colR = FloatArray(verts * verts)
         val colG = FloatArray(verts * verts)
         val colB = FloatArray(verts * verts)
+        val mat = FloatArray(verts * verts)
 
         // Indice de départ pour la marche du CoarseSampler : chaque sommet part
         // de la cellule trouvée pour le précédent, ce qui réduit la recherche à
@@ -127,6 +128,12 @@ class TileMesh(
                 hint = sampler.nearestVertex(df, hint)
                 val jitter = if (a > 0f) profile.colorJitterAt(df) else 1f
                 colorFor(sampler, hint, df, a, jitter, profile.params, colR, colG, colB, idx)
+                // Matériau continu : 0 en terre franche, 1 en eau franche,
+                // dégradé sur ~23 m autour du rivage. Le binaire par facette
+                // dessinait le trait de côte en dents de scie à l'échelle de
+                // la maille — le défaut le plus visible des premières
+                // descentes côtières.
+                mat[idx] = clamp01((8f - a) / 23f)
                 idx++
             }
         }
@@ -146,8 +153,8 @@ class TileMesh(
                 val v10 = j * verts + i + 1
                 val v01 = (j + 1) * verts + i
                 val v11 = (j + 1) * verts + i + 1
-                o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)
-                o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)
+                o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)
+                o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)
             }
         }
 
@@ -156,10 +163,10 @@ class TileMesh(
         // prolonge, ce qui le rend invisible tant qu'il ne fait que boucher
         // une fissure.
         val depth = skirtDepthM(tile, planetRadiusM)
-        o = emitSkirtEdge(o, 0, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)                    // bord t=0
-        o = emitSkirtEdge(o, (verts - 1) * verts, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB) // bord t=1
-        o = emitSkirtEdge(o, 0, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)               // bord s=0
-        emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)           // bord s=1
+        o = emitSkirtEdge(o, 0, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)                    // bord t=0
+        o = emitSkirtEdge(o, (verts - 1) * verts, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat) // bord t=1
+        o = emitSkirtEdge(o, 0, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)               // bord s=0
+        emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)           // bord s=1
     }
 
     /**
@@ -180,7 +187,7 @@ class TileMesh(
         offset: Int, a: Int, b: Int, c: Int,
         relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray, alt: FloatArray,
         dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
-        colR: FloatArray, colG: FloatArray, colB: FloatArray
+        colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray
     ): Int {
         var i1 = b
         var i2 = c
@@ -204,18 +211,15 @@ class TileMesh(
             fnx = dirX[a]; fny = dirY[a]; fnz = dirZ[a]
         }
 
-        // Une facette est aquatique seulement si ses trois sommets le sont : le
-        // trait de côte reste net au lieu de baver sur la mer.
-        val water = alt[a] <= 0f && alt[i1] <= 0f && alt[i2] <= 0f
-        val material = if (water) MATERIAL_WATER else MATERIAL_LAND
-
         // Émission déroulée : une boucle sur un tableau temporaire allouerait
         // 640 objets par tuile, multipliés par des dizaines de tuiles par
-        // seconde sur les fils de travail.
+        // seconde sur les fils de travail. Le matériau est celui du sommet,
+        // interpolé par le GPU : le reflet de l'eau s'éteint en fondu sur la
+        // frange littorale au lieu de s'arrêter au bord d'une facette.
         var o = offset
-        o = emitVertex(o, relX[a], relY[a], relZ[a], colR[a], colG[a], colB[a], fnx, fny, fnz, material)
-        o = emitVertex(o, relX[i1], relY[i1], relZ[i1], colR[i1], colG[i1], colB[i1], fnx, fny, fnz, material)
-        o = emitVertex(o, relX[i2], relY[i2], relZ[i2], colR[i2], colG[i2], colB[i2], fnx, fny, fnz, material)
+        o = emitVertex(o, relX[a], relY[a], relZ[a], colR[a], colG[a], colB[a], fnx, fny, fnz, mat[a])
+        o = emitVertex(o, relX[i1], relY[i1], relZ[i1], colR[i1], colG[i1], colB[i1], fnx, fny, fnz, mat[i1])
+        o = emitVertex(o, relX[i2], relY[i2], relZ[i2], colR[i2], colG[i2], colB[i2], fnx, fny, fnz, mat[i2])
         return o
     }
 
@@ -255,7 +259,7 @@ class TileMesh(
         offset: Int, start: Int, stride: Int, verts: Int, depth: Double,
         relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray, alt: FloatArray,
         dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
-        colR: FloatArray, colG: FloatArray, colB: FloatArray
+        colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray
     ): Int {
         var o = offset
         val n = verts - 1
@@ -278,13 +282,10 @@ class TileMesh(
             val outY = relY[a] - dirY[a] * radial
             val outZ = relZ[a] - dirZ[a] * radial
 
-            val water = alt[a] <= 0f && alt[b] <= 0f
-            val material = if (water) MATERIAL_WATER else MATERIAL_LAND
-
             o = emitSkirtTriangle(o, relX[a], relY[a], relZ[a], relX[b], relY[b], relZ[b], axL, ayL, azL,
-                outX, outY, outZ, dirX[a], dirY[a], dirZ[a], colR[a], colG[a], colB[a], material)
+                outX, outY, outZ, dirX[a], dirY[a], dirZ[a], colR[a], colG[a], colB[a], mat[a])
             o = emitSkirtTriangle(o, relX[b], relY[b], relZ[b], bxL, byL, bzL, axL, ayL, azL,
-                outX, outY, outZ, dirX[b], dirY[b], dirZ[b], colR[b], colG[b], colB[b], material)
+                outX, outY, outZ, dirX[b], dirY[b], dirZ[b], colR[b], colG[b], colB[b], mat[b])
         }
         return o
     }
@@ -396,9 +397,20 @@ class TileMesh(
                 }
             } else {
                 val tint = (0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)) * jitter
-                outR[idx] = clamp01(biome.r * tint)
-                outG[idx] = clamp01(biome.g * tint)
-                outB[idx] = clamp01(biome.b * tint)
+                var r = clamp01(biome.r * tint)
+                var g = clamp01(biome.g * tint)
+                var b = clamp01(biome.b * tint)
+                // Frange humide : sous douze mètres d'altitude, la terre se
+                // fond vers l'eau claire — c'est elle qui efface les dents de
+                // scie du trait de côte, l'autre moitié venant du matériau
+                // spéculaire continu.
+                val wet = 1f - clamp01(altitudeM / 12f)
+                if (wet > 0f) {
+                    r += (0.30f - r) * wet * 0.55f
+                    g += (0.52f - g) * wet * 0.55f
+                    b += (0.60f - b) * wet * 0.55f
+                }
+                outR[idx] = r; outG[idx] = g; outB[idx] = b
             }
         }
     }

@@ -147,6 +147,7 @@ class PlanetRenderer(
     private var tUSun = -1
     private var tUHaze = -1
     private var tUHazeDensity = -1
+    private var tURimStrength = -1
 
     private var skyProgram = 0
     private var skyVbo = 0
@@ -231,6 +232,7 @@ class PlanetRenderer(
             tUSun = GLES20.glGetUniformLocation(tileProgram, "uSun")
             tUHaze = GLES20.glGetUniformLocation(tileProgram, "uHaze")
             tUHazeDensity = GLES20.glGetUniformLocation(tileProgram, "uHazeDensity")
+            tURimStrength = GLES20.glGetUniformLocation(tileProgram, "uRimStrength")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -407,6 +409,12 @@ class PlanetRenderer(
         GLES20.glUniform1f(tUHazeDensity, hazeDensity)
         val dayF = dayFactorAtEye(snapshot, sunLx, sunLz)
         GLES20.glUniform3f(tUHaze, 0.62f * dayF + 0.01f, 0.72f * dayF + 0.012f, 0.85f * dayF + 0.02f)
+
+        // Halo atmosphérique du limbe : plein en orbite, nul au sol — en vue
+        // rasante, la direction de visée est presque tangente partout et le
+        // halo voilerait toute la scène de bleu.
+        val rimStrength = (((snapshot.altitudeM - 60_000.0) / 240_000.0).coerceIn(0.0, 1.0)).toFloat()
+        GLES20.glUniform1f(tURimStrength, rimStrength)
 
         var triangles = 0
         for (tile in drawList) {
@@ -800,6 +808,7 @@ class PlanetRenderer(
             uniform vec3 uCenterWorld;  // centre de tuile, repere planete
             uniform vec3 uSun;          // soleil, repere planete
             uniform float uHazeDensity;
+            uniform float uRimStrength;
 
             attribute vec3 aPosition;   // relative au centre de tuile, metres
             attribute vec3 aColor;
@@ -811,6 +820,7 @@ class PlanetRenderer(
             varying float vDay;
             varying float vSpec;
             varying float vFog;
+            varying float vRim;
 
             void main() {
                 vec3 rel = aPosition + uOffset;
@@ -823,13 +833,19 @@ class PlanetRenderer(
                 vDay = clamp(dot(sph, sun) * 2.2 + 0.22, 0.0, 1.0);
                 vDiffuse = max(dot(normalize(aNormal), sun), 0.0);
 
-                float spec = 0.0;
-                if (aMaterial > 0.5) {
-                    vec3 view = normalize(-rel);
-                    vec3 halfway = normalize(sun + view);
-                    spec = pow(max(dot(sph, halfway), 0.0), 160.0) * 0.32;
-                }
-                vSpec = spec;
+                vec3 view = normalize(-rel);
+
+                // Le materiau est desormais CONTINU (0 terre, 1 eau, fondu au
+                // rivage) : le reflet s'eteint en degrade sur la frange
+                // littorale au lieu de s'arreter au bord d'une facette.
+                float waterness = clamp((aMaterial - 0.25) * 2.0, 0.0, 1.0);
+                vec3 halfway = normalize(sun + view);
+                vSpec = pow(max(dot(sph, halfway), 0.0), 160.0) * 0.32 * waterness;
+
+                // Halo du limbe, comme le globe : l'atmosphere s'epaissit la
+                // ou le regard frole la sphere. Calcule au sommet, borne [0,1].
+                float rim = pow(1.0 - max(dot(sph, view), 0.0), 3.5);
+                vRim = rim * uRimStrength * vDay;
 
                 float dist = length(rel);
                 vFog = 1.0 - exp(-dist * uHazeDensity);
@@ -847,10 +863,12 @@ class PlanetRenderer(
             varying float vDay;
             varying float vSpec;
             varying float vFog;
+            varying float vRim;
 
             void main() {
                 vec3 color = vColor * (0.12 + 0.88 * vDiffuse) * vDay;
                 color += vec3(0.90, 0.94, 1.0) * vSpec * vDay;
+                color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
                 // Lueur nocturne plus franche qu'en orbite : au sol, un noir
                 // total rend la face nocturne intestable. Clair de lune
                 // implicite, en attendant les vraies lunes du lot 2.12.
