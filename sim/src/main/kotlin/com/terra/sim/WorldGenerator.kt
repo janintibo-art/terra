@@ -277,6 +277,7 @@ class WorldGenerator(
         onProgress(Stage.TECTONICS, 0f)
         val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
         val boundaries = BoundarySet.classify(sphere, plates)
+        val boundaryDistance = BoundaryDistanceField.generate(sphere, plates, boundaries)
         onProgress(Stage.TECTONICS, 1f)
 
         onProgress(Stage.DONE, 1f)
@@ -293,7 +294,8 @@ class WorldGenerator(
             stats = stats,
             terrain = profile,
             plates = plates,
-            boundaries = boundaries
+            boundaries = boundaries,
+            boundaryDistance = boundaryDistance
         )
     }
 

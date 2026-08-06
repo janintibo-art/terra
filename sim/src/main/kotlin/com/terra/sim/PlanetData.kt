@@ -51,7 +51,10 @@ class PlanetData(
     val plates: PlateSet,
 
     /** Frontières de plaques classées — lot 1.5. Même statut que [plates]. */
-    val boundaries: BoundarySet
+    val boundaries: BoundarySet,
+
+    /** Distances aux frontières par type — lot 1.8, prérequis du relief 1.6. */
+    val boundaryDistance: BoundaryDistanceField
 ) {
 
     /**

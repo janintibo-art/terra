@@ -1,5 +1,36 @@
 # Journal des versions
 
+## v0.9.0 — L'infrastructure du relief tectonique (lot 1.8, remonté)
+
+Prérequis du lot 1.6, livré seul pour garder le risque maîtrisé : rien ne
+change encore au relief, `GENERATION_VERSION` reste à 3.
+
+### FieldSampler : les champs de grille deviennent des fonctions
+
+Interpolation barycentrique par déterminants sur les triangles de
+l'icosphère : exacte aux sommets, continue à travers les arêtes, partition de
+l'unité — trois propriétés **par construction**, chacune testée (dont la
+reproduction d'un champ linéaire à l'erreur de corde près, calculée). C'est
+le pont qui permettra au relief tectonique — puis à l'érosion, l'hydrologie,
+le climat — d'entrer dans `TerrainProfile` sans violer l'invariant n°3.
+
+### Champ de distance aux frontières
+
+Dijkstra multi-source par type de frontière, transportant l'intensité et,
+pour les convergentes, la nature des croûtes (collision continentale,
+subduction océan-continent, arc océan-océan) — tout ce que le lot 1.6
+transformera en chaînes, cordillères, fosses et dorsales. Les ex æquo de la
+file sont départagés par un ordre total : sans cela, le relief aurait pu
+différer d'un appareil à l'autre le long des médiatrices entre frontières.
+
+### Visible dès cet APK
+
+Le calque Plaques gagne un **halo** : la teinte de chaque frontière déteint
+sur ~600 km proportionnellement à la proximité — la portée du futur relief se
+lit, pas seulement son trait.
+
+- 8 tests ajoutés.
+
 ## v0.8.6 — Correctif : carrés blancs en avançant au sol
 
 Signalé à l'essai : de près, en se déplaçant, des carrés clairs. Diagnostic :

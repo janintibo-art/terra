@@ -69,7 +69,23 @@ object LayerPalette {
         }
         val p = data.plates.plateOf(i)
         val dim = if (data.altitudeM[i] < 0f) 0.55f else 1f
-        out[0] = p.r * dim; out[1] = p.g * dim; out[2] = p.b * dim
+        var r = p.r * dim; var g = p.g * dim; var b = p.b * dim
+
+        // Halo : la teinte de la frontière la plus proche déteint sur ~600 km
+        // (0,094 rad), proportionnellement à sa proximité — on lit d'un coup
+        // d'œil la portée du futur relief du lot 1.6, pas seulement son trait.
+        val bd = data.boundaryDistance
+        val dc = bd.distConvergent[i]
+        val dd = bd.distDivergent[i]
+        val haloRad = 0.094f
+        if (dc < dd && dc < haloRad) {
+            val w = (1f - dc / haloRad) * 0.55f
+            r += (0.86f - r) * w; g += (0.16f - g) * w; b += (0.10f - b) * w
+        } else if (dd < haloRad) {
+            val w = (1f - dd / haloRad) * 0.55f
+            r += (0.10f - r) * w; g += (0.74f - g) * w; b += (0.62f - b) * w
+        }
+        out[0] = r; out[1] = g; out[2] = b
     }
 
     private fun biome(data: PlanetData, i: Int, out: FloatArray) {
