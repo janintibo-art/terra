@@ -181,19 +181,33 @@ class HydrologyField(
         private const val EPSILON = 0.001f
 
         /**
-         * Clé de file : altitude puis indice, en un Long dont l'ordre naturel
-         * est l'ordre voulu. Le motif de bits d'un float ne se trie comme le
-         * réel que pour les positifs : on inverse donc les bits des négatifs,
-         * transformation standard et exactement réversible.
+         * Clé de file : altitude en bits hauts, indice en bits bas, dans un
+         * Long dont l'ordre **signé** — celui de Java — est l'ordre voulu.
+         *
+         * Deux transformations, et la seconde a coûté un correctif (v0.9.7) :
+         *
+         *  1. le motif de bits d'un float ne se trie comme le réel que pour
+         *     les positifs ; on inverse donc tous les bits des négatifs et
+         *     l'on pose le bit de signe des positifs ;
+         *  2. le résultat est un entier **non signé** de 32 bits ; décalé de
+         *     32, son bit de poids fort devient le bit de signe du Long, et
+         *     la comparaison signée inverse l'ordre. Le XOR final rétablit
+         *     l'ordre non signé dans le domaine signé.
+         *
+         * L'étape 2 manquait : les terres se triaient avant les fonds marins,
+         * l'accumulation de débit remontait le réseau à l'envers. La première
+         * validation Python n'avait pas vu le défaut parce qu'elle raisonnait
+         * en entiers non signés — l'arithmétique de Java, elle, est signée.
          */
         private fun packKey(altitude: Float, index: Int): Long {
             val bits = java.lang.Float.floatToIntBits(altitude)
             val sortable = if (bits < 0) bits.inv() else bits or Int.MIN_VALUE
-            return (sortable.toLong() and 0xFFFFFFFFL shl 32) or (index.toLong() and 0xFFFFFFFFL)
+            val key = ((sortable.toLong() and 0xFFFFFFFFL) shl 32) or (index.toLong() and 0xFFFFFFFFL)
+            return key xor Long.MIN_VALUE
         }
 
         private fun unpackAltitude(key: Long): Float {
-            val sortable = (key ushr 32).toInt()
+            val sortable = ((key xor Long.MIN_VALUE) ushr 32).toInt()
             val bits = if (sortable < 0) sortable and Int.MAX_VALUE else sortable.inv()
             return java.lang.Float.intBitsToFloat(bits)
         }
@@ -237,6 +251,16 @@ class HydrologyField(
             keys.sort()
             for (k in keys.indices) out[k] = (keys[k] and 0xFFFFFFFFL).toInt()
         }
+
+        /**
+         * Accès de test à la clé de tri : cette primitive est le cœur du
+         * déterminisme et de l'ordre d'accumulation, et son bug de v0.9.6
+         * n'était visible que par ses effets lointains. Elle mérite d'être
+         * testable directement, quitte à élargir un peu sa visibilité.
+         */
+        internal fun packKeyForTest(altitude: Float, index: Int): Long = packKey(altitude, index)
+
+        internal fun unpackAltitudeForTest(key: Long): Float = unpackAltitude(key)
 
         /** Débit cumulé : chaque cellule verse son eau à son receveur. */
         private fun accumulate(order: IntArray, receiver: IntArray, accum: FloatArray) {

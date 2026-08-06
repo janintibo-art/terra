@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.9.7 — Correctif : la clé de tri de l'hydrologie triait à l'envers
+
+Trois tests rouges sur la v0.9.6, une seule cause : dans `packKey`, le
+décalage de 32 bits plaçait le bit de poids fort de la clé sur le **bit de
+signe du Long**. Java comparant les Long en signé, les altitudes positives
+se triaient avant les fonds marins — l'accumulation de débit remontait donc
+le réseau à l'envers, d'où la conservation violée, la croissance vers l'aval
+inversée et l'érosion hors bornes.
+
+Ma validation Python de cette fonction avait raisonné en entiers **non
+signés** et n'avait rien vu. Elle a été refaite en simulant l'arithmétique
+signée de Java, seule pertinente ici, et le correctif (XOR avec le bit de
+signe — la transformation standard) y est vérifié : ordre préservé,
+relecture exacte, ex æquo départagés par indice.
+
+Trois tests nouveaux portent maintenant sur la clé **elle-même** : son bug
+n'était visible que par des effets lointains, ce qui allonge inutilement tout
+diagnostic. Une primitive dont la justesse n'est pas évidente mérite son
+test direct. Deux avertissements de compilation nettoyés au passage.
+
 ## v0.9.6 — Lot 1.9 : érosion et réseau d'écoulement
 
 ### Une limite constatée avant d'écrire, pas après

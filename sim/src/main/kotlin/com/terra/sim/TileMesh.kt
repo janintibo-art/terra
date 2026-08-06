@@ -153,8 +153,8 @@ class TileMesh(
                 val v10 = j * verts + i + 1
                 val v01 = (j + 1) * verts + i
                 val v11 = (j + 1) * verts + i + 1
-                o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)
-                o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)
+                o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+                o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
             }
         }
 
@@ -163,10 +163,10 @@ class TileMesh(
         // prolonge, ce qui le rend invisible tant qu'il ne fait que boucher
         // une fissure.
         val depth = skirtDepthM(tile, planetRadiusM)
-        o = emitSkirtEdge(o, 0, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)                    // bord t=0
-        o = emitSkirtEdge(o, (verts - 1) * verts, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat) // bord t=1
-        o = emitSkirtEdge(o, 0, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)               // bord s=0
-        emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB, mat)           // bord s=1
+        o = emitSkirtEdge(o, 0, 1, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)                    // bord t=0
+        o = emitSkirtEdge(o, (verts - 1) * verts, 1, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat) // bord t=1
+        o = emitSkirtEdge(o, 0, verts, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)               // bord s=0
+        emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)           // bord s=1
     }
 
     /**
@@ -185,7 +185,7 @@ class TileMesh(
      */
     private fun emitTriangle(
         offset: Int, a: Int, b: Int, c: Int,
-        relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray, alt: FloatArray,
+        relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray,
         dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
         colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray
     ): Int {
@@ -257,7 +257,7 @@ class TileMesh(
      */
     private fun emitSkirtEdge(
         offset: Int, start: Int, stride: Int, verts: Int, depth: Double,
-        relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray, alt: FloatArray,
+        relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray,
         dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
         colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray
     ): Int {

@@ -139,3 +139,42 @@ class HydrologyTest {
         assertTrue(a.hydrology.flowAccum.contentEquals(worlds[0].hydrology.flowAccum))
     }
 }
+
+/**
+ * La clé de tri de l'hydrologie, testée pour elle-même.
+ *
+ * Le bug de la v0.9.6 tenait dans cette seule fonction : le décalage de 32
+ * bits posait le bit de signe du Long et inversait l'ordre pour les
+ * altitudes positives. Aucun test ne la regardait directement — seuls ses
+ * effets lointains (débit) rougissaient, ce qui rend le diagnostic bien plus
+ * long. Une primitive dont la justesse n'est pas évidente mérite son test.
+ */
+class HydrologyKeyTest {
+
+    @Test
+    fun `l ordre des cles suit l ordre des altitudes`() {
+        val altitudes = floatArrayOf(-9000f, -1500f, -0.5f, 0f, 0.5f, 120f, 3400f, 8848f)
+        var previous = Long.MIN_VALUE
+        for ((i, a) in altitudes.withIndex()) {
+            val key = HydrologyField.packKeyForTest(a, i)
+            assertTrue(key > previous, "clé non croissante à l'altitude $a")
+            previous = key
+        }
+    }
+
+    @Test
+    fun `l altitude se relit exactement`() {
+        for (a in floatArrayOf(-6500f, -12.25f, 0f, 1f, 987.5f, 8848f)) {
+            assertEquals(a, HydrologyField.unpackAltitudeForTest(HydrologyField.packKeyForTest(a, 42)), 0f)
+        }
+    }
+
+    @Test
+    fun `les ex aequo sont departages par indice`() {
+        // C'est cette propriété qui rend le Dijkstra et le tri déterministes
+        // d'une machine à l'autre.
+        assertTrue(
+            HydrologyField.packKeyForTest(100f, 7) < HydrologyField.packKeyForTest(100f, 9)
+        )
+    }
+}
