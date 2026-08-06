@@ -42,6 +42,7 @@ class WorldGenerator(
         CLIMATE("Établissement du climat"),
         BIOMES("Répartition des biomes"),
         TECTONICS("Découpage des plaques"),
+        HYDROLOGY("Érosion et écoulement"),
         DONE("Monde prêt")
     }
 
@@ -314,6 +315,18 @@ class WorldGenerator(
             biomeCounts = counts
         )
 
+        // --- Étape 6 : érosion et hydrologie (lot 1.9) ---
+        //
+        // Après le climat : l'érosion travaille sur le relief final, et son
+        // résultat REMPLACE les altitudes de la grille. Le terrain fin, lui,
+        // reste la somme bruit + structure : l'écart entre les deux est
+        // l'abaissement d'érosion, borné à quelques dizaines de mètres
+        // (médiane 8 m, mesuré) — sous la tolérance de TerrainLodTest. Le
+        // lot suivant portera l'érosion dans le terrain fin lui-même.
+        onProgress(Stage.HYDROLOGY, 0f)
+        val hydrology = HydrologyField.generate(sphere, altitudeM)
+        onProgress(Stage.HYDROLOGY, 1f)
+
         onProgress(Stage.DONE, 1f)
 
         return PlanetData(
@@ -329,7 +342,8 @@ class WorldGenerator(
             terrain = profile,
             plates = plates,
             boundaries = boundaries,
-            boundaryDistance = boundaryDistance
+            boundaryDistance = boundaryDistance,
+            hydrology = hydrology
         )
     }
 

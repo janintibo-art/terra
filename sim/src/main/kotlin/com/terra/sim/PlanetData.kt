@@ -54,7 +54,11 @@ class PlanetData(
     val boundaries: BoundarySet,
 
     /** Distances aux frontières par type — lot 1.8, prérequis du relief 1.6. */
-    val boundaryDistance: BoundaryDistanceField
+    val boundaryDistance: BoundaryDistanceField,
+
+    /** Érosion et réseau d'écoulement — lot 1.9. Le débit qu'il porte
+     *  guidera les rivières (1.10), les lacs (1.11) et l'incision fine. */
+    val hydrology: HydrologyField
 ) {
 
     /**

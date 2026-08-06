@@ -1,5 +1,45 @@
 # Journal des versions
 
+## v0.9.6 — Lot 1.9 : érosion et réseau d'écoulement
+
+### Une limite constatée avant d'écrire, pas après
+
+À 115 km entre deux cellules de la grille, **aucune vallée ne peut se
+creuser** — une vallée fait 1 à 10 km de large. Trois ordres de grandeur de
+coefficient balayés en simulation : le relief finit par fondre, jamais par se
+ciseler. Les vallées visibles viendront du terrain fin, au lot suivant,
+guidées par ce que ce lot calcule.
+
+### Ce que le lot livre
+
+- **Débit cumulé** par cellule — la matière première des rivières (1.10), des
+  lacs (1.11) et de l'incision fine à venir.
+- **Directions d'écoulement** : toute cellule terrestre a un chemin
+  strictement descendant jusqu'à la mer, garanti par un **priority-flood**
+  (algorithme de Barnes, une passe, O(n log n)) — la relaxation itérative ne
+  converge jamais sur une cuvette large.
+- **Cuvettes comblées** avec leur profondeur conservée : les futurs lacs.
+- **Abaissement différencié** : médiane 8 m, 90ᵉ centile 56 m. Les versants à
+  fort débit s'usent, les crêtes tiennent, le sédiment se dépose en piémont.
+  Effet régional, assumé comme tel.
+
+Coût mesuré en simulation puis estimé : ~100 ms pour 25 passes, sur les
+2 200 ms de génération.
+
+### Visible dès cet APK
+
+Nouveau calque **Eaux** : débit en bleu croissant sur échelle logarithmique
+(trois décades — une échelle linéaire ne montrerait que le fleuve principal),
+cuvettes comblées en turquoise.
+
+### Tests
+
+6 tests de propriétés plutôt que d'apparence : tout écoulement descend
+strictement, tout chemin terrestre atteint la mer sans cycle, le débit se
+conserve (somme aux exutoires = nombre de cellules) et croît vers l'aval,
+l'abaissement reste dans les bornes mesurées, la mer est intacte,
+la génération est déterministe.
+
 ## v0.9.5 — Correctif : le premier plan disparaissait en vue rasante
 
 Signalé à l'essai : au ras du sol, un aplat bleu-gris sous l'horizon — le

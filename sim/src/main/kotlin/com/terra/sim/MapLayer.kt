@@ -21,7 +21,8 @@ enum class MapLayer(val label: String, val shortLabel: String) {
     TEMPERATURE("Température", "Temp."),
     PRECIPITATION("Précipitations", "Pluie"),
     CLIMATE_ZONES("Zones climatiques", "Zones"),
-    PLATES("Plaques tectoniques", "Plaques");
+    PLATES("Plaques tectoniques", "Plaques"),
+    RIVERS("Écoulement et érosion", "Eaux");
 
     companion object {
         fun next(current: MapLayer): MapLayer {
@@ -46,7 +47,33 @@ object LayerPalette {
             MapLayer.PRECIPITATION -> precipitation(data, index, out)
             MapLayer.CLIMATE_ZONES -> climateZone(data, index, out)
             MapLayer.PLATES -> plate(data, index, out)
+            MapLayer.RIVERS -> rivers(data, index, out)
         }
+    }
+
+    /**
+     * Écoulement : le débit cumulé en bleu croissant sur fond de relief, les
+     * cuvettes comblées (futurs lacs) en turquoise. C'est la carte de ce que
+     * les lots 1.10 et 1.11 transformeront en rivières et en lacs.
+     */
+    private fun rivers(data: PlanetData, i: Int, out: FloatArray) {
+        val h = data.hydrology
+        if (data.altitudeM[i] <= 0f) {
+            out[0] = 0.06f; out[1] = 0.10f; out[2] = 0.20f
+            return
+        }
+        if (h.fillDepthM[i] > 5f) {
+            out[0] = 0.20f; out[1] = 0.75f; out[2] = 0.72f
+            return
+        }
+        // Échelle logarithmique : le débit s'étale sur trois décades, une
+        // échelle linéaire ne montrerait que le fleuve principal.
+        val flow = kotlin.math.ln(1f + h.flowAccum[i]) / kotlin.math.ln(1f + 800f)
+        val t = clamp01(flow)
+        val base = 0.30f + 0.35f * clamp01(data.altitudeM[i] / data.params.maxAltitudeM)
+        out[0] = base * (1f - t) + 0.05f * t
+        out[1] = base * (1f - t) + 0.45f * t
+        out[2] = base * (1f - t) + 0.95f * t
     }
 
     /**
