@@ -1,5 +1,28 @@
 # Journal des versions
 
+## v0.10.3 — Le premier plan, cause trouvée : une course entre fils
+
+Le magenta a tranché : l'aplat du bas d'écran était bien le ciel, donc un
+manque de géométrie ; et `ScreenCoverageTest` innocentait la sélection. Il ne
+restait que le plan de coupe — et la ligne de coupe rectiligne des captures
+en était la signature.
+
+La cause exacte : `raycaster` était écrit sur le fil de génération et lu sur
+le fil d'interface **sans `@Volatile`**. Rien ne garantissait que
+l'affectation devienne visible ; le fil d'affichage retombait alors sur le
+repli `?: eyeAltitudeM()` — l'altitude au-dessus du niveau de la mer — et
+plaçait le plan de coupe à une cinquantaine de mètres sur un plateau. Tout le
+premier plan disparaissait, sans qu'aucun test ne puisse le voir : le défaut
+vivait dans la visibilité mémoire entre fils, pas dans une formule.
+
+- `@Volatile` sur le raycaster : la course est fermée.
+- **Seconde borne indépendante** : le plan de coupe prend le minimum de la
+  hauteur au-dessus du sol et de la portée de la caméra, toujours disponible
+  et toujours juste. Une valeur aberrante ne peut plus passer — il faudrait
+  que les deux le soient. Un test le vérifie avec une hauteur de 900 m et une
+  portée de 4 m.
+- Le magenta de diagnostic est éteint mais conservé derrière son drapeau.
+
 ## v0.10.2 — Version de diagnostic : identifier l'aplat du bas d'écran
 
 Le correctif du plan de coupe n'a pas suffi. Depuis quatre versions, je

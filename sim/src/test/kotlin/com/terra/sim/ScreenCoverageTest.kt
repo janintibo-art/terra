@@ -156,7 +156,7 @@ class NearPlaneTest {
         // plateau de 390 m. L'ancien calcul plaçait le plan à 7,8 m pour un
         // sol visible à 5,6 m — tout le premier plan disparaissait.
         for (height in doubleArrayOf(2.0, 5.0, 20.0, 100.0, 450.0, 27_000.0)) {
-            val near = PlanetCamera.nearPlaneFor(height)
+            val near = PlanetCamera.nearPlaneFor(height, height * 3.0)
             val groundDist = groundDistanceAtScreenBottom(height)
             assertTrue(
                 near < groundDist,
@@ -168,8 +168,19 @@ class NearPlaneTest {
     @Test
     fun `le plan de coupe reste sous le dixieme de la hauteur`() {
         for (height in doubleArrayOf(2.0, 50.0, 1_000.0)) {
-            assertTrue(PlanetCamera.nearPlaneFor(height) <= height * 0.1)
+            assertTrue(PlanetCamera.nearPlaneFor(height, height * 3.0) <= height * 0.1)
         }
+    }
+
+    @Test
+    fun `une hauteur aberrante ne peut plus agrandir le plan de coupe`() {
+        // Le défaut de la v0.10.3 : la hauteur transmise valait l'altitude
+        // marine (des centaines de mètres) au lieu de la hauteur réelle. La
+        // portée, seconde borne, plafonne désormais le résultat.
+        val aberrante = 900.0
+        val portee = 4.0
+        val near = PlanetCamera.nearPlaneFor(aberrante, portee)
+        assertTrue(near <= portee * 0.1, "plan de coupe à $near m pour une portée de $portee m")
     }
 
     @Test
@@ -177,7 +188,7 @@ class NearPlaneTest {
         // Plancher indispensable : la précision du tampon de profondeur
         // s'effondre avec le rapport lointain/proche.
         for (height in doubleArrayOf(0.0, 0.5, 1.0, 2.0)) {
-            assertTrue(PlanetCamera.nearPlaneFor(height) >= 0.1)
+            assertTrue(PlanetCamera.nearPlaneFor(height, 1e6) >= 0.1)
         }
     }
 }

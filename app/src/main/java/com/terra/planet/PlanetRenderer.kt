@@ -43,6 +43,9 @@ class CameraSnapshot(
      * proche : les confondre supprimait tout le premier plan au sol (v0.10.1).
      */
     val heightAboveGroundM: Double,
+    /** Distance de l'œil au point visé au sol : seconde borne du plan de
+     *  coupe, toujours disponible même si le lancer de rayon manque. */
+    val rangeM: Double,
     val fovRad: Float
 )
 
@@ -416,7 +419,7 @@ class PlanetRenderer(
 
         // --- Matrices : l'œil est à l'origine, le monde vient à lui ---
         val altitude = max(2.0, snapshot.altitudeM)
-        val near = PlanetCamera.nearPlaneFor(snapshot.heightAboveGroundM).toFloat()
+        val near = PlanetCamera.nearPlaneFor(snapshot.heightAboveGroundM, snapshot.rangeM).toFloat()
         nearPlaneM = near
         // Le plan lointain doit englober l'horizon et les montagnes qui le
         // dépassent ; le facteur absorbe l'inclinaison et les jupes.
@@ -574,6 +577,7 @@ class PlanetRenderer(
         // jamais vérifié. S'il s'agissait d'eau ou de terrain mal coloré,
         // toutes les pistes suivies seraient fausses. Le magenta n'existe
         // nulle part ailleurs dans le rendu : une seule capture tranchera.
+        @Suppress("ConstantConditionIf")
         if (DIAGNOSTIC_SKY_GROUND) {
             gR = 1f; gG = 0f; gB = 1f
         }
@@ -760,8 +764,14 @@ class PlanetRenderer(
     companion object {
         private const val TAG = "TerraRenderer"
 
-        /** Colore le fond de brume du ciel en magenta — diagnostic v0.10.2. */
-        const val DIAGNOSTIC_SKY_GROUND = true
+        /**
+         * Colore le fond de brume du ciel en magenta. A servi à identifier
+         * l'aplat du bas d'écran (v0.10.2) : il s'agissait bien du ciel, donc
+         * d'un manque de géométrie, ce qui a orienté vers le plan de coupe.
+         * Conservé, éteint : le même doute peut revenir, et le rallumer coûte
+         * un booléen.
+         */
+        const val DIAGNOSTIC_SKY_GROUND = false
         private const val DEG = 0.017453292f
 
         /** Téléversements de tuiles par image : au-delà, à-coups visibles. */

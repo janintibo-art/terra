@@ -78,7 +78,12 @@ class MainActivity : Activity() {
 
     /** Caméra de descente, en double précision. Fil d'interface uniquement. */
     private var camera: PlanetCamera? = null
-    private var raycaster: TerrainRaycaster? = null
+    /**
+     * Écrit sur le fil de génération, lu sur le fil d'interface : sans
+     * `@Volatile`, rien ne garantit que l'affectation devienne visible, et
+     * le repli de secours prenait alors le relais en silence (v0.10.3).
+     */
+    @Volatile private var raycaster: TerrainRaycaster? = null
     private var descentActive = false
     private var worldEpoch = 0
     private lateinit var modeButton: TextView
@@ -424,6 +429,7 @@ class MainActivity : Activity() {
             up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
             cam.eyeAltitudeM(),
             heightAboveGround,
+            cam.rangeM,
             PlanetCamera.DEFAULT_FOV_RAD.toFloat()
         )
     }
@@ -744,6 +750,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.10.2"
+        const val VERSION = "0.10.3"
     }
 }

@@ -375,8 +375,21 @@ class PlanetCamera(
          * dix centimètres pour ne pas ruiner la précision du tampon de
          * profondeur. Un test vérifie la propriété plutôt que la formule.
          */
-        fun nearPlaneFor(heightAboveGroundM: Double): Double =
-            (heightAboveGroundM * 0.05).coerceIn(0.1, 5_000.0)
+        fun nearPlaneFor(heightAboveGroundM: Double, rangeM: Double): Double {
+            // Deux mesures indépendantes de « à quelle distance est le plus
+            // proche objet visible » : la hauteur au-dessus du sol, et la
+            // distance au point visé. La plus petite gagne.
+            //
+            // Pourquoi deux : la hauteur vient du lancer de rayon, qui peut
+            // manquer (v0.10.3 : il était publié entre deux fils sans
+            // barrière mémoire, et le fil d'affichage retombait sur
+            // l'altitude marine — plan de coupe à cinquante mètres sur un
+            // plateau, tout le premier plan supprimé). La portée, elle, est
+            // toujours disponible et toujours juste. Une valeur aberrante ne
+            // peut plus passer : il faudrait que les deux le soient.
+            val closest = kotlin.math.min(heightAboveGroundM, rangeM)
+            return (closest * 0.05).coerceIn(0.1, 5_000.0)
+        }
 
         /** Inclinaison maximale, 82 degrés : au-delà, la vue rase le sol. */
         const val MAX_TILT_RAD = 1.431170
