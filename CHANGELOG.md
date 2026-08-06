@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.9.2 — Correctif : le pire cas du relief, borné par construction
+
+Quatre tests rouges convergents sur la v0.9.1 — et c'était le modèle qui
+avait tort : ma validation avait calibré le cas **moyen** et laissé le pire
+cas (intensité maximale × relief fort × queue du bruit) percer les plafonds
+physiques (pics au-delà de 9 000 m, fonds sous −11 000), pendant que l'excès
+de surface montagneuse gelait certains mondes au-delà du seuil de 16 % de
+glaces. Erreur de méthode autant que de constantes.
+
+- **`softLimit`** : compression douce C¹ au-delà de 70 % des bornes, avec les
+  bornes pour asymptotes — `maxAltitudeM` et `maxDepthM` ne peuvent plus être
+  dépassés, par construction, comme SimTest l'exige au mètre près. Monotone,
+  donc le percentile du niveau de la mer la traverse sans bouger. Appliquée à
+  l'identique sur la grille et dans la fonction : invariant n°3 intact.
+- Amplitudes et largeurs resserrées (CC 3 300 m sur σ 287 km, intensités
+  [0,5 ; 1,25], bruit amorti à 0,40) : la surface au-dessus de 3 500 m tombe
+  de 13,8 % à 1,7 % dans la simulation de distribution — c'est elle qui
+  fabriquait les boules de neige.
+- Pire cas vérifié par simulation avant livraison, cette fois : pic 5 980 m,
+  fond −5 917 m.
+- Le test de bornes maison s'aligne sur l'exigence stricte de SimTest.
+
 ## v0.9.1 — Lot 1.6 : le relief a une cause
 
 **Tous les mondes changent** (`GENERATION_VERSION = 4`) : les chaînes de

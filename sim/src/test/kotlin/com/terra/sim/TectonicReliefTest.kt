@@ -106,14 +106,15 @@ class TectonicReliefTest {
 
     @Test
     fun `le relief reste dans les bornes physiques declarees`() {
-        // Somme au pire cas : socle + chaîne + bruit plafonné — le clamp
-        // n'existe pas, la retenue vient du calibrage ; ce test le vérifie
-        // avec une marge de 15 % sur les plafonds déclarés du monde.
+        // Bornes STRICTES, comme SimTest les exige : la compression
+        // asymptotique de softLimit les garantit par construction — la
+        // première version pariait sur le calibrage des superpositions et a
+        // perdu (v0.9.2).
         for (w in worlds) {
             for (v in 0 until w.vertexCount) {
                 val a = w.altitudeM[v]
-                assertTrue(a < w.params.maxAltitudeM * 1.15f, "${w.name} : pic à $a m")
-                assertTrue(a > -w.params.maxDepthM * 1.35f, "${w.name} : fond à $a m")
+                assertTrue(a <= w.params.maxAltitudeM + 1f, "${w.name} : pic à $a m")
+                assertTrue(a >= -w.params.maxDepthM - 1f, "${w.name} : fond à $a m")
             }
         }
     }

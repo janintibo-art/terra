@@ -121,7 +121,7 @@ class TerrainProfile(
      * sampler rend `structuralM[v]` au bit près : la grille et cette fonction
      * ne peuvent pas diverger — l'invariant n°3 tient par construction.
      */
-    fun altitudeAt(p: Vec3): Float =
+    fun altitudeAt(p: Vec3): Float = softLimit(
         convertRaw(
             field.rawAt(p.x, p.y, p.z),
             seaLevel, landSpan, seaSpan,
@@ -129,7 +129,9 @@ class TerrainProfile(
             reliefScale, peakiness, trenchScale
         ) * noiseDamp +
                 structuralSampler.sample(structuralM, p, structuralHint.get()) -
-                seaOffsetM
+                seaOffsetM,
+        params.maxAltitudeM, params.maxDepthM
+    )
 
     fun altitudeAt(x: Float, y: Float, z: Float): Float = altitudeAt(Vec3(x, y, z))
 
@@ -242,6 +244,34 @@ class TerrainProfile(
                 val t = (seaLevel - raw) / seaSpan
                 -t * maxDepthM * trenchScale
             }
+
+        /**
+         * Compression douce des extrêmes du relief — v0.9.2.
+         *
+         * Au-delà de 70 % de la borne, l'altitude est comprimée vers une
+         * asymptote qui EST la borne : `maxAltitudeM` et `maxDepthM` ne
+         * peuvent plus être dépassés, par construction — les tests exigent
+         * ces bornes au mètre près, et les garantir par calibrage des
+         * superpositions était un pari perdu d'avance (quatre tests rouges
+         * l'ont prouvé). Le genou est C¹ : dérivée 1 au raccord, aucune
+         * cassure dans le relief. Monotone, donc le percentile du niveau de
+         * la mer traverse la compression sans se déplacer.
+         */
+        fun softLimit(a: Float, maxAltitudeM: Float, maxDepthM: Float): Float {
+            if (a > 0.70f * maxAltitudeM) {
+                val k0 = 0.70f * maxAltitudeM
+                val span = maxAltitudeM - k0
+                val t = (a - k0) / span
+                return k0 + span * t / (1f + t)
+            }
+            if (a < -0.70f * maxDepthM) {
+                val k0 = 0.70f * maxDepthM
+                val span = maxDepthM - k0
+                val t = (-a - k0) / span
+                return -(k0 + span * t / (1f + t))
+            }
+            return a
+        }
 
         /**
          * Amplitude crête-à-crête maximale du micro-relief, pour dimensionner

@@ -152,7 +152,11 @@ class WorldGenerator(
         // près sur ses sommets, le même décalage de mer. Grille et fonction ne
         // peuvent pas diverger — TerrainLodTest le vérifie à chaque poussée.
         val altitudeM = FloatArray(n)
-        for (i in 0 until n) altitudeM[i] = combined[i] - seaOffsetM
+        for (i in 0 until n) {
+            altitudeM[i] = TerrainProfile.softLimit(
+                combined[i] - seaOffsetM, params.maxAltitudeM, params.maxDepthM
+            )
+        }
 
         // --- Étape 3 bis : distance à l'océan ---
         //
