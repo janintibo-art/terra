@@ -70,7 +70,7 @@ class MicroReliefTest {
         repeat(2000) {
             val d = randomDir(rng)
             val j = t.colorJitterAt(d)
-            assertTrue(j in 0.9f..1.1f, "moucheture hors plage : $j")
+            assertTrue(j in 0.88f..1.12f, "moucheture hors plage : $j")
             assertEquals(j, t.colorJitterAt(d), 0f)
         }
     }

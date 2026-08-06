@@ -178,10 +178,14 @@ class TerrainProfile(
         // doivent onduler un peu, pas devenir des falaises.
         val shoreFade = clamp01(base / 40f)
 
-        val hills = micro.fbm(p.x * 26_000f, p.y * 26_000f, p.z * 26_000f, 3) - 0.5f
+        // fbm est CENTRÉ SUR ZÉRO (~±0,7, borne sûre ±0,9) : il s'utilise
+        // tel quel. Le « −0,5 » de la première version supposait une plage
+        // [0, 1] et enfonçait tout le sol proche de ~3 m — bug attrapé par le
+        // test de borne en CI. ridged, lui, est bien dans [0, 1].
+        val hills = micro.fbm(p.x * 26_000f, p.y * 26_000f, p.z * 26_000f, 3)
         val breaks = micro.ridged(p.x * 300_000f + 51f, p.y * 300_000f, p.z * 300_000f - 17f, 2) - 0.5f
 
-        return base + (hills * 6.2f + breaks * 1.2f) * fade * shoreFade
+        return base + (hills * 4.4f + breaks * 1.2f) * fade * shoreFade
     }
 
     /**
@@ -190,15 +194,21 @@ class TerrainProfile(
      * données nouvelles — c'est du même monde, vu de près.
      */
     fun colorJitterAt(p: Vec3): Float {
-        val n = micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2) - 0.5f
-        return 1f + n * 0.16f
+        val n = micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2)
+        // Le clamp rend la borne vraie par construction, pas par supposition
+        // sur la queue de distribution du bruit.
+        return (1f + n * 0.13f).coerceIn(0.88f, 1.12f)
     }
 
     companion object {
         /**
          * Amplitude crête-à-crête maximale du micro-relief, pour dimensionner
-         * la sphère englobante du lancer de rayon.
+         * la sphère englobante du lancer de rayon et la borne du test.
+         *
+         * Calculée avec la borne **sûre** du Perlin (±0,9), pas sa plage
+         * typique (±0,7) : 2 × (0,9 × 4,4 + 0,5 × 1,2) = 9,12, arrondi au-
+         * dessus. Une borne de collision se dimensionne au pire cas garanti.
          */
-        const val MICRO_TOTAL_AMPLITUDE_M = 7.4f
+        const val MICRO_TOTAL_AMPLITUDE_M = 9.2f
     }
 }

@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.8.2 — Correctif : les formules du micro-relief supposaient une plage fausse
+
+La CI de la v0.8.1 a rougi sur deux tests — et c'était un **vrai bug**, pas
+un test mal calibré. `Noise.fbm` rend une valeur centrée sur zéro (~±0,7),
+pas dans [0, 1] : le « −0,5 » des formules enfonçait tout le sol proche
+d'environ 3 m, portait l'amplitude réelle au-delà de la constante déclarée —
+donc sous-dimensionnait la sphère englobante du lancer de rayon — et tirait
+la moucheture vers le sombre. Les tests de borne ont fait exactement leur
+travail, avant qu'aucun APK ne soit produit.
+
+- Formules recentrées ; amplitude des collines recalibrée (±3,1 m typiques,
+  identiques au calibrage visuel prévu).
+- `MICRO_TOTAL_AMPLITUDE_M` désormais calculée avec la borne **sûre** du
+  Perlin (±0,9), pas sa plage typique : une borne de collision se dimensionne
+  au pire cas garanti. La moucheture est bornée par construction (clamp).
+- Les plages réelles de `fbm` et `ridged` sont maintenant documentées dans
+  `Noise` — ce piège ne doit plus jamais se tendre.
+- Deux avertissements de compilation nettoyés (assignation morte, variable
+  inutilisée).
+- Décompte réel mesuré par la CI : **173 tests** — les totaux annoncés
+  précédemment étaient surestimés ; ce chiffre-ci vient du journal.
+
 ## v0.8.1 — Le sol proche existe enfin
 
 Troisième retour d'essai sur le rendu rapproché, et il était fondé : le champ

@@ -159,7 +159,7 @@ class TileMesh(
         o = emitSkirtEdge(o, 0, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)                    // bord t=0
         o = emitSkirtEdge(o, (verts - 1) * verts, 1, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB) // bord t=1
         o = emitSkirtEdge(o, 0, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)               // bord s=0
-        o = emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)       // bord s=1
+        emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, alt, dirX, dirY, dirZ, colR, colG, colB)           // bord s=1
     }
 
     /**

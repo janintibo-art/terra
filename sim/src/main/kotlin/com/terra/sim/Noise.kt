@@ -65,7 +65,13 @@ class Noise(seed: Seed) {
 
     /**
      * Somme d'octaves (fractal Brownian motion) : superpose des détails de plus
-     * en plus fins et de moins en moins marqués. Résultat normalisé.
+     * en plus fins et de moins en moins marqués.
+     *
+     * **Plage de sortie : centrée sur zéro**, typiquement ±0,7, borne sûre
+     * ±0,9 — comme le Perlin qu'elle moyenne. PAS [0, 1] : cette supposition
+     * a déjà coûté un correctif (v0.8.2, sol proche enfoncé de 3 m). Tout
+     * consommateur qui a besoin d'une borne stricte doit prendre ±0,9 ou
+     * borner lui-même.
      */
     fun fbm(
         x: Float, y: Float, z: Float,
@@ -86,6 +92,8 @@ class Noise(seed: Seed) {
     /**
      * Bruit en crêtes : produit des arêtes vives plutôt que des bosses molles.
      * C'est ce qui donnera des chaînes de montagnes plutôt que des collines.
+     *
+     * **Plage de sortie : [0, 1]**, massée vers le bas (médiane ~0,3).
      */
     fun ridged(x: Float, y: Float, z: Float, octaves: Int): Float {
         var sum = 0f; var amp = 1f; var freq = 1f; var norm = 0f
