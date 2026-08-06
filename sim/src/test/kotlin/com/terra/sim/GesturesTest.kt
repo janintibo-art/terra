@@ -198,3 +198,49 @@ class GroundRelativeDetailTest {
         )
     }
 }
+
+/**
+ * Le niveau de détail près du sol ne doit pas dépendre de l'altitude du
+ * plateau — v0.10.7. Le garde de proximité du cône mesurait les distances au
+ * niveau de la mer : sur un plateau de 387 m, il croyait les tuiles à 389 m
+ * au lieu de deux, cessait de protéger, et le cône éliminait la branche
+ * contenant l'observateur avec toutes ses descendantes fines.
+ */
+class PlateauDetailTest {
+
+    private fun deepest(plateauM: Double, heightM: Double): Int {
+        val r = 6_371_000.0
+        val selector = TileSelector()
+        val out = ArrayList<TileId>()
+        val eyeLen = (r + plateauM + heightM) / r
+        selector.groundRadiusUnit = ((r + plateauM) / r).toFloat()
+
+        // Visée quasi rasante, comme en descente au sol.
+        val cam = com.terra.core.Vec3(0f, eyeLen.toFloat(), 0f)
+        val fwd = com.terra.core.Vec3(0.9986f, -0.0523f, 0f).normalized()
+        val cone = ViewCone.fromCamera(cam, fwd, 0.733f, 2.2f)
+        selector.select(0.0, eyeLen, 0.0, out, cone)
+
+        var deepest = 0
+        for (t in out) if (t.level > deepest) deepest = t.level
+        return deepest
+    }
+
+    @Test
+    fun `a deux metres du sol le detail est maximal quelle que soit l altitude`() {
+        val mer = deepest(0.0, 2.0)
+        assertTrue(mer >= 22, "au niveau de la mer, niveau $mer seulement")
+        for (plateau in doubleArrayOf(387.0, 874.0, 2_000.0)) {
+            val p = deepest(plateau, 2.0)
+            assertTrue(
+                p >= mer - 1,
+                "plateau de $plateau m : niveau $p contre $mer au niveau de la mer"
+            )
+        }
+    }
+
+    @Test
+    fun `le detail s affine bien en descendant`() {
+        assertTrue(deepest(387.0, 2.0) > deepest(387.0, 5_000.0))
+    }
+}

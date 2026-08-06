@@ -352,7 +352,10 @@ class PlanetRenderer(
         ) / radius
         selector.groundRadiusUnit =
             (eyeLenUnit - snapshot.heightAboveGroundM / radius).coerceIn(0.9, 1.1).toFloat()
-        selector.select(camUnit, selection, cone)
+        selector.select(
+            snapshot.eyeXM / radius, snapshot.eyeYM / radius, snapshot.eyeZM / radius,
+            selection, cone
+        )
         tilesSelected = selection.size
         var deepest = 0
         for (t in selection) if (t.level > deepest) deepest = t.level

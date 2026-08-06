@@ -1,5 +1,33 @@
 # Journal des versions
 
+## v0.10.7 — Le garde du cône mesurait au niveau de la mer
+
+Le défaut revenait sur un plateau : `sol 2 m` mais `niv max 17` à 387 m
+d'altitude, contre 23 au niveau de la mer. Cette fois, la simulation fidèle du
+sélecteur l'a reproduit avant toute correction, et la trace de la descente a
+donné la cause exacte.
+
+Le garde de proximité du cône de vision — celui qui empêche d'éliminer une
+tuile dont la caméra est proche — comparait des distances mesurées **au
+niveau de la mer**. Sur un plateau de 387 m, il croyait les tuiles à 389 m au
+lieu de deux : il cessait de protéger dès le niveau 16, et le cône éliminait
+la branche contenant l'observateur, donc toutes ses descendantes fines. Le
+premier plan disparaissait. Au niveau de la mer, la distance était juste et
+le défaut restait invisible — ce qui explique que la v0.10.5 ait paru
+résoudre le problème.
+
+Le centre de tuile est désormais ramené au rayon du terrain dans le test du
+cône comme dans la subdivision. Vérifié par simulation avant écriture :
+niveau 23 sur tous les plateaux testés (contre 17 et 16), sans effet là où il
+n'y avait pas de défaut.
+
+Au passage, la position de la caméra passe en **double** dans le sélecteur —
+invariant n°5 du projet, que ce code violait : sur la sphère unité, deux
+mètres valent deux ulp et demi de flottant 32 bits.
+
+Deux tests ajoutés : le niveau atteint à deux mètres du sol ne doit pas
+dépendre de l'altitude du plateau, et il doit s'affiner en descendant.
+
 ## v0.10.6 — Premier plan résolu, diagnostic éteint
 
 Confirmé à l'essai : `sol 2 m · near 0,10 m · niv max 23`, et le terrain

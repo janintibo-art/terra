@@ -120,6 +120,28 @@ class TileSelector(
     private var radius = 0f
 
     /**
+     * Position de la caméra, en **double** — invariant n°5 du projet.
+     *
+     * ## L'annulation qui cassait la subdivision près du sol (v0.10.7)
+     *
+     * Sur la sphère unité, deux mètres valent 3·10⁻⁷ : deux ulp et demi de
+     * flottant 32 bits. Soustraire deux positions voisines de 1,0 y détruit
+     * toute la précision — et multiplier le centre par le rayon du sol
+     * introduisait une erreur d'arrondi du même ordre que la distance
+     * cherchée. La subdivision plafonnait donc au hasard près du sol, sauf
+     * quand le terrain était exactement au niveau de la mer : le facteur
+     * valait alors 1, la multiplication était exacte, et le défaut se
+     * cachait.
+     *
+     * Les centres de tuiles restent en 32 bits — leur précision propre,
+     * 40 cm, suffit largement à un critère de niveau de détail. C'est la
+     * soustraction qui devait passer en double.
+     */
+    private var camXd = 0.0
+    private var camYd = 0.0
+    private var camZd = 0.0
+
+    /**
      * Remplit [out] avec les tuiles à afficher.
      *
      * @param cameraUnit position de la caméra en unités de sphère unité
@@ -137,6 +159,24 @@ class TileSelector(
     var groundRadiusUnit: Float = 1f
 
     fun select(cameraUnit: Vec3, out: MutableList<TileId>, cone: ViewCone? = null) {
+        select(
+            cameraUnit.x.toDouble(), cameraUnit.y.toDouble(), cameraUnit.z.toDouble(),
+            out, cone
+        )
+    }
+
+    /**
+     * Variante en double précision, seule exacte près du sol. Le renderer
+     * l'appelle avec la position de l'œil divisée par le rayon planétaire,
+     * calculée en double de bout en bout.
+     */
+    fun select(
+        camX: Double, camY: Double, camZ: Double,
+        out: MutableList<TileId>,
+        cone: ViewCone? = null
+    ) {
+        camXd = camX; camYd = camY; camZd = camZ
+        val cameraUnit = Vec3(camX.toFloat(), camY.toFloat(), camZ.toFloat())
         out.clear()
         visitedNodes = 0
         culledNodes = 0
@@ -177,15 +217,17 @@ class TileSelector(
             }
 
             // Subdivision.
-            // Le centre de tuile est ramené au rayon du terrain local : sans
-            // cela, la distance est mesurée jusqu'au niveau de la mer, très
-            // au-dessous du sol réel sur un plateau.
-            val g = groundRadiusUnit
-            val dx = cameraUnit.x - centerX * g
-            val dy = cameraUnit.y - centerY * g
-            val dz = cameraUnit.z - centerZ * g
-            val distance = max(1e-7f, sqrt(dx * dx + dy * dy + dz * dz) - radius * g)
-            val factor = (radius * 2f) / distance
+            // Le centre de tuile est ramené au rayon du terrain local, et
+            // toute la soustraction se fait en double : voir [camXd].
+            val g = groundRadiusUnit.toDouble()
+            val dxd = camXd - centerX.toDouble() * g
+            val dyd = camYd - centerY.toDouble() * g
+            val dzd = camZd - centerZ.toDouble() * g
+            val distance = max(
+                1e-12,
+                kotlin.math.sqrt(dxd * dxd + dyd * dyd + dzd * dzd) - radius.toDouble() * g
+            )
+            val factor = (radius.toDouble() * 2.0) / distance
 
             if (level < maxLevel && factor > threshold) {
                 ensureCapacity(top + 4)
@@ -201,9 +243,22 @@ class TileSelector(
     }
 
     private fun coneAccepts(cone: ViewCone): Boolean {
-        val dx = centerX - cone.apex.x
-        val dy = centerY - cone.apex.y
-        val dz = centerZ - cone.apex.z
+        // Deux précautions, chacune payée d'un défaut :
+        //
+        //  - la position de la caméra vient des champs double, pas de l'apex
+        //    32 bits du cône (invariant n°5) ;
+        //  - le centre de tuile est ramené au rayon du TERRAIN, comme pour la
+        //    subdivision. Sans cela, sur un plateau de 387 m, le garde de
+        //    proximité croyait les tuiles à 389 m au lieu de deux : il cessait
+        //    de protéger dès le niveau 16 et le cône éliminait la branche
+        //    contenant l'observateur — donc toutes ses descendantes fines.
+        //    Le niveau plafonnait à 17 au lieu de 23, et le premier plan
+        //    disparaissait. Au niveau de la mer le facteur valait 1, la
+        //    distance était juste, et le défaut restait invisible (v0.10.7).
+        val g = groundRadiusUnit.toDouble()
+        val dx = (centerX.toDouble() * g - camXd).toFloat()
+        val dy = (centerY.toDouble() * g - camYd).toFloat()
+        val dz = (centerZ.toDouble() * g - camZd).toFloat()
 
         // Garde-fou des tuiles proches — v0.9.5. Cette copie sans allocation
         // de [ViewCone.mayContain] avait PERDU le cas « caméra dans la
