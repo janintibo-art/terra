@@ -594,6 +594,12 @@ class MainActivity : Activity() {
                 if (renderer.gpuPoolSummary.isNotEmpty()) {
                     sb.append("gpu ").append(renderer.gpuPoolSummary).append('\n')
                 }
+                // Diagnostic v0.10.2 : les trois valeurs qui manquent pour
+                // trancher sur l'aplat clair du bas d'écran.
+                sb.append("sol ").append(formatAltitude(renderer.heightAboveGroundM))
+                    .append(" · near ").append(String.format("%.2f m", renderer.nearPlaneM))
+                    .append(" · niv max ").append(renderer.maxSelectedLevel)
+                    .append('\n')
             }
         }
         sb.append('\n')
@@ -738,6 +744,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.10.1"
+        const val VERSION = "0.10.2"
     }
 }

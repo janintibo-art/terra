@@ -123,6 +123,18 @@ class PlanetRenderer(
     @Volatile var gpuPoolSummary: String = ""
         private set
 
+    /** Niveau de subdivision maximal parmi les tuiles SÉLECTIONNÉES. */
+    @Volatile var maxSelectedLevel = 0
+        private set
+
+    /** Plan de coupe proche de la dernière image, en mètres. */
+    @Volatile var nearPlaneM = 0f
+        private set
+
+    /** Hauteur de l'œil au-dessus du terrain, en mètres. */
+    @Volatile var heightAboveGroundM = 0.0
+        private set
+
     /** Erreur GPU, affichée plutôt que laissée en écran noir silencieux. */
     @Volatile var lastError: String? = null
         private set
@@ -329,6 +341,10 @@ class PlanetRenderer(
         val cone = ViewCone.fromCamera(camUnit, forward, snapshot.fovRad, aspect)
         selector.select(camUnit, selection, cone)
         tilesSelected = selection.size
+        var deepest = 0
+        for (t in selection) if (t.level > deepest) deepest = t.level
+        maxSelectedLevel = deepest
+        heightAboveGroundM = snapshot.heightAboveGroundM
 
         // --- Filet de sécurité : les six racines, toujours ---
         //
@@ -401,6 +417,7 @@ class PlanetRenderer(
         // --- Matrices : l'œil est à l'origine, le monde vient à lui ---
         val altitude = max(2.0, snapshot.altitudeM)
         val near = PlanetCamera.nearPlaneFor(snapshot.heightAboveGroundM).toFloat()
+        nearPlaneM = near
         // Le plan lointain doit englober l'horizon et les montagnes qui le
         // dépassent ; le facteur absorbe l'inclinaison et les jupes.
         val horizonM = sqrt(max(0.0, (radius + altitude) * (radius + altitude) - radius * radius))
@@ -546,9 +563,20 @@ class PlanetRenderer(
         val botG = (0.66f * dayF + 0.022f) * presence + 0.006f
         val botB = (0.82f * dayF + 0.045f) * presence + 0.016f
         val groundFade = (0.25f + 0.75f * presence)
-        val gR = (0.50f * dayF + 0.020f * night + 0.008f) * groundFade
-        val gG = (0.58f * dayF + 0.024f * night + 0.010f) * groundFade
-        val gB = (0.72f * dayF + 0.040f * night + 0.020f) * groundFade
+        var gR = (0.50f * dayF + 0.020f * night + 0.008f) * groundFade
+        var gG = (0.58f * dayF + 0.024f * night + 0.010f) * groundFade
+        var gB = (0.72f * dayF + 0.040f * night + 0.020f) * groundFade
+
+        // --- DIAGNOSTIC v0.10.2, à retirer une fois le défaut identifié ---
+        //
+        // Depuis quatre versions, je suppose que l'aplat clair vu sous
+        // l'horizon en visée rasante est ce fond de brume, sans l'avoir
+        // jamais vérifié. S'il s'agissait d'eau ou de terrain mal coloré,
+        // toutes les pistes suivies seraient fausses. Le magenta n'existe
+        // nulle part ailleurs dans le rendu : une seule capture tranchera.
+        if (DIAGNOSTIC_SKY_GROUND) {
+            gR = 1f; gG = 0f; gB = 1f
+        }
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         GLES20.glDepthMask(false)
@@ -731,6 +759,9 @@ class PlanetRenderer(
 
     companion object {
         private const val TAG = "TerraRenderer"
+
+        /** Colore le fond de brume du ciel en magenta — diagnostic v0.10.2. */
+        const val DIAGNOSTIC_SKY_GROUND = true
         private const val DEG = 0.017453292f
 
         /** Téléversements de tuiles par image : au-delà, à-coups visibles. */

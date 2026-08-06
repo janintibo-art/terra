@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.10.2 — Version de diagnostic : identifier l'aplat du bas d'écran
+
+Le correctif du plan de coupe n'a pas suffi. Depuis quatre versions, je
+suppose que l'aplat clair vu sous l'horizon est le fond de brume du ciel —
+**sans l'avoir jamais vérifié**. Si c'était de l'eau ou du terrain mal
+coloré, toutes les pistes suivies seraient fausses depuis le début.
+
+Cette version ne corrige rien : elle rend le défaut lisible.
+
+- Le fond de brume du ciel est peint en **magenta vif**, couleur qui
+  n'existe nulle part ailleurs dans le rendu. Si le bas de l'écran devient
+  magenta, c'est bien le ciel et il manque du terrain ; s'il reste bleu-gris,
+  c'est de la géométrie, et le défaut est dans sa couleur ou sa position —
+  deux diagnostics opposés, une seule capture pour les départager.
+- Le HUD gagne `sol X · near Y · niv max Z` : la hauteur réelle au-dessus du
+  terrain, le plan de coupe effectif, et le niveau de subdivision le plus fin
+  atteint par la sélection.
+
+Le drapeau `DIAGNOSTIC_SKY_GROUND` sera retiré une fois la cause connue.
+
 ## v0.10.1 — Le premier plan manquant : le plan de coupe
 
 Diagnostic enfin ferme. Le sélecteur, reproduit fidèlement en Python et
