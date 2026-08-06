@@ -331,6 +331,20 @@ class WorldGenerator(
         // Aucune boucle — l'incision ne touche pas `altitudeAt`, donc ni la
         // grille, ni le climat, ni l'érosion qui viennent d'être calculés.
         profile.attachFlow(hydrology.flowAccum)
+
+        // --- Lacs (lot 1.11) ---
+        //
+        // L'hydrologie a déjà tout fait : `fillDepthM` EST la profondeur
+        // d'eau des cuvettes comblées. Il ne reste qu'à décider lesquelles
+        // méritent le nom de lac, et à publier le niveau de leur surface.
+        val lakeLevels = FloatArray(n)
+        val lakeMask = FloatArray(n)
+        for (i in 0 until n) {
+            val depth = hydrology.fillDepthM[i]
+            lakeLevels[i] = hydrology.erodedM[i] + depth
+            lakeMask[i] = if (depth >= TerrainProfile.LAKE_MIN_DEPTH_M) 1f else 0f
+        }
+        profile.attachLakes(lakeLevels, lakeMask)
         onProgress(Stage.HYDROLOGY, 1f)
 
         onProgress(Stage.DONE, 1f)

@@ -62,8 +62,16 @@ object LayerPalette {
             out[0] = 0.06f; out[1] = 0.10f; out[2] = 0.20f
             return
         }
-        if (h.fillDepthM[i] > 5f) {
-            out[0] = 0.20f; out[1] = 0.75f; out[2] = 0.72f
+        // Les lacs retenus (au-delà du seuil) en turquoise franc, les
+        // cuvettes trop faibles pour en devenir en turquoise éteint : on voit
+        // ainsi ce que le seuil a écarté, et de combien.
+        val fill = h.fillDepthM[i]
+        if (fill >= TerrainProfile.LAKE_MIN_DEPTH_M) {
+            out[0] = 0.20f; out[1] = 0.78f; out[2] = 0.74f
+            return
+        }
+        if (fill > 5f) {
+            out[0] = 0.18f; out[1] = 0.42f; out[2] = 0.42f
             return
         }
         // Échelle logarithmique : le débit s'étale sur trois décades, une

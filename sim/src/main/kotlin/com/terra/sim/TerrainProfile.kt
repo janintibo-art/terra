@@ -109,7 +109,22 @@ class TerrainProfile(
      * qui construisent un profil à la main gardent simplement des vallées
      * inactives.
      */
-    private var flowAccum: FloatArray? = null
+    private var flowAccum: FloatArray? = null,
+
+    /**
+     * Niveau de l'eau des lacs par sommet de grille, en mètres — lot 1.11.
+     * Nul hors cuvette. Branché après l'hydrologie, comme [flowAccum].
+     */
+    private var lakeLevelM: FloatArray? = null,
+
+    /**
+     * Masque des lacs : 1 dans une cuvette assez profonde, 0 ailleurs.
+     * Interpolé, il donne une transition douce au bord du bassin ; c'est
+     * ensuite le TERRAIN FIN qui dessine le contour exact, l'eau remplissant
+     * tout ce qui passe sous son niveau. Les rives sont donc détaillées sans
+     * que la grille ait à l'être.
+     */
+    private var lakeMask: FloatArray? = null
 ) {
 
     private val detail = Noise(seed.derive("terrain/detail"))
@@ -127,6 +142,9 @@ class TerrainProfile(
 
     /** Même mécanique pour l'échantillonnage du débit : un état par fil. */
     private val valleyHint = ThreadLocal.withInitial { intArrayOf(0) }
+
+    /** Idem pour les lacs. */
+    private val lakeHint = ThreadLocal.withInitial { intArrayOf(0) }
 
     /**
      * Altitude en mètres, négative sous le niveau de la mer.
@@ -245,7 +263,34 @@ class TerrainProfile(
         // un bras de mer, pas une vallée, et déplacerait le trait de côte
         // par rapport à la grille — donc par rapport au climat et aux biomes.
         val cut = valleyDepthAt(p, surface)
-        return if (cut <= 0f) surface else max(1f, surface - cut)
+        val ground = if (cut <= 0f) surface else max(1f, surface - cut)
+
+        // Les lacs appartiennent à LA surface, pas à une couche séparée.
+        // Leçon de la v0.10.4 : dès qu'il existe deux surfaces, la caméra
+        // s'ancre sur l'une pendant que l'écran affiche l'autre — ici elle se
+        // poserait au fond du lac. L'incision passe avant : une vallée
+        // creusée peut se remplir, l'inverse n'aurait pas de sens.
+        val lake = lakeSurfaceAt(p)
+        return if (lake > ground) lake else ground
+    }
+
+    /**
+     * Profondeur d'eau douce en ce point, en mètres ; zéro hors lac. Sert au
+     * mailleur à teinter et à rendre l'eau spéculaire.
+     */
+    fun lakeDepthAt(p: Vec3): Float {
+        val lake = lakeSurfaceAt(p)
+        if (lake == NO_LAKE) return 0f
+        val base = detailedAltitudeAt(p, DETAIL_AMPLITUDE_M)
+        if (base <= 0f) return 0f
+        val fade = 1f
+        val shoreFade = clamp01(base / 40f)
+        val hills = micro.fbm(p.x * 26_000f, p.y * 26_000f, p.z * 26_000f, 3)
+        val breaks = micro.ridged(p.x * 300_000f + 51f, p.y * 300_000f, p.z * 300_000f - 17f, 2) - 0.5f
+        val surface = base + (hills * 4.4f + breaks * 1.2f) * fade * shoreFade
+        val cut = valleyDepthAt(p, surface)
+        val ground = if (cut <= 0f) surface else max(1f, surface - cut)
+        return max(0f, lake - ground)
     }
 
     /**
@@ -263,6 +308,33 @@ class TerrainProfile(
      */
     fun attachFlow(accum: FloatArray) {
         flowAccum = accum
+    }
+
+    /**
+     * Branche les lacs, calculés depuis les cuvettes comblées de
+     * l'hydrologie — lot 1.11.
+     *
+     * @param levels niveau de l'eau par sommet (roche + comblement)
+     * @param mask 1 là où la cuvette dépasse [LAKE_MIN_DEPTH_M], 0 ailleurs
+     */
+    fun attachLakes(levels: FloatArray, mask: FloatArray) {
+        lakeLevelM = levels
+        lakeMask = mask
+    }
+
+    /**
+     * Niveau de la surface d'un lac en ce point, ou [NO_LAKE] s'il n'y en a
+     * pas. Le contour du lac n'est PAS décidé ici : c'est
+     * [renderedAltitudeAt] qui compare ce niveau au terrain, si bien qu'un
+     * promontoire qui dépasse reste sec et qu'une anse se remplit.
+     */
+    fun lakeSurfaceAt(p: Vec3): Float {
+        val mask = lakeMask ?: return NO_LAKE
+        val levels = lakeLevelM ?: return NO_LAKE
+        // Le masque d'abord : hors bassin, on s'arrête sans second
+        // échantillonnage. La plupart des points du globe sortent ici.
+        if (structuralSampler.sample(mask, p, lakeHint.get()) < 0.5f) return NO_LAKE
+        return structuralSampler.sample(levels, p, lakeHint.get())
     }
 
     /**
@@ -334,6 +406,18 @@ class TerrainProfile(
          * que le relief fin reste aussi marqué qu'avant de près.
          */
         const val DETAIL_AMPLITUDE_M = 52f
+
+        /**
+         * Comblement minimal pour qu'une cuvette devienne un lac, en mètres.
+         *
+         * Calibré : à ce seuil, les lacs occupent 1 à 2 % des terres, l'ordre
+         * de grandeur terrestre. Plus bas, chaque irrégularité du relief
+         * devient une flaque ; plus haut, il ne reste que des mers intérieures.
+         */
+        const val LAKE_MIN_DEPTH_M = 30f
+
+        /** Valeur rendue par [lakeSurfaceAt] en l'absence de lac. */
+        const val NO_LAKE = -1e9f
 
         /** Creusement maximal d'une vallée, en mètres. Borne stricte. */
         const val VALLEY_DEPTH_MAX_M = 140f

@@ -128,12 +128,28 @@ class TileMesh(
                 hint = sampler.nearestVertex(df, hint)
                 val jitter = if (a > 0f) profile.colorJitterAt(df) else 1f
                 colorFor(sampler, hint, df, a, jitter, profile.params, colR, colG, colB, idx)
+
+                // Eau douce : le lac reprend la teinte du ciel plus qu'il ne
+                // la tire du fond, et s'assombrit avec la profondeur. Le
+                // matériau passe à l'eau, donc au reflet spéculaire.
+                val lakeDepth = profile.lakeDepthAt(df)
+                if (lakeDepth > 0f) {
+                    val t = clamp01(lakeDepth / 45f)
+                    colR[idx] = 0.16f + (0.05f - 0.16f) * t
+                    colG[idx] = 0.34f + (0.14f - 0.34f) * t
+                    colB[idx] = 0.46f + (0.30f - 0.46f) * t
+                }
                 // Matériau continu : 0 en terre franche, 1 en eau franche,
                 // dégradé sur ~23 m autour du rivage. Le binaire par facette
                 // dessinait le trait de côte en dents de scie à l'échelle de
                 // la maille — le défaut le plus visible des premières
                 // descentes côtières.
-                mat[idx] = clamp01((8f - a) / 23f)
+                // Matériau : eau de mer près du rivage, ou eau douce dès que
+                // le lac atteint un mètre — même fondu de rive dans les deux
+                // cas, pour que le reflet meure doucement sur les hauts-fonds.
+                val seaness = clamp01((8f - a) / 23f)
+                val lakeness = clamp01(profile.lakeDepthAt(df) / 1.5f)
+                mat[idx] = max(seaness, lakeness)
                 idx++
             }
         }

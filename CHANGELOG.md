@@ -1,5 +1,41 @@
 # Journal des versions
 
+## v0.11.1 — Lot 1.11 : les lacs
+
+L'hydrologie avait déjà tout calculé : `fillDepthM` **est** la profondeur
+d'eau des cuvettes comblées, séparée de la roche depuis la v0.9.9. Ce lot ne
+fait que décider lesquelles méritent le nom de lac, et poser leur surface.
+
+### Le niveau vient de la grille, le contour du terrain
+
+Une cellule de grille couvre 13 000 km² — plus que le Baïkal. Si le contour
+des lacs en dépendait, ils seraient énormes et polygonaux. Ici, la grille ne
+donne que le **niveau de l'eau** ; c'est ensuite le terrain fin qui décide de
+la rive, l'eau remplissant tout ce qui passe sous ce niveau. Un promontoire
+reste sec, une anse se remplit, et les rives sont détaillées sans que la
+grille ait à l'être.
+
+### Une seule surface, encore
+
+Les lacs entrent dans `renderedAltitudeAt`, pas dans une couche séparée —
+leçon de la v0.10.4, où deux surfaces concurrentes enterraient la caméra.
+Elle se pose donc sur l'eau et non au fond. L'incision des vallées passe
+avant le remplissage : une vallée creusée peut se remplir, l'inverse n'aurait
+pas de sens.
+
+### Calibrage et rendu
+
+Seuil à 30 m de comblement : les lacs occupent 1 à 2 % des terres, l'ordre de
+grandeur terrestre. L'eau douce est teintée du ciel plutôt que du fond,
+s'assombrit avec la profondeur, et devient spéculaire avec le même fondu de
+rive que la mer. Le calque **Eaux** distingue désormais les lacs retenus
+(turquoise franc) des cuvettes écartées par le seuil (turquoise éteint) : on
+voit ce que le seuil a laissé de côté.
+
+Six tests : existence en proportion terrestre, planéité de la surface, jamais
+sous le niveau de la mer, appartenance à la surface rendue, neutralité hors
+lac, monde simulé inchangé. `GENERATION_VERSION` passe à 7.
+
 ## v0.11.0 — Lot 1.10b : les vallées
 
 Le terrain rendu se creuse enfin de vallées kilométriques, là où l'hydrologie
