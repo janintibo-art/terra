@@ -142,7 +142,6 @@ class TileMeshTest {
         // indices globaux pairs de la fine tombent exactement sur ceux de la
         // grossière. Seuls les sommets impairs s'écartent — et c'est cet écart
         // que mesurent les jupes.
-        val w = worldB
         val level = 7
         val grid = 1 shl level
         val coarse = TileId(0, level, grid / 3, grid / 3)

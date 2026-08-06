@@ -1,5 +1,19 @@
 # Journal des versions
 
+## v0.8.5 — Correctif de CI : le vieux verrou contre le nouveau
+
+La CI de la v0.8.4 a rougi sur un **test préexistant devenu obsolète** — ni
+erreur de compilation, ni vrai bug : `CameraTest` verrouillait depuis le lot
+2-A la convention théorique du glissement vertical, celle-là même que l'essai
+sur appareil a démentie. Le correctif v0.8.4 et ce vieux verrou se
+contredisaient ; c'est le verrou qui avait tort.
+
+Leçon appliquée plutôt que rustinée : les signes de gestes n'ont plus qu'**un
+seul gardien** (`GesturesTest`, fixé par la mesure sur appareil). Les doublons
+de `CameraTest` sont retirés avec un renvoi explicite — deux verrous sur la
+même convention finissent toujours par se désynchroniser, la preuve. Une
+variable morte signalée par le compilateur est aussi nettoyée.
+
 ## v0.8.4 — Correctif : glissement vertical inversé en mode sol
 
 Signalé à l'essai : gauche-droite correct, haut-bas à rebours. La cause est

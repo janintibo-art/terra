@@ -220,20 +220,12 @@ class PlanetCameraTest {
         )
     }
 
-    @Test
-    fun `glisser vers la droite fait venir le terrain de droite`() {
-        val c = PlanetCamera(R, focusLatRad = 0.0, focusLonRad = 0.0, rangeM = 100_000.0)
-        val before = c.focusLonRad
-        c.pan(200.0, 0.0, 1080.0)
-        assertTrue(c.focusLonRad < before, "le point visé devrait glisser vers l'ouest")
-    }
-
-    @Test
-    fun `glisser vers le bas fait remonter vers le nord`() {
-        val c = PlanetCamera(R, focusLatRad = 0.0, focusLonRad = 0.0, rangeM = 100_000.0)
-        c.pan(0.0, 200.0, 1080.0)
-        assertTrue(c.focusLatRad > 0.0, "le point visé devrait remonter vers le nord")
-    }
+    // Les SIGNES du glissement (quel axe tire le terrain dans quel sens) sont
+    // verrouillés dans GesturesTest, et uniquement là. Ils y sont fixés par la
+    // mesure sur appareil, pas par raisonnement — le test « glisser vers le
+    // bas fait remonter vers le nord » qui vivait ici verrouillait une
+    // convention théorique que l'essai a démentie (v0.8.4), et son doublon
+    // corrigé aurait recréé deux verrous à désynchroniser. Un seul gardien.
 
     @Test
     fun `la portee reste dans ses bornes`() {
