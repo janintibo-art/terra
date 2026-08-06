@@ -332,6 +332,18 @@ class PlanetRenderer(
             tilePool.submit(key, priority) {
                 stream.offer(TileMesh(tile, profile, sampler, radius), epoch)
             }
+
+            // Feuille manquante : son parent est demandé en priorité — il
+            // couvre quatre feuilles pour le même coût de maillage, donc le
+            // trou se comble quatre fois plus vite, et le repli en cascade
+            // retrouve un échelon proche au lieu de remonter loin.
+            val pKey = TileId.parentKey(key)
+            if (pKey != -1L && !stream.isCached(pKey)) {
+                val parent = TileId.unpack(pKey)
+                tilePool.submit(pKey, priority + 0.5f) {
+                    stream.offer(TileMesh(parent, profile, sampler, radius), epoch)
+                }
+            }
         }
 
         // De loin en loin, on annule ce qui n'est plus utile. Pas à chaque
@@ -348,6 +360,9 @@ class PlanetRenderer(
         tilesDrawn = drawList.size
         tilesCached = stream.cachedCount
         if (frameIndex % 30L == 0L) {
+            // L'ordre compte : raviver les ancêtres de la sélection AVANT
+            // l'éviction, sinon le filet du repli part avec l'eau du bain.
+            stream.touchAncestors(selection, frameIndex)
             stream.evictStale(frameIndex, KEEP_FRAMES)
             gpuPoolSummary = gpuPool.summary()
         }

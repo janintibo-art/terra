@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.8.6 — Correctif : carrés blancs en avançant au sol
+
+Signalé à l'essai : de près, en se déplaçant, des carrés clairs. Diagnostic :
+des **trous de couverture** — une tuile fine pas encore maillée dont tous les
+ancêtres proches ont été évincés du cache laisse voir le fond de brume,
+découpé en silhouette de tuile. Le scénario : à l'arrêt, les feuilles fines
+finissent toutes prêtes, leurs parents ne servent plus de repli et l'éviction
+les rend au pool ; au premier déplacement, les nouvelles feuilles manquent et
+le repli remonte vers... du vide.
+
+Deux correctifs à la cause :
+
+- **Les ancêtres d'une tuile sélectionnée ne sont plus évincés** tant qu'elle
+  l'est : le filet du repli reste tendu pendant l'exercice (ravivage sur clés
+  compactées, sans allocation, juste avant chaque passe d'éviction).
+- **Le parent d'une feuille manquante est demandé en priorité** : il couvre
+  quatre feuilles pour le même coût de maillage — le trou se comble quatre
+  fois plus vite et le repli retrouve un échelon proche.
+
+L'arithmétique de parenté déménage de `:app` vers `:sim` (`TileId.parentKey`)
+où elle est enfin testée en CI face à la version objet — elle vivait hors de
+portée des tests, et une divergence aurait recréé les trous en silence. Deux
+tests ajoutés.
+
 ## v0.8.5 — Correctif de CI : le vieux verrou contre le nouveau
 
 La CI de la v0.8.4 a rougi sur un **test préexistant devenu obsolète** — ni

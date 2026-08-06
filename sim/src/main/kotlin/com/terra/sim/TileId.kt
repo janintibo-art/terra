@@ -168,6 +168,23 @@ data class TileId(
         fun roots(): Array<TileId> =
             Array(CubeSphere.FACE_COUNT) { TileId(it, 0, 0, 0) }
 
+        /**
+         * Clé compactée du parent d'une clé compactée, ou −1 au niveau racine.
+         *
+         * Vit ici, en `:sim`, pour être testée en CI face à [TileId.parent] —
+         * la version objet. Elle a d'abord vécu côté application, hors de
+         * portée des tests : une divergence entre les deux écritures aurait
+         * cassé le repli sur l'ancêtre sans qu'aucun test ne rougisse.
+         */
+        fun parentKey(key: Long): Long {
+            val level = ((key ushr 52) and 0x3F).toInt()
+            if (level == 0) return -1L
+            val face = (key ushr 58) and 0x3F
+            val x = ((key ushr 26) and 0x3FFFFFF) shr 1
+            val y = (key and 0x3FFFFFF) shr 1
+            return (face shl 58) or ((level - 1).toLong() shl 52) or (x shl 26) or y
+        }
+
         fun unpack(key: Long): TileId = TileId(
             face = ((key ushr 58) and 0x3F).toInt(),
             level = ((key ushr 52) and 0x3F).toInt(),

@@ -66,3 +66,37 @@ class GesturesTest {
         )
     }
 }
+
+/**
+ * Arithmétique de parenté sur clés compactées — le socle du repli sur
+ * l'ancêtre. Testée face à la version objet : les deux écritures doivent
+ * coïncider sur toute la hiérarchie, sinon les trous de couverture (v0.8.6)
+ * reviendraient sans qu'aucun test ne rougisse.
+ */
+class TileKeyTest {
+
+    @Test
+    fun `parentKey coincide avec la version objet sur toute la hierarchie`() {
+        val rng = kotlin.random.Random(13)
+        repeat(2000) {
+            val level = rng.nextInt(0, TileId.MAX_LEVEL + 1)
+            val grid = 1 shl level
+            val tile = TileId(rng.nextInt(6), level, rng.nextInt(grid), rng.nextInt(grid))
+            val fromKey = TileId.parentKey(tile.packed())
+            val fromObject = tile.parent?.packed() ?: -1L
+            kotlin.test.assertEquals(fromObject, fromKey, "divergence pour $tile")
+        }
+    }
+
+    @Test
+    fun `la remontee atteint la racine puis s arrete`() {
+        var key = TileId(3, TileId.MAX_LEVEL, 1234, 4321).packed()
+        var steps = 0
+        while (key != -1L) {
+            key = TileId.parentKey(key)
+            steps++
+            assertTrue(steps <= TileId.MAX_LEVEL + 1, "remontée sans fin")
+        }
+        kotlin.test.assertEquals(TileId.MAX_LEVEL + 1, steps)
+    }
+}

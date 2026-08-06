@@ -206,20 +206,31 @@ class TileStream(private val gpu: GpuBufferPool) {
         return missing
     }
 
-    companion object {
-        /**
-         * Clé compactée du parent, ou −1 au niveau racine. Reprend exactement
-         * la disposition de [TileId.packed] : face en bits 58+, niveau en
-         * bits 52 à 57, x en bits 26 à 51, y en bits 0 à 25.
-         */
-        fun parentKey(key: Long): Long {
-            val level = ((key ushr 52) and 0x3F).toInt()
-            if (level == 0) return -1L
-            val face = (key ushr 58) and 0x3F
-            val x = ((key ushr 26) and 0x3FFFFFF) shr 1
-            val y = (key and 0x3FFFFFF) shr 1
-            return (face shl 58) or ((level - 1).toLong() shl 52) or (x shl 26) or y
+    /**
+     * Marque comme vivants tous les ancêtres des tuiles sélectionnées.
+     *
+     * ## Le défaut que cette méthode corrige (v0.8.6)
+     *
+     * À l'arrêt, toutes les feuilles fines finissent maillées : leurs parents
+     * ne servent plus de repli, ne sont plus « utilisés », et l'éviction les
+     * rendait au pool. Dès qu'on avançait, les nouvelles feuilles manquaient
+     * et le repli remontait vers des ancêtres... déjà évincés : trou de
+     * couverture, visible en carré clair sur le fond de brume. Les ancêtres
+     * d'une tuile sélectionnée restent désormais au chaud tant qu'elle l'est
+     * — c'est le filet du repli, on ne le replie pas pendant l'exercice.
+     */
+    fun touchAncestors(selection: List<TileId>, currentFrame: Long) {
+        for (tile in selection) {
+            var key = TileId.parentKey(tile.packed())
+            while (key != -1L) {
+                cache[key]?.let { it.lastUsedFrame = currentFrame }
+                key = TileId.parentKey(key)
+            }
         }
+    }
+
+    companion object {
+        private fun parentKey(key: Long): Long = TileId.parentKey(key)
     }
 
     /**
