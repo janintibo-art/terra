@@ -26,17 +26,29 @@ class MicroReliefTest {
         val t = world.terrain
         val rng = Random(5)
         var maxSeen = 0f
-        repeat(4000) {
+        var tested = 0
+        repeat(20_000) {
             val d = randomDir(rng)
             val base = t.detailedAltitudeAt(d, TerrainProfile.DETAIL_AMPLITUDE_M)
-            val rendered = t.renderedAltitudeAt(d)
-            val delta = abs(rendered - base)
+            if (base <= 0f) return@repeat
+
+            // La surface rendue porte désormais TROIS effets : micro-relief,
+            // incision des vallées (jusqu'à −140 m) et lacs. Pour mesurer le
+            // seul micro-relief, on écarte les points où les deux autres
+            // agissent — sinon le test mesure trois choses en croyant n'en
+            // mesurer qu'une, ce qui l'a fait rougir à l'arrivée des vallées.
+            if (t.valleyDepthAt(d, base) > 0f) return@repeat
+            if (t.lakeSurfaceAt(d) != TerrainProfile.NO_LAKE) return@repeat
+
+            val delta = abs(t.renderedAltitudeAt(d) - base)
             assertTrue(
                 delta <= TerrainProfile.MICRO_TOTAL_AMPLITUDE_M * 0.5f + 1e-3f,
                 "micro hors borne : $delta m"
             )
             if (delta > maxSeen) maxSeen = delta
+            tested++
         }
+        assertTrue(tested > 1_000, "échantillon hors vallée trop maigre : $tested")
         // Garde-fou d'échantillon : si le micro était accidentellement coupé,
         // la borne serait trivialement vraie. On exige de l'avoir vu agir.
         assertTrue(maxSeen > 0.5f, "micro-relief invisible sur l'échantillon : $maxSeen m")

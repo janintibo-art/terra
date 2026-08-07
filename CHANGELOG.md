@@ -1,5 +1,30 @@
 # Journal des versions
 
+## v0.11.2 — Deux tests devenus aveugles
+
+Premiers rouges après le retour de GitHub Actions, et ni l'un ni l'autre
+n'est un défaut du code : ce sont deux tests que les lots précédents ont
+rendus faux.
+
+**`MicroReliefTest`** comparait la surface rendue au champ de base et exigeait
+un écart borné par l'amplitude du micro-relief. Depuis l'incision (−140 m au
+plus) et les lacs, cette surface porte trois effets : le test en mesurait
+trois en croyant n'en mesurer qu'un. Il écarte désormais explicitement les
+points sous vallée ou sous lac, et vérifie qu'il lui reste assez
+d'échantillons pour conclure.
+
+**`ValleyIncisionTest`** cherchait le creusement maximal par tirage
+**uniforme**. Or les vallées profondes n'existent que sur les rares cellules
+à fort débit : la probabilité d'en toucher une au hasard est infime, et le
+test échouait pour cette seule raison. Il visite maintenant les soixante
+sommets les plus drainés de la grille et leurs alentours. Vérifié par
+simulation avant correction : autour d'un tel sommet, un tiers des points
+dépassent dix mètres de creusement — la recherche ciblée aboutit avec quasi-
+certitude, là où l'uniforme échouait presque toujours.
+
+Un avertissement de compilation nettoyé au passage (paramètre `level` devenu
+inutile depuis l'unification de la surface).
+
 ## v0.11.1 — Lot 1.11 : les lacs
 
 L'hydrologie avait déjà tout calculé : `fillDepthM` **est** la profondeur

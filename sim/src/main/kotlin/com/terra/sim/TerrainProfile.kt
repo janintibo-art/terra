@@ -207,7 +207,8 @@ class TerrainProfile(
         "L'amplitude ne dépend plus du niveau : une seule surface (v0.10.4).",
         ReplaceWith("TerrainProfile.DETAIL_AMPLITUDE_M")
     )
-    fun detailAmplitudeForLevel(level: Int): Float = DETAIL_AMPLITUDE_M
+    fun detailAmplitudeForLevel(@Suppress("UNUSED_PARAMETER") level: Int): Float =
+        DETAIL_AMPLITUDE_M
 
     /**
      * Altitude telle que la surface est **rendue** au niveau de tuile donné —
