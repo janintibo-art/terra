@@ -152,7 +152,9 @@ class MainActivity : Activity() {
 
         timeBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(16, 8, 16, 20)
+            // Bas resserré : cette barre est empilée au-dessus des calques
+            // depuis la v0.16.1, le grand retrait d'écran reste à layerBar.
+            setPadding(16, 8, 16, 4)
         }
         speedLabels.forEachIndexed { index, label ->
             timeBar.addView(makeButton(label) { setSpeed(index) })
@@ -165,8 +167,20 @@ class MainActivity : Activity() {
         setContentView(FrameLayout(this).apply {
             addView(glView, FrameLayout.LayoutParams(-1, -1))
             addView(hud, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
-            addView(layerBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
-            addView(timeBar, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
+            // Les deux barres partageaient la même ligne, ancrées l'une à
+            // gauche et l'autre à droite : l'ajout du bouton « Régl. »
+            // (v0.16.0) a fait dépasser leur largeur cumulée et « Eaux »
+            // passait sous « ×1 ». Empilées, elles ne peuvent plus se
+            // chevaucher, quels que soient l'écran et les boutons à venir.
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(timeBar, LinearLayout.LayoutParams(-2, -2).apply {
+                    gravity = Gravity.END
+                })
+                addView(layerBar, LinearLayout.LayoutParams(-2, -2).apply {
+                    gravity = Gravity.START
+                })
+            }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
         })
 
@@ -836,6 +850,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.16.0"
+        const val VERSION = "0.16.1"
     }
 }

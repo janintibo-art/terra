@@ -1,5 +1,17 @@
 # Journal des versions
 
+## v0.16.1 — Correctif d'interface : les barres se chevauchaient
+
+Le bouton « Régl. » de la v0.16.0 a fait dépasser la largeur cumulée des deux
+barres du bas, ancrées l'une à gauche et l'autre à droite de la même ligne :
+« Eaux » passait sous « ×1 ». Les barres sont désormais empilées — temps et
+monde sur la rangée du haut à droite, calques en bas à gauche — et ne peuvent
+plus se chevaucher, quels que soient l'écran, l'orientation et les boutons à
+venir (console du lot 0.7, notamment).
+
+Correctif purement Android : pas de test JVM possible, la CI vérifie la
+compilation et la non-régression du reste.
+
 ## v0.16.0 — Lot 1.18 : l'éditeur de paramètres en jeu
 
 Douze curseurs sur la recette de la planète — fraction océanique, altitudes,
