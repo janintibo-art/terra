@@ -30,6 +30,15 @@ class PlanetData(
     /** Précipitations annuelles par sommet, en millimètres. */
     val precipMm: FloatArray,
 
+    /**
+     * Continentalité [0, 1] : éloignement climatique de l'océan, déjà
+     * calculée pour le climat et conservée depuis le lot 1.12 — les
+     * saisons ([SeasonalClimate]) en ont besoin à l'évaluation. Zéro en
+     * mer, par construction. N'entre PAS dans l'empreinte : le champ est
+     * dérivé du relief, sans aléa propre.
+     */
+    val continentality: FloatArray,
+
     /** Biome par sommet, stocké par ordinal pour la compacité. */
     val biomeId: ByteArray,
 

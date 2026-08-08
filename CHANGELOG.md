@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.18.0 — Lot 1.12 : l'insolation et les saisons thermiques
+
+Ouverture du chantier atmosphérique (1.12–1.14), mené en trois livraisons
+avec UN SEUL incrément de génération, au 1.14 : celle-ci n'en a pas besoin.
+
+Le monde généré reste une moyenne annuelle — les empreintes figées le
+prouvent à chaque poussée — et la saison devient une modulation pure,
+évaluée à la volée : T(cellule, t) = moyenne + A · saison(t). L'amplitude A
+est calibrée sur dix-sept stations terrestres, de Singapour (±1 °C) à
+Iakoutsk (±29 °C) : erreur médiane 13 %, toutes dans un facteur 2. Le
+calibrage a corrigé une erreur de forme au passage : l'excursion
+d'insolation croît en sin φ dès les basses latitudes — la première mouture
+en sin²φ écrasait la bande subtropicale.
+
+L'amplitude suit sin(inclinaison) : une planète droite n'a pas de saisons,
+une planète couchée en a de féroces — le curseur d'inclinaison du lot 1.18
+prend enfin tout son sens. Le pic thermique retarde sur le solstice, 27
+jours au cœur des continents, 55 en mer, interpolé par la continentalité —
+que le générateur conserve désormais dans PlanetData (dérivée du relief,
+sans aléa propre : hors empreinte par construction).
+
+Le HUD affiche les extrêmes du jour sous la ligne climat : « aujourd'hui
+−52,1 … 31,4 °C », recalculés seulement au changement de jour planétaire.
+À ×200, on regarde l'hiver ronger l'hémisphère nord puis refluer.
+
+Sept tests ajoutés. Le calendrier est vérifié contre le pic de déclinaison
+MESURÉ, pas contre un jour codé en dur : la convention de phase de
+WorldTime peut changer sans casser le test.
+
+Point ouvert, assumé : la couleur du calque Température reste annuelle —
+teinter les maillages au fil des saisons demandera une reconstruction
+incrémentale, à traiter avec le morphing du lot 2.4.
+
 ## v0.17.2 — Correctif : le joystick s'inversait près du sol
 
 Le manche allait dans le bon sens en altitude et à rebours au ras du sol.

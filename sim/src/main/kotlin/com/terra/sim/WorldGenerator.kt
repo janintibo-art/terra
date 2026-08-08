@@ -282,6 +282,9 @@ class WorldGenerator(
 
         val temperatureC = FloatArray(n)
         val precipMm = FloatArray(n)
+        // Conservée pour les saisons (lot 1.12) : recalculer un BFS complet
+        // à chaque évaluation saisonnière serait absurde.
+        val continentality01 = FloatArray(n)
 
         for (i in 0 until n) {
             val v = sphere.vertices[i]
@@ -324,6 +327,7 @@ class WorldGenerator(
             val distanceKm = if (stepsToOcean[i] == Int.MAX_VALUE) 4000f
                              else stepsToOcean[i] * kmPerStep
             val continentality = clamp01(distanceKm / 1800f)
+            continentality01[i] = continentality
             t -= continentality * params.continentalityC * latFactor
 
             // --- Courants océaniques (lot 1.15) ---
@@ -500,6 +504,7 @@ class WorldGenerator(
             altitudeM = altitudeM,
             temperatureC = temperatureC,
             precipMm = precipMm,
+            continentality = continentality01,
             biomeId = biomeId,
             stats = stats,
             terrain = profile,

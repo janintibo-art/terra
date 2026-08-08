@@ -32,6 +32,7 @@ import com.terra.sim.MapLayer
 import com.terra.sim.ParamEditor
 import com.terra.sim.PlanetData
 import com.terra.sim.PlanetParams
+import com.terra.sim.SeasonalClimate
 import com.terra.sim.WorldGenerator
 import com.terra.sim.WorldNamer
 import com.terra.sim.WorldSave
@@ -134,6 +135,14 @@ class MainActivity : Activity() {
      * dédié. 900 px/s ≈ un glissement de doigt soutenu.
      */
     private val joystickSpeedPxPerS = 900f
+
+    // Extrêmes thermiques du JOUR courant (lot 1.12). Recalculés seulement
+    // quand le jour planétaire change : un parcours des 10 000 cellules à
+    // chaque rafraîchissement du HUD serait du gaspillage pur.
+    private var seasonCacheDay = -1
+    private var seasonCacheYear = -1L
+    private var seasonLoC = 0f
+    private var seasonHiC = 0f
     private var speedIndex = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -872,6 +881,33 @@ class MainActivity : Activity() {
         sb.append("climat ").append(fmt(s.coldestC)).append(" … ").append(fmt(s.hottestC))
             .append(" °C · ").append(s.distinctBiomes).append(" biomes\n")
 
+        // Extrêmes du jour : moyenne annuelle + modulation saisonnière
+        // (lot 1.12). L'hiver du monde est plus rude que sa moyenne, et
+        // c'est enfin visible.
+        run {
+            val wt = worldTime
+            val day = wt.dayOfYear(clock.tick)
+            val year = wt.year(clock.tick)
+            if (day != seasonCacheDay || year != seasonCacheYear) {
+                seasonCacheDay = day
+                seasonCacheYear = year
+                var lo = Float.MAX_VALUE
+                var hi = -Float.MAX_VALUE
+                for (i in 0 until w.vertexCount) {
+                    val t = w.temperatureC[i] + SeasonalClimate.deltaC(
+                        w.position(i).y, w.continentality[i],
+                        w.altitudeM[i] < 0f, wt, clock.tick
+                    )
+                    if (t < lo) lo = t
+                    if (t > hi) hi = t
+                }
+                seasonLoC = lo
+                seasonHiC = hi
+            }
+            sb.append("aujourd'hui ").append(fmt(seasonLoC)).append(" … ")
+                .append(fmt(seasonHiC)).append(" °C\n")
+        }
+
         // Part de la surface sous la glace : l'indicateur qui a révélé la
         // planète boule de neige de la v0.3. On le garde en vue permanente.
         val iceShare = listOf(Biome.SEA_ICE, Biome.GLACIER, Biome.SNOW)
@@ -995,6 +1031,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.17.2"
+        const val VERSION = "0.18.0"
     }
 }
