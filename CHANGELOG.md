@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.15.3 — Correctif de test : mon propre test était mal calibré
+
+Le run de la v0.15.2 a validé le correctif climatique — Gaia 16,0 → 15,7 % de
+glaces, moyenne 13,9 %, tous les tests de climat et d'empreinte verts — mais le
+**nouveau** test d'inversion subpolaire a échoué sur Kaleth : façades ouest à
+−12,8 °C contre est à −11,6 °C.
+
+Ce n'est pas le modèle. Un Monte Carlo sur 20 000 tirages
+(`validation/test_inversion_fiabilite.py`) montre que la comparaison naïve des
+moyennes de façades échoue par pur hasard d'échantillonnage sur **27 % des
+mondes** : dans la bande 54°–69°, la latitude pèse jusqu'à 14 °C et l'altitude
+3 °C, quand le signal des courants — dilué par les sommets intérieurs où
+`reach ≈ 0` — n'en pèse que 1 à 3. Troisième occurrence de la même leçon : un
+test mal calibré coûte autant qu'un bug.
+
+Correctif en deux étages :
+
+1. **`gyreStrength` extraite en fonction de compagnie** et testée directement :
+   signe subtropical à 30°, signe subpolaire à 60°, front nul à 43°, bornes.
+   Une fonction pure se teste sans bruit géographique — c'est ce test qui
+   verrouille l'inversion. L'expression est reprise opération pour opération :
+   la génération ne change pas d'un bit, `GENERATION_VERSION` reste à 12.
+
+2. **Tests de façades réécrits** avec la statistique validée par le Monte
+   Carlo : sommets côtiers (< 500 km) et bas (< 500 m) seulement, stratification
+   par sous-bandes de latitude de 5°, cumul des trois mondes. Zéro échec sur
+   20 000 tirages. Le test subtropical reçoit la même armature — il aurait fini
+   par tomber dans le même piège.
+
+Les empreintes de référence sont figées dans cette livraison, depuis
+l'artefact du run 4d56a8e : le prochain run vert prouve à la fois le
+déterminisme et la neutralité binaire du refactor.
+
 ## v0.15.2 — Correctif climatique : les gyres subpolaires existent
 
 Le premier run CI de la v0.15.1 a mis trois tests au rouge, pour trois causes

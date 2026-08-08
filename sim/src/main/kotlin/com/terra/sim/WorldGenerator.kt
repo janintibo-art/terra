@@ -71,6 +71,24 @@ class WorldGenerator(
          * exact du run rouge du 08/08 (Gaia, sommet 1249, 7,6 °C).
          */
         const val CURRENT_ALT_SCALE_M = 1500f
+
+        /**
+         * Force du transport thermique selon la latitude absolue (radians).
+         *
+         * Positif = régime SUBTROPICAL (côte est chaude), négatif = régime
+         * SUBPOLAIRE (côte ouest chaude), nul au front (~43°) et aux pôles.
+         *
+         * Extraite du corps de [generate] pour être testable directement :
+         * le run rouge du 08/08 (2e) a montré qu'un test d'intégration sur
+         * des moyennes de façades est trop bruité pour verrouiller un signe
+         * — c'est cette fonction que le test unitaire doit tenir. L'expression
+         * est reprise à l'identique, opération pour opération : l'extraction
+         * ne change pas un bit de la génération, et les empreintes figées le
+         * vérifient.
+         */
+        fun gyreStrength(absLat: Float): Float =
+            sin(2.0 * absLat).toFloat() *
+                tanh((GYRE_FRONT_LAT_RAD - absLat) / GYRE_FRONT_WIDTH_RAD)
         /** Construit un générateur à partir du nom du monde, qui sert de graine. */
         fun fromName(name: String, params: PlanetParams = PlanetParams()): WorldGenerator {
             val clean = WorldNamer.sanitize(name)
@@ -355,9 +373,7 @@ class WorldGenerator(
                         // glaces en refroidissant des façades subpolaires que
                         // la Terre réchauffe.
                         val lat = Sphere.latitude(v)
-                        val absLat = abs(lat)
-                        val strength = sin(2.0 * absLat).toFloat() *
-                            tanh((GYRE_FRONT_LAT_RAD - absLat) / GYRE_FRONT_WIDTH_RAD)
+                        val strength = gyreStrength(abs(lat))
                         // Portée de 450 km vers l'intérieur : un courant
                         // tempère sa côte, pas le continent entier. Et il
                         // tempère les basses terres : l'influence maritime
