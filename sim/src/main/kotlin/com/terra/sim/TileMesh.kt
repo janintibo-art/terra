@@ -167,7 +167,33 @@ class TileMesh(
             }
         }
 
-        // --- 1 bis. Normales par sommet ------------------------------------
+        // --- 1 bis. Altitude au niveau parent ------------------------------
+        //
+        // La surface parente est l'interpolation linéaire des sommets d'indice
+        // PAIR : c'est exactement le maillage que la tuile parente produirait
+        // sur cette zone. Un sommet pair ne bouge donc pas ; un sommet impair
+        // rejoint le milieu de ses voisins pairs. Aucune évaluation du terrain
+        // n'est nécessaire — tout se lit dans la grille déjà calculée.
+        val morphDelta = FloatArray(verts * verts)
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                val iOdd = (i and 1) == 1
+                val jOdd = (j and 1) == 1
+                val parentAlt = when {
+                    !iOdd && !jOdd -> alt[c]
+                    iOdd && !jOdd -> (alt[c - 1] + alt[c + 1]) * 0.5f
+                    !iOdd && jOdd -> (alt[c - verts] + alt[c + verts]) * 0.5f
+                    else -> (alt[c - verts - 1] + alt[c - verts + 1] +
+                            alt[c + verts - 1] + alt[c + verts + 1]) * 0.25f
+                }
+                // L'eau reste plane à toute échelle : morpher son altitude
+                // ferait onduler la surface de la mer au gré des bascules.
+                morphDelta[c] = if (alt[c] <= 0f) 0f else max(parentAlt, 0f) - max(alt[c], 0f)
+            }
+        }
+
+        // --- 1 ter. Normales par sommet ------------------------------------
         //
         // Différences centrées sur la grille : la normale d'un sommet vient de
         // ses quatre voisins, pas des facettes qui l'entourent. Deux avantages
@@ -227,8 +253,10 @@ class TileMesh(
                 val v10 = v00 + 1
                 val v01 = v00 + verts
                 val v11 = v01 + 1
-                o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
-                o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+                o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, dirX, dirY, dirZ,
+                    nrmX, nrmY, nrmZ, colR, colG, colB, mat, morphDelta)
+                o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, dirX, dirY, dirZ,
+                    nrmX, nrmY, nrmZ, colR, colG, colB, mat, morphDelta)
             }
         }
 
@@ -264,28 +292,28 @@ class TileMesh(
         offset: Int, a: Int, b: Int, c: Int,
         relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray,
         dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
-        colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray
+        nrmX: FloatArray, nrmY: FloatArray, nrmZ: FloatArray,
+        colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray,
+        morph: FloatArray
     ): Int {
         var i1 = b
         var i2 = c
 
+        // La normale géométrique ne sert QU'À décider du sens de parcours :
+        // les normales émises sont celles des sommets, lissées par
+        // différences centrées. L'ombrage par facette qu'elle produisait
+        // dessinait un pavage de losanges au ras du sol.
+        //
+        // L'orientation est comparée à la verticale locale plutôt que déduite
+        // de la parité de la face du cube : deux signes qui se compensent ont
+        // déjà piégé ce projet une fois.
         val ux = relX[i1] - relX[a]; val uy = relY[i1] - relY[a]; val uz = relZ[i1] - relZ[a]
         val wx = relX[i2] - relX[a]; val wy = relY[i2] - relY[a]; val wz = relZ[i2] - relZ[a]
-        var nx = uy * wz - uz * wy
-        var ny = uz * wx - ux * wz
-        var nz = ux * wy - uy * wx
-
-        val outward = nx * dirX[a] + ny * dirY[a] + nz * dirZ[a]
-        if (outward < 0.0) {
+        val nx = uy * wz - uz * wy
+        val ny = uz * wx - ux * wz
+        val nz = ux * wy - uy * wx
+        if (nx * dirX[a] + ny * dirY[a] + nz * dirZ[a] < 0.0) {
             val t = i1; i1 = i2; i2 = t
-            nx = -nx; ny = -ny; nz = -nz
-        }
-        val nl = sqrt(nx * nx + ny * ny + nz * nz)
-        val fnx: Float; val fny: Float; val fnz: Float
-        if (nl > 1e-12) {
-            fnx = (nx / nl).toFloat(); fny = (ny / nl).toFloat(); fnz = (nz / nl).toFloat()
-        } else {
-            fnx = dirX[a]; fny = dirY[a]; fnz = dirZ[a]
         }
 
         // Émission déroulée : une boucle sur un tableau temporaire allouerait
@@ -294,9 +322,12 @@ class TileMesh(
         // interpolé par le GPU : le reflet de l'eau s'éteint en fondu sur la
         // frange littorale au lieu de s'arrêter au bord d'une facette.
         var o = offset
-        o = emitVertex(o, relX[a], relY[a], relZ[a], colR[a], colG[a], colB[a], fnx, fny, fnz, mat[a])
-        o = emitVertex(o, relX[i1], relY[i1], relZ[i1], colR[i1], colG[i1], colB[i1], fnx, fny, fnz, mat[i1])
-        o = emitVertex(o, relX[i2], relY[i2], relZ[i2], colR[i2], colG[i2], colB[i2], fnx, fny, fnz, mat[i2])
+        o = emitVertex(o, relX[a], relY[a], relZ[a], colR[a], colG[a], colB[a],
+            nrmX[a], nrmY[a], nrmZ[a], mat[a], morph[a])
+        o = emitVertex(o, relX[i1], relY[i1], relZ[i1], colR[i1], colG[i1], colB[i1],
+            nrmX[i1], nrmY[i1], nrmZ[i1], mat[i1], morph[i1])
+        o = emitVertex(o, relX[i2], relY[i2], relZ[i2], colR[i2], colG[i2], colB[i2],
+            nrmX[i2], nrmY[i2], nrmZ[i2], mat[i2], morph[i2])
         return o
     }
 
@@ -305,7 +336,11 @@ class TileMesh(
         x: Double, y: Double, z: Double,
         r: Float, g: Float, b: Float,
         nx: Float, ny: Float, nz: Float,
-        material: Float
+        material: Float,
+        /** Écart d'altitude vers le niveau parent. Nul pour les jupes : elles
+         *  descendent sous le terrain quel que soit le niveau, et battraient
+         *  au rythme des bascules si elles morphaient. */
+        morph: Float
     ): Int {
         var o = offset
         vertexData[o++] = x.toFloat()
@@ -314,6 +349,7 @@ class TileMesh(
         vertexData[o++] = r; vertexData[o++] = g; vertexData[o++] = b
         vertexData[o++] = nx; vertexData[o++] = ny; vertexData[o++] = nz
         vertexData[o++] = material
+        vertexData[o++] = morph
         return o
     }
 
@@ -387,13 +423,13 @@ class TileMesh(
         val flip = gnx * outX + gny * outY + gnz * outZ < 0.0
 
         var o = offset
-        o = emitVertex(o, x0, y0, z0, r, g, b, nx, ny, nz, material)
+        o = emitVertex(o, x0, y0, z0, r, g, b, nx, ny, nz, material, 0f)
         if (flip) {
-            o = emitVertex(o, x2, y2, z2, r, g, b, nx, ny, nz, material)
-            o = emitVertex(o, x1, y1, z1, r, g, b, nx, ny, nz, material)
+            o = emitVertex(o, x2, y2, z2, r, g, b, nx, ny, nz, material, 0f)
+            o = emitVertex(o, x1, y1, z1, r, g, b, nx, ny, nz, material, 0f)
         } else {
-            o = emitVertex(o, x1, y1, z1, r, g, b, nx, ny, nz, material)
-            o = emitVertex(o, x2, y2, z2, r, g, b, nx, ny, nz, material)
+            o = emitVertex(o, x1, y1, z1, r, g, b, nx, ny, nz, material, 0f)
+            o = emitVertex(o, x2, y2, z2, r, g, b, nx, ny, nz, material, 0f)
         }
         return o
     }
@@ -403,12 +439,33 @@ class TileMesh(
         /** Segments par côté : 16, soit une grille 17×17 validée par simulation. */
         const val MESH_N = 16
 
-        const val FLOATS_PER_VERTEX = 10
+        const val FLOATS_PER_VERTEX = 11
         const val STRIDE_BYTES = FLOATS_PER_VERTEX * 4
         const val OFFSET_POSITION = 0
         const val OFFSET_COLOR = 3
         const val OFFSET_NORMAL = 6
         const val OFFSET_MATERIAL = 9
+
+        /**
+         * Écart d'altitude vers la géométrie du niveau PARENT, en mètres —
+         * lot 2.4.
+         *
+         * ## Pourquoi une seule valeur suffit
+         *
+         * Un morphing complet interpolerait la position entière du sommet
+         * vers celle qu'il occupe dans la tuile parente, soit trois flottants
+         * de plus par sommet : 30 % de mémoire GPU, et la capacité du pool
+         * tombant de 328 à 252 tuiles alors que la descente en demande
+         * jusqu'à 480.
+         *
+         * Or ce déplacement est presque purement **radial**. Les sommets
+         * d'indice pair coïncident exactement avec ceux du parent ; les
+         * impairs se déplacent vers le milieu de la corde parente, dont
+         * l'écart tangentiel vaut la sagitta — un micromètre au niveau 14,
+         * bien en deçà du pixel. Seule l'altitude change vraiment, et un
+         * flottant suffit à la porter.
+         */
+        const val OFFSET_MORPH = 10
 
         const val MATERIAL_LAND = 0f
         const val MATERIAL_WATER = 1f

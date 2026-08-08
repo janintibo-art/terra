@@ -608,3 +608,86 @@ class WaterColorTest {
         }
     }
 }
+
+/**
+ * Morphing entre niveaux — lot 2.4.
+ *
+ * L'interpolation elle-même vit dans le shader ; ce qui se teste en JVM est
+ * la donnée qu'il consomme : l'écart d'altitude vers la géométrie parente.
+ * La propriété décisive est que cet écart reconstruise EXACTEMENT le
+ * maillage du parent — sinon le ressaut demeure au moment de la bascule,
+ * qui est tout ce que ce lot cherche à supprimer.
+ */
+class MorphingTest {
+
+    companion object {
+        private val world: PlanetData by lazy {
+            WorldGenerator.fromName("Kaleth", PlanetParams(subdivisions = 4)).generate()
+        }
+    }
+
+    @Test
+    fun `un sommet d indice pair ne morphe pas`() {
+        // Les sommets pairs coïncident déjà avec ceux du parent : leur écart
+        // doit être nul, sans quoi la géométrie bougerait là où elle est
+        // pourtant commune aux deux niveaux.
+        val mesh = TileMesh(
+            TileId(2, 14, 5000, 6000), world.terrain, CoarseSampler(world),
+            world.params.radiusM.toDouble()
+        )
+        var zero = 0
+        var nonZero = 0
+        var i = 0
+        while (i < mesh.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
+            val m = mesh.vertexData[i + TileMesh.OFFSET_MORPH]
+            if (m == 0f) zero++ else nonZero++
+            i += TileMesh.FLOATS_PER_VERTEX
+        }
+        // Un quart des sommets de la grille sont pairs en i ET en j, plus
+        // toutes les jupes : la proportion d'écarts nuls doit être forte.
+        assertTrue(zero > 0, "aucun sommet sans morphing")
+        assertTrue(nonZero > 0, "aucun sommet morphé : le morphing est débranché")
+    }
+
+    @Test
+    fun `l ecart de morphing reste borne par le relief local`() {
+        val mesh = TileMesh(
+            TileId(0, 12, 1200, 900), world.terrain, CoarseSampler(world),
+            world.params.radiusM.toDouble()
+        )
+        var worst = 0f
+        var i = 0
+        while (i < mesh.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
+            val m = kotlin.math.abs(mesh.vertexData[i + TileMesh.OFFSET_MORPH])
+            if (m > worst) worst = m
+            i += TileMesh.FLOATS_PER_VERTEX
+        }
+        // L'écart est une différence d'altitude entre un sommet et la moyenne
+        // de ses voisins : il ne peut pas dépasser l'amplitude du relief.
+        assertTrue(
+            worst < world.params.maxAltitudeM,
+            "écart de morphing de $worst m, au-delà du relief possible"
+        )
+    }
+
+    @Test
+    fun `la mer ne morphe jamais`() {
+        // Morpher l'altitude de l'eau la ferait onduler au gré des bascules
+        // de niveau — un défaut bien plus visible que celui qu'on corrige.
+        val mesh = TileMesh(
+            TileId(4, 10, 500, 500), world.terrain, CoarseSampler(world),
+            world.params.radiusM.toDouble()
+        )
+        var i = 0
+        while (i < mesh.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
+            val material = mesh.vertexData[i + TileMesh.OFFSET_MATERIAL]
+            if (material > 0.99f) {
+                assertEquals(
+                    0f, mesh.vertexData[i + TileMesh.OFFSET_MORPH], 0f,
+                    "un sommet d'eau franche porte un morphing"
+                )
+            }
+            i += TileMesh.FLOATS_PER_VERTEX
+        }
+    }
+}

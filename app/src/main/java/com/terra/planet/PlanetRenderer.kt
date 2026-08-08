@@ -173,6 +173,8 @@ class PlanetRenderer(
     private var tULevelTint = -1
     private var tUWaveTime = -1
     private var tUWaveScale = -1
+    private var tAMorph = -1
+    private var tUMorph = -1
 
     private var skyProgram = 0
     private var skyVbo = 0
@@ -262,6 +264,8 @@ class PlanetRenderer(
             tULevelTint = GLES20.glGetUniformLocation(tileProgram, "uLevelTint")
             tUWaveTime = GLES20.glGetUniformLocation(tileProgram, "uWaveTime")
             tUWaveScale = GLES20.glGetUniformLocation(tileProgram, "uWaveScale")
+            tAMorph = GLES20.glGetAttribLocation(tileProgram, "aMorph")
+            tUMorph = GLES20.glGetUniformLocation(tileProgram, "uMorph")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -527,11 +531,30 @@ class PlanetRenderer(
                 tUWaveScale, ((lvl - 16) / 3f).coerceIn(0f, 1f)
             )
 
+            // --- Morphing entre niveaux (lot 2.4) ---
+            //
+            // Le sélecteur bascule au niveau supérieur quand la distance
+            // descend sous 2·rayon/seuil. On interpole vers la géométrie
+            // parente sur les trente derniers pour cent avant cette bascule :
+            // à l'instant du changement, les deux maillages coïncident
+            // exactement, et le ressaut disparaît. Plus tôt, la géométrie
+            // fine est vraie ; c'est ce qui compte de près.
+            val tileRadius = (Math.PI * 0.5 / (1 shl lvl)) * radius * 0.75
+            val switchDist = 2.0 * tileRadius / 1.4
+            val dxm = tile.centerXM - snapshot.eyeXM
+            val dym = tile.centerYM - snapshot.eyeYM
+            val dzm = tile.centerZM - snapshot.eyeZM
+            val dist = sqrt(dxm * dxm + dym * dym + dzm * dzm)
+            val morph = (((dist / switchDist) - MORPH_START) / (1.0 - MORPH_START))
+                .coerceIn(0.0, 1.0).toFloat()
+            GLES20.glUniform1f(tUMorph, morph)
+
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, tile.vbo)
             bindTileAttribute(tAPosition, 3, TileMesh.OFFSET_POSITION)
             bindTileAttribute(tAColor, 3, TileMesh.OFFSET_COLOR)
             bindTileAttribute(tANormal, 3, TileMesh.OFFSET_NORMAL)
             bindTileAttribute(tAMaterial, 1, TileMesh.OFFSET_MATERIAL)
+            bindTileAttribute(tAMorph, 1, TileMesh.OFFSET_MORPH)
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, tile.vertexCount)
             triangles += tile.vertexCount / 3
         }
@@ -539,6 +562,7 @@ class PlanetRenderer(
         disableAttribute(tAColor)
         disableAttribute(tANormal)
         disableAttribute(tAMaterial)
+        disableAttribute(tAMorph)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
         drawnTriangles = triangles
     }
@@ -839,6 +863,16 @@ class PlanetRenderer(
         /** Téléversements de tuiles par image : au-delà, à-coups visibles. */
         private const val UPLOADS_PER_FRAME = 4
 
+        /**
+         * Fraction de la distance de bascule à laquelle le morphing commence.
+         *
+         * 0,70 : la géométrie fine reste vraie sur les soixante-dix premiers
+         * pour cent, et l'interpolation occupe les trente derniers — assez
+         * pour être progressive, assez court pour ne pas fausser le relief
+         * proche.
+         */
+        private const val MORPH_START = 0.70
+
         /** Une tuile non vue pendant ~4 s à 30 i/s est rendue au pool. */
         private const val KEEP_FRAMES = 120L
 
@@ -944,7 +978,10 @@ class PlanetRenderer(
             uniform float uWaveTime;   // phase de la houle, radians
             uniform float uWaveScale;  // 0 sur tuile grossiere, 1 de pres
 
+            uniform float uMorph;      // 0 geometrie fine, 1 geometrie parente
+
             attribute vec3 aPosition;   // relative au centre de tuile, metres
+            attribute float aMorph;     // ecart d'altitude vers le niveau parent
             attribute vec3 aColor;
             attribute vec3 aNormal;
             attribute float aMaterial;
@@ -973,7 +1010,11 @@ class PlanetRenderer(
                 // L'amplitude s'annule pres du rivage (aMaterial < 1) : une
                 // vague qui deborderait sur la plage deplacerait le trait de
                 // cote par rapport a la grille, donc par rapport aux biomes.
-                vec3 rel = aPosition + uOffset;
+                // Morphing : le sommet glisse vers l'altitude qu'il aurait au
+                // niveau parent. A la bascule (uMorph = 1) les deux maillages
+                // coincident, donc plus aucun ressaut.
+                vec3 rel = aPosition + uOffset + sph * (aMorph * uMorph);
+
                 float openWater = clamp((aMaterial - 0.85) * 6.67, 0.0, 1.0);
                 float waveAmp = uWaveScale * openWater;
                 if (waveAmp > 0.0) {

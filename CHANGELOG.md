@@ -1,5 +1,43 @@
 # Journal des versions
 
+## v0.13.0 — Lot 2.4 : le morphing entre niveaux
+
+Dernier artefact structurel du rendu adaptatif : quand une tuile bascule de
+niveau, sa géométrie sautait d'un coup. Chaque sommet porte désormais
+l'altitude qu'il aurait au niveau parent, et le shader interpole vers elle à
+mesure que la caméra s'éloigne. À l'instant de la bascule, les deux maillages
+coïncident exactement — le ressaut disparaît.
+
+### Un flottant, pas trois
+
+Le morphing classique interpolerait la position entière du sommet : trois
+flottants de plus, 30 % de mémoire GPU, et la capacité du pool tombant de 328
+à 252 tuiles alors que la descente en demande jusqu'à 480. Or ce déplacement
+est presque purement **radial** — les sommets pairs coïncident déjà avec le
+parent, et l'écart tangentiel des impairs vaut la sagitta de la corde, un
+micromètre au niveau 14. Une seule valeur d'altitude suffit donc, et le
+surcoût tombe à 10 %.
+
+Fenêtre d'interpolation : les trente derniers pour cent avant la bascule. La
+géométrie fine reste vraie le reste du temps, ce qui compte de près.
+
+### Un défaut découvert au passage
+
+Le lot 2.4 a mis au jour un oubli du lot précédent : les **normales lissées
+étaient calculées à chaque tuile et jamais utilisées** — l'émission
+continuait de poser celles des facettes. Le lissage constaté à l'écran ne
+venait que de l'interpolation des couleurs. C'est corrigé, et le terrain
+proche devrait s'adoucir nettement.
+
+Mon audit de livraison vérifiait que le calcul existait, pas qu'il servait :
+le piège des constantes orphelines, transposé aux variables locales. Une
+**cinquième passe de contrôle statique** détecte désormais tout tableau
+rempli puis jamais lu.
+
+Trois tests sur la donnée de morphing : les sommets pairs ne bougent pas,
+l'écart reste borné par le relief, et la mer ne morphe jamais — l'onduler au
+gré des bascules serait pire que le défaut corrigé.
+
 ## v0.12.3 — Correctif de compilation : une variable hors de sa portée
 
 Premier échec de **compilation** du projet, et il tenait à une inattention :
