@@ -30,6 +30,24 @@ class CoarseSampler(private val data: PlanetData) {
     private val adjacency: Array<IntArray> = data.sphere.buildAdjacency()
     private val vertices = data.sphere.vertices
 
+    /**
+     * Échantillonneur barycentrique, pour les grandeurs qui doivent varier
+     * continûment — les couleurs de biome, notamment. Le plus proche voisin
+     * convient au biome lui-même (une catégorie ne s'interpole pas), mais pas
+     * à sa couleur : il peignait chaque cellule d'un aplat, et la planète
+     * apparaissait pavée d'hexagones de 115 km.
+     */
+    private val field = FieldSampler(data.sphere)
+
+    /**
+     * Couleur de biome interpolée entre les trois sommets du triangle.
+     * [holder] mémorise le dernier sommet trouvé pour accélérer les requêtes
+     * voisines ; [out] reçoit les trois composantes.
+     */
+    fun sampleBiomeColor(p: Vec3, holder: IntArray, out: FloatArray) {
+        field.sample3(data.biomeColorR, data.biomeColorG, data.biomeColorB, p, holder, out)
+    }
+
     /** Indice du sommet de la grille le plus proche du point donné. */
     fun nearestVertex(p: Vec3, hint: Int = -1): Int {
         // Point de départ : l'indice suggéré, sinon le meilleur des douze

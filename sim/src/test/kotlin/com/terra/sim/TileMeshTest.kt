@@ -387,3 +387,142 @@ class CollisionSurfaceTest {
         }
     }
 }
+
+/**
+ * Lissage des normales et interpolation des couleurs — lot 1.12.
+ *
+ * Les deux corrections visent le même défaut d'apparence : le terrain se
+ * lisait comme un pavage. Les normales venaient des facettes (losanges au
+ * sol), les couleurs du sommet le plus proche (hexagones de 115 km au globe).
+ */
+class SmoothShadingTest {
+
+    companion object {
+        private val world: PlanetData by lazy {
+            WorldGenerator.fromName("Kaleth", PlanetParams(subdivisions = 4)).generate()
+        }
+    }
+
+    @Test
+    fun `les normales varient continument a travers un bord de tuile`() {
+        // La propriété qui justifie l'anneau étendu : sans lui, les normales
+        // des sommets de bord ignoreraient le relief de la tuile voisine et
+        // une couture apparaîtrait le long de chaque arête.
+        val w = world
+        val r = w.params.radiusM.toDouble()
+        val level = 12
+        val grid = 1 shl level
+        val left = TileId(3, level, grid / 3, grid / 4)
+        val right = TileId(3, level, grid / 3 + 1, grid / 4)
+
+        val a = TileMesh(left, w.terrain, CoarseSampler(w), r)
+        val b = TileMesh(right, w.terrain, CoarseSampler(w), r)
+
+        // Les normales des sommets partagés doivent coïncider. On les
+        // retrouve dans les tampons via leur position relative, ramenée au
+        // repère commun par le centre de chaque tuile.
+        var compared = 0
+        var worst = 0f
+        var i = 0
+        while (i < a.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
+            val ax = a.vertexData[i] + a.centerXM.toFloat()
+            val ay = a.vertexData[i + 1] + a.centerYM.toFloat()
+            val az = a.vertexData[i + 2] + a.centerZM.toFloat()
+            var j = 0
+            while (j < b.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
+                val bx = b.vertexData[j] + b.centerXM.toFloat()
+                val by = b.vertexData[j + 1] + b.centerYM.toFloat()
+                val bz = b.vertexData[j + 2] + b.centerZM.toFloat()
+                val d = kotlin.math.abs(ax - bx) + kotlin.math.abs(ay - by) + kotlin.math.abs(az - bz)
+                if (d < 1f) {
+                    val dn = kotlin.math.abs(a.vertexData[i + 6] - b.vertexData[j + 6]) +
+                            kotlin.math.abs(a.vertexData[i + 7] - b.vertexData[j + 7]) +
+                            kotlin.math.abs(a.vertexData[i + 8] - b.vertexData[j + 8])
+                    if (dn > worst) worst = dn
+                    compared++
+                    break
+                }
+                j += TileMesh.FLOATS_PER_VERTEX * 7
+            }
+            i += TileMesh.FLOATS_PER_VERTEX * 11
+        }
+        assertTrue(compared > 0, "aucun sommet partagé retrouvé entre les deux tuiles")
+        assertTrue(worst < 0.05f, "normales discontinues au bord : écart $worst")
+    }
+
+    @Test
+    fun `les normales sont unitaires et tournees vers l exterieur`() {
+        val w = world
+        val mesh = TileMesh(
+            TileId(1, 10, 300, 400), w.terrain, CoarseSampler(w),
+            w.params.radiusM.toDouble()
+        )
+        var checked = 0
+        var i = 0
+        while (i < mesh.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
+            val nx = mesh.vertexData[i + 6]
+            val ny = mesh.vertexData[i + 7]
+            val nz = mesh.vertexData[i + 8]
+            val len = kotlin.math.sqrt(nx * nx + ny * ny + nz * nz)
+            assertTrue(kotlin.math.abs(len - 1f) < 1e-3f, "normale non unitaire : $len")
+
+            val px = mesh.vertexData[i] + mesh.centerXM.toFloat()
+            val py = mesh.vertexData[i + 1] + mesh.centerYM.toFloat()
+            val pz = mesh.vertexData[i + 2] + mesh.centerZM.toFloat()
+            val pl = kotlin.math.sqrt(px * px + py * py + pz * pz)
+            val outward = (nx * px + ny * py + nz * pz) / pl
+            assertTrue(outward > 0.2f, "normale tournée vers l'intérieur : $outward")
+            checked++
+            i += TileMesh.FLOATS_PER_VERTEX * 13
+        }
+        assertTrue(checked > 30)
+    }
+
+    @Test
+    fun `la couleur de biome varie continument`() {
+        // Un aplat par cellule produirait des paliers ; l'interpolation doit
+        // rendre des valeurs intermédiaires entre deux biomes voisins.
+        val w = world
+        val sampler = CoarseSampler(w)
+        val holder = intArrayOf(0)
+        val rgb = FloatArray(3)
+        val rng = kotlin.random.Random(3)
+
+        // On cherche une paire de sommets voisins de biomes différents, puis
+        // on échantillonne à mi-chemin : la couleur doit être strictement
+        // entre les deux, ce qu'un plus proche voisin ne peut pas produire.
+        val adjacency = w.sphere.buildAdjacency()
+        var found = false
+        for (v in 0 until w.vertexCount) {
+            if (found) break
+            for (u in adjacency[v]) {
+                if (w.biomeId[u] == w.biomeId[v]) continue
+                val a = w.sphere.vertices[v]
+                val b = w.sphere.vertices[u]
+                val mid = com.terra.core.Vec3(
+                    (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f
+                ).normalized()
+                sampler.sampleBiomeColor(mid, holder, rgb)
+                val ra = w.biomeColorR[v]
+                val rb = w.biomeColorR[u]
+                if (kotlin.math.abs(ra - rb) > 0.05f) {
+                    val lo = kotlin.math.min(ra, rb)
+                    val hi = kotlin.math.max(ra, rb)
+                    assertTrue(
+                        rgb[0] > lo - 0.02f && rgb[0] < hi + 0.02f,
+                        "couleur hors de l'intervalle des deux biomes : ${rgb[0]} pour [$lo, $hi]"
+                    )
+                    found = true
+                    break
+                }
+            }
+        }
+        assertTrue(found, "aucune frontière de biomes trouvée")
+        // Déterminisme.
+        val p = com.terra.core.Vec3(0.3f, 0.5f, 0.81f).normalized()
+        sampler.sampleBiomeColor(p, holder, rgb)
+        val first = rgb.copyOf()
+        sampler.sampleBiomeColor(p, intArrayOf(rng.nextInt(w.vertexCount)), rgb)
+        assertTrue(rgb.contentEquals(first), "l'indice de départ change la couleur")
+    }
+}

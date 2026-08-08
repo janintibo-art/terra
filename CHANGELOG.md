@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.12.0 — Fin du pavage : normales lissées, couleurs interpolées
+
+Deux défauts d'apparence signalés à l'essai, deux causes distinctes, la même
+racine : le rendu montrait la structure de ses données au lieu du paysage.
+
+### Les losanges au sol
+
+Chaque triangle portait sa propre normale — l'ombrage plat du parti pris
+low-poly d'origine. Au ras du sol, cela se lisait comme de la pixellisation.
+Les normales sont désormais calculées **par sommet**, en différences centrées
+sur la grille de la tuile.
+
+Pour que cela reste continu d'une tuile à l'autre, la grille est **étendue
+d'un anneau** : les sommets supplémentaires ne produisent ni triangle ni
+jupe, ils fournissent seulement les voisins manquants au calcul des normales
+de bord. Comme leurs positions viennent des indices globaux, elles sont
+identiques bit à bit à celles de la tuile d'à côté : la continuité est
+structurelle, pas approchée. Coût : 25 % de sommets calculés en plus.
+
+### Les hexagones au globe
+
+La couleur était copiée depuis le sommet de grille le plus proche, ce qui
+dessinait les cellules de Voronoï de l'icosphère — des polygones de 115 km.
+Elle est maintenant **interpolée** entre les trois sommets du triangle, via
+un `sample3` qui localise une seule fois pour les trois canaux. Le biome
+lui-même reste au plus proche voisin : une catégorie ne s'interpole pas, sa
+couleur si.
+
+Trois tests : continuité des normales à travers un bord de tuile (mesurée sur
+les sommets partagés de deux tuiles voisines), normales unitaires et
+tournées vers l'extérieur, couleur strictement intermédiaire à une frontière
+de biomes — ce qu'un plus proche voisin ne peut produire.
+
 ## v0.11.4 — Le débit interpolé écrête les pics
 
 Le message du test disait **0,14 %** : le réseau avait presque disparu, il

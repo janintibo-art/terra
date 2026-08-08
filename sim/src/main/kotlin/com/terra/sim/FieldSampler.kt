@@ -148,6 +148,62 @@ class FieldSampler(private val sphere: Icosphere) {
         return sample(field, p, v)
     }
 
+    /**
+     * Interpole trois champs en un seul passage — pensé pour les couleurs.
+     *
+     * Localiser le triangle coûte bien plus cher que la combinaison linéaire
+     * qui suit : appeler [sample] trois fois pour les composantes rouge,
+     * verte et bleue triplerait le prix sans raison.
+     */
+    fun sample3(
+        r: FloatArray, g: FloatArray, b: FloatArray,
+        p: Vec3, hintHolder: IntArray, out: FloatArray
+    ) {
+        val v = nearestVertex(p, hintHolder[0])
+        hintHolder[0] = v
+        val verts = sphere.vertices
+        val f = sphere.faces
+
+        val vv = verts[v]
+        if (p.x == vv.x && p.y == vv.y && p.z == vv.z) {
+            out[0] = r[v]; out[1] = g[v]; out[2] = b[v]
+            return
+        }
+
+        var bestTri = -1
+        var bestMin = Float.NEGATIVE_INFINITY
+        var wA = 0f; var wB = 0f; var wC = 0f
+        for (t in vertexFaces[v]) {
+            val a = verts[f[t * 3]]
+            val bb = verts[f[t * 3 + 1]]
+            val c = verts[f[t * 3 + 2]]
+            val dA = det(p, bb, c)
+            val dB = det(a, p, c)
+            val dC = det(a, bb, p)
+            val mn = minOf(dA, dB, dC)
+            if (mn > bestMin) {
+                bestMin = mn; bestTri = t
+                wA = dA; wB = dB; wC = dC
+            }
+            if (mn >= 0f) break
+        }
+        if (wA < 0f) wA = 0f
+        if (wB < 0f) wB = 0f
+        if (wC < 0f) wC = 0f
+        val sum = wA + wB + wC
+        if (sum <= 0f || bestTri < 0) {
+            out[0] = r[v]; out[1] = g[v]; out[2] = b[v]
+            return
+        }
+        val ia = f[bestTri * 3]
+        val ib = f[bestTri * 3 + 1]
+        val ic = f[bestTri * 3 + 2]
+        val inv = 1f / sum
+        out[0] = (r[ia] * wA + r[ib] * wB + r[ic] * wC) * inv
+        out[1] = (g[ia] * wA + g[ib] * wB + g[ic] * wC) * inv
+        out[2] = (b[ia] * wA + b[ib] * wB + b[ic] * wC) * inv
+    }
+
     private fun dot(a: Vec3, b: Vec3): Float = a.x * b.x + a.y * b.y + a.z * b.z
 
     /** Volume signé du trièdre (a, b, c) : le produit mixte a · (b × c). */

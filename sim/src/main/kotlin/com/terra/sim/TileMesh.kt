@@ -72,7 +72,16 @@ class TileMesh(
 
     init {
         val n = MESH_N
-        val verts = n + 1
+        // Grille ÉTENDUE d'un anneau : les indices vont de −1 à n+1.
+        //
+        // Cet anneau ne produit aucun triangle ; il sert uniquement à calculer
+        // la normale des sommets de bord par différences centrées. Sans lui,
+        // ces normales ignoreraient le relief de la tuile voisine et une
+        // couture apparaîtrait à chaque bord. Les positions de l'anneau sont
+        // calculées par indices GLOBAUX, donc identiques bit à bit à celles de
+        // la voisine : la normale est continue par construction.
+        val verts = n + 3
+        val off = 1
 
         // --- 1. Grille de positions, calculée une fois en double -----------
         //
@@ -106,9 +115,11 @@ class TileMesh(
         // de la cellule trouvée pour le précédent, ce qui réduit la recherche à
         // une ou deux étapes au lieu d'une trentaine.
         var hint = -1
+        val colorHint = intArrayOf(0)
+        val rgb = FloatArray(3)
         var idx = 0
-        for (j in 0..n) {
-            for (i in 0..n) {
+        for (j in -1..n + 1) {
+            for (i in -1..n + 1) {
                 val d = CubeSphere.gridDirection(tile.face, tile.level, baseGx + i, baseGy + j, n)
                 val df = d.toVec3()
                 val a = profile.renderedAltitudeAt(df)
@@ -125,13 +136,17 @@ class TileMesh(
                 alt[idx] = a
                 dirX[idx] = df.x; dirY[idx] = df.y; dirZ[idx] = df.z
 
+                // Couleur du biome INTERPOLÉE entre les trois sommets du
+                // triangle, au lieu d'être copiée du plus proche. Sans cela,
+                // chaque cellule de la grille peignait un polygone uni, et la
+                // planète apparaissait pavée d'hexagones de 115 km.
                 hint = sampler.nearestVertex(df, hint)
                 val jitter = if (a > 0f) profile.colorJitterAt(df) else 1f
-                colorFor(sampler, hint, df, a, jitter, profile.params, colR, colG, colB, idx)
+                sampler.sampleBiomeColor(df, colorHint, rgb)
+                colorFor(sampler, hint, df, a, jitter, rgb, profile.params, colR, colG, colB, idx)
 
                 // Eau douce : le lac reprend la teinte du ciel plus qu'il ne
-                // la tire du fond, et s'assombrit avec la profondeur. Le
-                // matériau passe à l'eau, donc au reflet spéculaire.
+                // la tire du fond, et s'assombrit avec la profondeur.
                 val lakeDepth = profile.lakeDepthAt(df)
                 if (lakeDepth > 0f) {
                     val t = clamp01(lakeDepth / 45f)
@@ -139,18 +154,59 @@ class TileMesh(
                     colG[idx] = 0.34f + (0.14f - 0.34f) * t
                     colB[idx] = 0.46f + (0.30f - 0.46f) * t
                 }
-                // Matériau continu : 0 en terre franche, 1 en eau franche,
-                // dégradé sur ~23 m autour du rivage. Le binaire par facette
-                // dessinait le trait de côte en dents de scie à l'échelle de
-                // la maille — le défaut le plus visible des premières
-                // descentes côtières.
+
                 // Matériau : eau de mer près du rivage, ou eau douce dès que
                 // le lac atteint un mètre — même fondu de rive dans les deux
                 // cas, pour que le reflet meure doucement sur les hauts-fonds.
                 val seaness = clamp01((8f - a) / 23f)
-                val lakeness = clamp01(profile.lakeDepthAt(df) / 1.5f)
+                val lakeness = clamp01(lakeDepth / 1.5f)
                 mat[idx] = max(seaness, lakeness)
                 idx++
+            }
+        }
+
+        // --- 1 bis. Normales par sommet ------------------------------------
+        //
+        // Différences centrées sur la grille : la normale d'un sommet vient de
+        // ses quatre voisins, pas des facettes qui l'entourent. Deux avantages
+        // décisifs : le résultat est continu à travers les bords de tuiles
+        // (l'anneau étendu fournit les voisins manquants, aux positions bit à
+        // bit identiques à celles de la tuile d'à côté), et il ne dépend pas
+        // du découpage en triangles.
+        //
+        // C'est ce qui remplace l'ombrage par facette : chaque triangle
+        // portait sa propre teinte, ce qui se lisait comme un pavage de
+        // losanges dès qu'on approchait du sol.
+        val nrmX = FloatArray(verts * verts)
+        val nrmY = FloatArray(verts * verts)
+        val nrmZ = FloatArray(verts * verts)
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                val e = c + 1
+                val w = c - 1
+                val nn = c + verts
+                val ss = c - verts
+                val ex = relX[e] - relX[w]; val ey = relY[e] - relY[w]; val ez = relZ[e] - relZ[w]
+                val nx2 = relX[nn] - relX[ss]; val ny2 = relY[nn] - relY[ss]; val nz2 = relZ[nn] - relZ[ss]
+                var vx = ey * nz2 - ez * ny2
+                var vy = ez * nx2 - ex * nz2
+                var vz = ex * ny2 - ey * nx2
+                // Orientation vérifiée contre la verticale locale, jamais
+                // supposée : la parité du paramétrage change d'une face du
+                // cube à l'autre, et deux signes qui se compensent ont déjà
+                // piégé ce projet.
+                if (vx * dirX[c] + vy * dirY[c] + vz * dirZ[c] < 0.0) {
+                    vx = -vx; vy = -vy; vz = -vz
+                }
+                val len = sqrt(vx * vx + vy * vy + vz * vz)
+                if (len > 1e-12) {
+                    nrmX[c] = (vx / len).toFloat()
+                    nrmY[c] = (vy / len).toFloat()
+                    nrmZ[c] = (vz / len).toFloat()
+                } else {
+                    nrmX[c] = dirX[c]; nrmY[c] = dirY[c]; nrmZ[c] = dirZ[c]
+                }
             }
         }
 
@@ -165,10 +221,10 @@ class TileMesh(
         // style low-poly du projet, un lissage l'effacerait.
         for (j in 0 until n) {
             for (i in 0 until n) {
-                val v00 = j * verts + i
-                val v10 = j * verts + i + 1
-                val v01 = (j + 1) * verts + i
-                val v11 = (j + 1) * verts + i + 1
+                val v00 = (j + off) * verts + (i + off)
+                val v10 = v00 + 1
+                val v01 = v00 + verts
+                val v11 = v01 + 1
                 o = emitTriangle(o, v00, v10, v11, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
                 o = emitTriangle(o, v00, v11, v01, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
             }
@@ -179,10 +235,13 @@ class TileMesh(
         // prolonge, ce qui le rend invisible tant qu'il ne fait que boucher
         // une fissure.
         val depth = skirtDepthM(tile, planetRadiusM)
-        o = emitSkirtEdge(o, 0, 1, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)                    // bord t=0
-        o = emitSkirtEdge(o, (verts - 1) * verts, 1, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat) // bord t=1
-        o = emitSkirtEdge(o, 0, verts, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)               // bord s=0
-        emitSkirtEdge(o, verts - 1, verts, verts, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)           // bord s=1
+        // Les bords parcourent la grille UTILE : l'anneau étendu ne sert
+        // qu'aux normales et ne doit produire ni triangle ni jupe.
+        val corner = off * verts + off
+        o = emitSkirtEdge(o, corner, 1, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+        o = emitSkirtEdge(o, corner + n * verts, 1, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+        o = emitSkirtEdge(o, corner, verts, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+        emitSkirtEdge(o, corner + n, verts, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
     }
 
     /**
@@ -272,14 +331,13 @@ class TileMesh(
      * on échange deux sommets. Même parade que pour les facettes du terrain.
      */
     private fun emitSkirtEdge(
-        offset: Int, start: Int, stride: Int, verts: Int, depth: Double,
+        offset: Int, start: Int, stride: Int, segments: Int, depth: Double,
         relX: DoubleArray, relY: DoubleArray, relZ: DoubleArray,
         dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
         colR: FloatArray, colG: FloatArray, colB: FloatArray, mat: FloatArray
     ): Int {
         var o = offset
-        val n = verts - 1
-        for (k in 0 until n) {
+        for (k in 0 until segments) {
             val a = start + k * stride
             val b = start + (k + 1) * stride
 
@@ -398,6 +456,8 @@ class TileMesh(
         private fun colorFor(
             sampler: CoarseSampler, vertexIndex: Int, dir: Vec3, altitudeM: Float,
             jitter: Float,
+            /** Couleur de biome déjà interpolée : R, G, B. */
+            rgb: FloatArray,
             params: PlanetParams,
             outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
         ) {
@@ -413,9 +473,9 @@ class TileMesh(
                 }
             } else {
                 val tint = (0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)) * jitter
-                var r = clamp01(biome.r * tint)
-                var g = clamp01(biome.g * tint)
-                var b = clamp01(biome.b * tint)
+                var r = clamp01(rgb[0] * tint)
+                var g = clamp01(rgb[1] * tint)
+                var b = clamp01(rgb[2] * tint)
                 // Frange humide : sous douze mètres d'altitude, la terre se
                 // fond vers l'eau claire — c'est elle qui efface les dents de
                 // scie du trait de côte, l'autre moitié venant du matériau
