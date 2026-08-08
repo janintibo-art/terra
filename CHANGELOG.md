@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.14.1 — La plaque du panache, publiée plutôt que redevinée
+
+Deux rouges sur la v0.14.0, de natures opposées.
+
+**Le test d'alignement** annonçait une chaîne à 121° du mouvement — ni 0° ni
+180°, donc pas une inversion de signe : le test et le champ n'identifiaient
+pas la même plaque. Le champ prend celle du sommet de grille le plus proche,
+le test celle dont la graine de Voronoï est la plus proche ; près d'une
+frontière, les deux diffèrent.
+
+Le champ **publie** désormais la plaque de chaque panache. Une seule source
+pour une seule vérité : redeviner une donnée que le code possède déjà, c'est
+créer deux réponses à la même question, et cette divergence-là ne pouvait
+qu'apparaître. Vérifié par simulation : avec la bonne plaque, l'alignement
+est de 0,99 au minimum sur deux cents essais, très au-dessus du seuil.
+
+**Les empreintes de référence** ne correspondent plus, et c'est **attendu** :
+les volcans modifient le relief, `GENERATION_VERSION` est passé à 10. Elles
+sont à re-figer depuis un run vert, comme après le lot 1.6.
+
 ## v0.14.0 — Lot 1.7 : les points chauds
 
 Retour à la Phase 1. Un point chaud est un panache **fixe** dans le manteau ;

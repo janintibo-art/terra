@@ -81,11 +81,11 @@ class HotspotTest {
             val cl = kotlin.math.sqrt(cx * cx + cy * cy + cz * cz)
             if (cl < 1e-6f) continue   // plaque quasi immobile : pas de chaîne
 
-            // Vitesse de la plaque au panache.
-            val plate = plates.plates.minByOrNull {
-                acos((it.seedDir.x * origin.x + it.seedDir.y * origin.y +
-                        it.seedDir.z * origin.z).coerceIn(-1f, 1f))
-            }!!
+            // Vitesse de la plaque au panache — celle que le champ a
+            // effectivement utilisée. La redeviner autrement (par la graine
+            // de Voronoï la plus proche) désigne une plaque différente près
+            // d'une frontière, et le test concluait à tort au désalignement.
+            val plate = plates.plates[field.plumePlate[plume]]
             val v = plate.velocityAt(origin)
             val vl = v.length
             if (vl < 1e-9f) continue

@@ -51,6 +51,16 @@ class HotspotField(
     val radii: FloatArray,
     /** Panache d'origine de chaque édifice, pour le calque et les tests. */
     val plumeId: IntArray,
+    /**
+     * Plaque que chaque panache perce, par indice de panache.
+     *
+     * Publiée plutôt que redevinée : le champ la détermine par le sommet de
+     * grille le plus proche, et un test qui la chercherait autrement — par la
+     * graine de Voronoï la plus proche, par exemple — désignerait une autre
+     * plaque près d'une frontière et conclurait à tort que la chaîne n'est
+     * pas alignée. Une seule source pour une seule vérité.
+     */
+    val plumePlate: IntArray,
     /** Nombre de panaches. */
     val plumeCount: Int
 ) {
@@ -109,13 +119,16 @@ class HotspotField(
             val heights = ArrayList<Float>(plumeCount * CHAIN_LENGTH)
             val radii = ArrayList<Float>(plumeCount * CHAIN_LENGTH)
             val plumeId = ArrayList<Int>(plumeCount * CHAIN_LENGTH)
+            val plumePlate = IntArray(plumeCount)
 
             for (plume in 0 until plumeCount) {
                 val origin = randomUnit(rng)
 
                 // La plaque sous le panache : c'est elle qui emporte les
                 // édifices. On la trouve par le plus proche sommet de grille.
-                val plate = plates.plateOf(nearestVertex(sphere, origin))
+                val plateIndex = plates.plateId[nearestVertex(sphere, origin)]
+                plumePlate[plume] = plateIndex
+                val plate = plates.plates[plateIndex]
                 val axis = plate.eulerAxis
                 val omega = plate.omegaRadPerMa
 
@@ -139,6 +152,7 @@ class HotspotField(
                 heights.toFloatArray(),
                 radii.toFloatArray(),
                 plumeId.toIntArray(),
+                plumePlate,
                 plumeCount
             )
         }
