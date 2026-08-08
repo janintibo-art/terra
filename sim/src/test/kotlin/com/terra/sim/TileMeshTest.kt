@@ -553,11 +553,17 @@ class WaterColorTest {
     fun `l eau peu profonde laisse voir son fond, la fosse non`() {
         // Propriété de l'atténuation : à profondeur croissante, la couleur
         // doit s'éloigner de celle du fond et tendre vers celle de l'eau.
-        // On la vérifie sur la formule, seule chose déterministe ici.
+        //
+        // L'échantillonnage commence AU-DELÀ de la frange d'écume. En deçà,
+        // la couleur porte deux effets — l'atténuation et l'écume, qui
+        // éclaircit fortement — et la monotonie ne s'applique plus. Mesurer
+        // les deux en croyant n'en mesurer qu'un est exactement l'erreur qui
+        // avait rendu `MicroReliefTest` aveugle à l'arrivée des vallées ;
+        // l'écume a sa propre vérification, juste après.
         val bottom = floatArrayOf(0.85f, 0.78f, 0.55f)   // sable clair
         val out = FloatArray(3)
         var previousDistance = -1f
-        for (depth in floatArrayOf(0.5f, 3f, 10f, 30f, 100f)) {
+        for (depth in floatArrayOf(TileMesh.FOAM_FADE_M + 1f, 12f, 30f, 100f, 400f)) {
             TileMesh.waterColorForTest(depth, bottom, out)
             val d = kotlin.math.abs(out[0] - bottom[0]) +
                     kotlin.math.abs(out[1] - bottom[1]) +

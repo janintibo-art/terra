@@ -1,5 +1,21 @@
 # Journal des versions
 
+## v0.12.2 — Le test de l'eau mesurait deux effets à la fois
+
+Test mal conçu, pas un défaut du rendu. La monotonie vérifiée — la couleur
+s'éloigne du fond quand la profondeur croît — n'est vraie que **hors de la
+frange d'écume** : sous un mètre et demi, l'écume éclaircit fortement la
+couleur, si bien que la distance au fond y est déjà grande et peut décroître
+en s'enfonçant.
+
+L'échantillonnage commence désormais au-delà de la frange, et l'écume garde
+sa vérification propre, juste après.
+
+C'est la deuxième fois que je commets cette erreur — `MicroReliefTest`
+mesurait de la même façon trois effets superposés après l'arrivée des vallées.
+Règle retenue : **un test par effet, sur un domaine où les autres sont
+inactifs.**
+
 ## v0.12.1 — Lot 2.9 : l'océan
 
 L'eau couvre deux tiers de chaque monde et restait rendue comme un plan de
