@@ -56,13 +56,16 @@ object WorldSave {
      *   2 — v0.4.0 : profil thermique réaliste, continentalité, variété du relief
      *  12 — v0.15.2 : courants — inversion subpolaire du motif est/ouest,
      *       atténuation de l'effet avec l'altitude
+     *  13 — v0.21.0 : lot 1.14, transport d'humidité — les précipitations
+     *       viennent de l'advection par les vents, plus des bandes
+     *
      *
      * Resté à 12 au lot 1.18 b (v0.17.0) : l'activité tectonique est un
      * multiplicateur post-tirages, exactement neutre à sa valeur d'usine —
      * aucune recette existante ne change. TectonicActivityTest le verrouille
      * au bit près ; si ce test casse, incrémenter ICI, pas l'assouplir.
      */
-    const val GENERATION_VERSION = 12
+    const val GENERATION_VERSION = 13
 
     data class Snapshot(
         val worldName: String,

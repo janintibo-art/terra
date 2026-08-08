@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.21.0 — Lot 1.14 : le transport d'humidité (GENERATION_VERSION 13)
+
+Le sommet de la Phase 1. Les bandes latitudinales provisoires du lot 1.3 ne
+répartissent plus la pluie : elles ne fixent plus que le BUDGET d'eau du
+monde, et le transport la distribue. Évaporation océanique selon la
+température, advection par les vents du 1.13 (deux voisines au vent
+pondérées, double tampon — déterminisme structurel), et trois mécanismes de
+pluie : condensation modulée par les mouvements verticaux des trois
+cellules, soulèvement orographique, capacité thermique de l'air
+(Clausius-Clapeyron). La subsidence VENTILE en plus la couche humide.
+
+Rien n'est imposé : l'équateur pleut parce que les alizés y convergent,
+les déserts subtropicaux naissent de la subsidence, les déserts d'abri
+derrière les montagnes. Validation numérique complète sur banc synthétique
+(continent barré d'une cordillère, vents réels) : ITCZ ×6,5 sur les
+subtropiques, second maximum tempéré, pôles secs, ombre pluviométrique ×2,
+façade d'alizés ×8 sur l'intérieur. Trois leçons de calibrage consignées
+dans le script — dont : retenir la pluie sans assécher fait pleuvoir quand
+même, et la subsidence lue dans le vent de surface s'étale sur 30°.
+
+La normalisation sur le budget de l'ancien modèle préserve par construction
+l'équilibre global des biomes — glaces et seuils du banc d'essai. Le nombre
+de passes suit la RÉSOLUTION (la longueur de transport est une distance,
+pas un nombre de mailles).
+
+Génération changée : GENERATION_VERSION 13, empreintes à re-figer — la
+référence est retirée du dépôt à cette livraison, le test repasse en mode
+enregistrement, on fige depuis l'artefact du prochain run vert. Risque
+assumé : les tests climatiques calibrés sur l'ancienne répartition
+(continentalité, couvertures) peuvent bouger — le budget conservé devrait
+les tenir, la CI tranchera, et un échec éventuel se diagnostiquera comme
+toujours : vrai défaut ou seuil à recalculer.
+
 ## v0.20.0 — Lot 1.13 : la circulation atmosphérique
 
 Chaque monde a désormais ses vents de surface : alizés d'est autour de 15°,

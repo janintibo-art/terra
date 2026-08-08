@@ -435,10 +435,26 @@ class WorldGenerator(
         onProgress(Stage.CLIMATE, 1f)
 
         // --- Vents de surface (lot 1.13) ---
-        // Après le climat par convention de lecture, mais indépendants de
-        // lui : profil planétaire + graine dérivée. Le lot 1.14 les fera
-        // entrer dans les précipitations — et incrémentera la version.
         val (windEast, windNorth) = WindField.build(masterSeed, sphere)
+
+        // --- Transport d'humidité (lot 1.14) ---
+        //
+        // Les bandes latitudinales calculées dans la boucle ci-dessus ne
+        // servent plus que de BUDGET : leur moyenne planétaire fixe la
+        // quantité d'eau du monde, et le transport la RÉPARTIT — l'équateur
+        // pleut parce que les alizés y convergent, les déserts naissent aux
+        // subsidences et derrière les montagnes. Conserver le budget de
+        // l'ancien modèle préserve par construction l'équilibre global des
+        // biomes, donc les glaces et les seuils du banc d'essai.
+        var precipBudget = 0.0
+        for (i in 0 until n) precipBudget += precipMm[i]
+        val transported = MoistureTransport.build(
+            sphere, adjacency, altitudeM, temperatureC,
+            windEast, windNorth, params.subdivisions,
+            targetMeanMm = (precipBudget / n).toFloat(),
+            maxPrecipMm = params.maxPrecipMm
+        )
+        System.arraycopy(transported, 0, precipMm, 0, n)
 
         // --- Étape 5 : biomes ---
         onProgress(Stage.BIOMES, 0f)
