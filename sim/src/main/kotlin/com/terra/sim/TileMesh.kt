@@ -119,6 +119,7 @@ class TileMesh(
         var hint = -1
         val colorHint = intArrayOf(0)
         val rgb = FloatArray(3)
+        val tintScratch = FloatArray(3)
         var idx = 0
         for (j in -1..n + 1) {
             for (i in -1..n + 1) {
@@ -143,8 +144,17 @@ class TileMesh(
                 // chaque cellule de la grille peignait un polygone uni, et la
                 // planète apparaissait pavée d'hexagones de 115 km.
                 hint = sampler.nearestVertex(df, hint)
-                val jitter = if (a > 0f) profile.colorJitterAt(df) else 1f
                 sampler.sampleBiomeColor(df, colorHint, rgb)
+                // Teinte de sol (lot 2.17 a) : appliquée à la couleur de
+                // biome AVANT le rivage, pour que les hauts-fonds héritent
+                // d'un fond varié comme la terre émergée.
+                if (a > -shoreBlend) {
+                    profile.groundTintAt(df, tintScratch)
+                    rgb[0] *= tintScratch[0]
+                    rgb[1] *= tintScratch[1]
+                    rgb[2] *= tintScratch[2]
+                }
+                val jitter = 1f   // le modelé vit désormais dans groundTintAt
                 colorFor(sampler, hint, df, a, jitter, rgb, shoreBlend,
                     profile.params, colR, colG, colB, idx)
 
@@ -239,6 +249,29 @@ class TileMesh(
                 } else {
                     nrmX[c] = dirX[c]; nrmY[c] = dirY[c]; nrmZ[c] = dirZ[c]
                 }
+            }
+        }
+
+        // --- 1 quater. Roche des pentes (lot 2.17 a) ------------------------
+        //
+        // Au-delà d'une pente de repos, l'herbe et la terre ne tiennent
+        // plus : la couleur glisse vers la roche. Le seuil est un ANGLE, lu
+        // dans la normale par sommet déjà calculée — pas une constante
+        // d'altitude : un talus de vallée rocheux l'est autant qu'une paroi
+        // de montagne. Aux niveaux grossiers, la normale est lissée sur des
+        // kilomètres et les pentes s'effacent d'elles-mêmes : l'orbite garde
+        // les couleurs de biome pures, le premier plan gagne ses
+        // affleurements — l'échelle fait le travail, aucun seuil de niveau.
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                if (alt[c] <= 0f || mat[c] > 0.4f) continue
+                val cosUp = nrmX[c] * dirX[c] + nrmY[c] * dirY[c] + nrmZ[c] * dirZ[c]
+                val rock = rockBlend(cosUp)
+                if (rock <= 0f) continue
+                colR[c] += (ROCK_R - colR[c]) * rock
+                colG[c] += (ROCK_G - colG[c]) * rock
+                colB[c] += (ROCK_B - colB[c]) * rock
             }
         }
 
@@ -473,6 +506,24 @@ class TileMesh(
 
         const val MATERIAL_LAND = 0f
         const val MATERIAL_WATER = 1f
+
+        /** Couleur de roche des pentes — gris-brun neutre, éclairé par la
+         *  normale comme le reste du terrain. */
+        const val ROCK_R = 0.44f
+        const val ROCK_G = 0.40f
+        const val ROCK_B = 0.36f
+
+        /**
+         * Part de roche selon le cosinus de la pente (normale · verticale).
+         *
+         * Seuils calculés en angles : rien jusqu'à 14° (1 − cos = 0,0297),
+         * roche pleine à 32° (1 − cos = 0,1520) — la fourchette des pentes
+         * de repos des sols meubles (éboulis ~30-37°, l'herbe décroche
+         * avant). Linéaire entre les deux : un flanc raide se raye de roche
+         * avant que la paroi ne l'affiche pleine.
+         */
+        fun rockBlend(cosUp: Float): Float =
+            clamp01(((1f - cosUp) - 0.0297f) / (0.1520f - 0.0297f))
 
         /** Nombre de sommets émis pour une tuile, terrain plus jupes. */
         fun expectedVertexCount(): Int = MESH_N * MESH_N * 6 + 4 * MESH_N * 6

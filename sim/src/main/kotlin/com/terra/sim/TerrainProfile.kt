@@ -407,6 +407,33 @@ class TerrainProfile(
         return (1f + n * 0.13f).coerceIn(0.88f, 1.12f)
     }
 
+    /**
+     * Teinte du sol à trois échelles — lot 2.17 a. La moucheture historique
+     * (~70 m, luminosité seule) laissait la plaine rapprochée en aplat vert.
+     * Trois étages désormais, chacun choisi pour ce que l'œil attend à son
+     * échelle :
+     *
+     *  - TACHES (~1,3 km) : dérive de TEINTE herbe ↔ herbe sèche — le rouge
+     *    monte, le bleu descend, comme des parcelles de végétation inégale ;
+     *  - MOUCHETURE (~70 m) : la luminosité historique, conservée ;
+     *  - GRAIN (~9 m) : luminosité fine, la texture du premier plan. À cette
+     *    fréquence (7·10⁵ sur la sphère unité), l'erreur du flottant sur la
+     *    direction vaut ~7 % de la longueur d'onde : du tremblé invisible
+     *    dans du bruit, mais ne JAMAIS descendre l'échelle en dessous.
+     *
+     * Multiplicateurs par canal, bornés par construction — les données de
+     * biome restent la couleur de base, ceci n'est que du modelé.
+     */
+    fun groundTintAt(p: Vec3, out: FloatArray) {
+        val patch = micro.fbm(p.x * 5_000f + 11f, p.y * 5_000f - 4f, p.z * 5_000f + 27f, 2)
+        val mottle = micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2)
+        val grain = micro.fbm(p.x * 700_000f + 3f, p.y * 700_000f + 9f, p.z * 700_000f - 5f, 1)
+        val value = 1f + mottle * 0.13f + grain * 0.07f
+        out[0] = (value * (1f + patch * 0.10f)).coerceIn(0.76f, 1.24f)
+        out[1] = (value * (1f + patch * 0.03f)).coerceIn(0.76f, 1.24f)
+        out[2] = (value * (1f - patch * 0.08f)).coerceIn(0.76f, 1.24f)
+    }
+
     companion object {
 
         /**

@@ -1,5 +1,31 @@
 # Journal des versions
 
+## v0.22.0 — Lot 2.17 a : le micro-détail du sol
+
+La plaine rapprochée était un aplat vert : une seule échelle de moucheture
+(~70 m, luminosité pure) portait tout le premier plan. Trois étages
+désormais, chacun choisi pour ce que l'œil attend à son échelle :
+
+- **Taches** (~1,3 km) : dérive de TEINTE herbe ↔ herbe sèche — le rouge
+  monte, le bleu descend, des parcelles de végétation inégale ;
+- **Moucheture** (~70 m) : la luminosité historique, conservée ;
+- **Grain** (~9 m) : la texture du premier plan. Jamais plus fin : à cette
+  fréquence, l'erreur du flottant sur la direction vaut déjà 7 % de la
+  longueur d'onde.
+
+Et la **roche des pentes** : au-delà de la pente de repos, l'herbe ne tient
+plus — la couleur glisse vers un gris-brun de roche, par un seuil d'ANGLE
+lu dans la normale par sommet (rien jusqu'à 14°, roche pleine à 32°, la
+fourchette des pentes de repos des sols meubles). Aux niveaux grossiers,
+la normale est lissée sur des kilomètres et les pentes s'effacent d'elles-
+mêmes : l'orbite garde ses couleurs de biome pures, le premier plan gagne
+ses affleurements — l'échelle fait le travail, aucun seuil de niveau.
+
+Le tout est CPU, dans :sim, déterministe et testé (bornes par construction,
+variation mesurée, seuils d'angle calculés, tuiles bit à bit reproductibles
+aux niveaux 3 et 12). Rendu pur : GENERATION_VERSION inchangé, empreintes
+intactes — le monde ne bouge pas, on le voit mieux.
+
 ## v0.21.0 — Lot 1.14 : le transport d'humidité (GENERATION_VERSION 13)
 
 Le sommet de la Phase 1. Les bandes latitudinales provisoires du lot 1.3 ne
