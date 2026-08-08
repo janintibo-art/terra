@@ -459,10 +459,28 @@ class SmoothShadingTest {
         )
         var checked = 0
         var i = 0
+        // Depuis la v0.23.0, la fin du tampon est la section des plantes :
+        // un emplacement vide y est un rembourrage INTÉGRALEMENT nul
+        // (position, couleur, normale), que le GPU écarte comme triangle
+        // dégénéré. Le contrat devient : géométrie réelle à normale
+        // unitaire sortante, OU rembourrage nul dans la section des
+        // plantes — un zéro dans le terrain ou les jupes reste une faute.
+        val plantStart = (TileMesh.MESH_N * TileMesh.MESH_N * 6 +
+            4 * TileMesh.MESH_N * 6) * TileMesh.FLOATS_PER_VERTEX
         while (i < mesh.vertexCount * TileMesh.FLOATS_PER_VERTEX) {
             val nx = mesh.vertexData[i + 6]
             val ny = mesh.vertexData[i + 7]
             val nz = mesh.vertexData[i + 8]
+            if (nx == 0f && ny == 0f && nz == 0f) {
+                assertTrue(i >= plantStart, "normale nulle hors de la section des plantes")
+                assertTrue(
+                    mesh.vertexData[i] == 0f && mesh.vertexData[i + 1] == 0f &&
+                        mesh.vertexData[i + 2] == 0f,
+                    "sommet à normale nulle mais position non nulle : pas un rembourrage"
+                )
+                i += TileMesh.FLOATS_PER_VERTEX * 13
+                continue
+            }
             val len = kotlin.math.sqrt(nx * nx + ny * ny + nz * nz)
             assertTrue(kotlin.math.abs(len - 1f) < 1e-3f, "normale non unitaire : $len")
 

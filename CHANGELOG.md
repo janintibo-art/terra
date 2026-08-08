@@ -1,5 +1,19 @@
 # Journal des versions
 
+## v0.23.2 — Test recalibré : le rembourrage des plantes n'est pas une normale
+
+Un seul test rouge sur 292, et pas un vrai bug : SmoothShadingTest balaie
+le tampon entier d'une tuile de niveau 10 — qui ne porte AUCUNE plante —
+et butait sur le rembourrage à zéro de la nouvelle section végétation,
+dont la normale nulle n'est pas unitaire. Contrat antérieur à la v0.23.0.
+
+Recalibrage qui renforce le test au lieu de l'assouplir : tout sommet est
+désormais soit de la géométrie réelle à normale unitaire sortante, soit un
+rembourrage INTÉGRALEMENT nul situé dans la section des plantes — une
+normale nulle dans le terrain ou les jupes reste une faute, et un sommet à
+normale nulle mais position non nulle aussi. Le paramètre inutilisé
+signalé en avertissement est purgé au passage.
+
 ## v0.23.1 — Correctif de compilation : TileId expose x/y, pas gx/gy
 
 Erreur de compilation pure (aucun test n'a rougi, :core est passé) : le

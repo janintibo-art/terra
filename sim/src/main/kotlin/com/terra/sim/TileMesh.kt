@@ -353,7 +353,7 @@ class TileMesh(
             while (cx < cxEnd && emitted < PLANT_SLOTS) {
                 if ((cx % stride == 0L) && (cy % stride == 0L)) {
                     val next = emitOnePlant(o, tile, cx, cy, x0, x1, y0, y1,
-                        cellsPerFace, profile, sampler, hint, planetRadiusM)
+                        profile, sampler, hint, planetRadiusM)
                     if (next != o) emitted++
                     o = next
                 }
@@ -368,7 +368,6 @@ class TileMesh(
         tile: TileId,
         cellX: Long, cellY: Long,
         x0: Double, x1: Double, y0: Double, y1: Double,
-        cellsPerFace: Double,
         profile: TerrainProfile,
         sampler: CoarseSampler,
         hint: IntArray,
