@@ -674,7 +674,7 @@ class TileMesh(
                 b += (sea[2] - b) * wet
             }
 
-            out[0] = clamp01(r); out[1] = clamp01(g); out[2] = clamp01(b)
+            outR[idx] = clamp01(r); outG[idx] = clamp01(g); outB[idx] = clamp01(b)
         }
     }
 }

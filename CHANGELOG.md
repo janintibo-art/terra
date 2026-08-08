@@ -1,5 +1,28 @@
 # Journal des versions
 
+## v0.13.3 — Correctif : une substitution trop large
+
+Erreur de compilation. En simplifiant la sortie de `waterColor`, ma
+substitution automatique a aussi frappé la fin de `colorFor`, qui écrit dans
+d'autres tableaux : la fonction se retrouvait à écrire dans un `out` qu'elle
+ne connaît pas.
+
+C'est exactement le risque documenté dans l'état du projet — « une
+substitution automatique qui ne trouve pas son motif échoue en silence » —,
+ici sous sa forme inverse : un motif trouvé **deux fois** quand on n'en
+visait qu'une.
+
+### Une sixième passe de contrôle
+
+`tableau[i] = x` où `tableau` n'est ni paramètre, ni local, ni champ est une
+erreur de compilation certaine, et aucune de mes cinq passes ne pouvait la
+voir. La nouvelle passe unit les portées de toutes les fonctions englobant
+l'écriture — sans quoi elle signale à tort chaque fonction imbriquée, ce que
+la première version faisait sur quatre cas légitimes.
+
+Vérifiée dans les deux sens : silencieuse sur le code correct, et elle
+désigne `colorFor() écrit dans 'out'` dès qu'on réintroduit le défaut.
+
 ## v0.13.2 — Lot 2.9b : la frange de rivage
 
 Les côtes se dessinaient encore en marches d'escalier vues de loin. C'était
