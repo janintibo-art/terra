@@ -3,6 +3,7 @@ package com.terra.sim
 import com.terra.core.Vec3
 import com.terra.core.Vec3d
 import com.terra.core.clamp01
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -147,12 +148,13 @@ class TileMesh(
 
                 // Eau douce : le lac reprend la teinte du ciel plus qu'il ne
                 // la tire du fond, et s'assombrit avec la profondeur.
+                // Eau douce : même physique que la mer, mais le fond est la
+                // terre qu'elle recouvre — un lac peu profond laisse voir son
+                // herbe, un lac de cratère tire au bleu nuit.
                 val lakeDepth = profile.lakeDepthAt(df)
                 if (lakeDepth > 0f) {
-                    val t = clamp01(lakeDepth / 45f)
-                    colR[idx] = 0.16f + (0.05f - 0.16f) * t
-                    colG[idx] = 0.34f + (0.14f - 0.34f) * t
-                    colB[idx] = 0.46f + (0.30f - 0.46f) * t
+                    rgb[0] = colR[idx]; rgb[1] = colG[idx]; rgb[2] = colB[idx]
+                    waterColor(lakeDepth, rgb, colR, colG, colB, idx)
                 }
 
                 // Matériau : eau de mer près du rivage, ou eau douce dès que
@@ -445,6 +447,76 @@ class TileMesh(
         }
 
         /**
+         * Couleur de l'eau vue de dessus — lot 2.9.
+         *
+         * ## Ce qui remplace le dégradé bathymétrique
+         *
+         * L'eau était peinte d'un simple dégradé du bleu clair au bleu sombre
+         * selon la profondeur : lisible, mais rien n'y ressemblait à de
+         * l'eau. Le mélange est désormais physique — atténuation de
+         * Beer-Lambert, `1 − exp(−k·d)` — entre la couleur du **fond**, qui
+         * est celle du biome sous-marin, et celle de la colonne d'eau. Un
+         * haut-fond laisse donc transparaître son sable et vire au turquoise,
+         * une fosse tend vers le bleu profond, et la transition est continue.
+         *
+         * Coefficient 0,09 par mètre, calibré sur l'eau de mer claire : le
+         * fond reste visible à moitié vers huit mètres, au quart à quinze, et
+         * disparaît au-delà de quarante.
+         *
+         * L'écume s'ajoute là où la houle déferlerait, sous un mètre et demi
+         * de fond, et s'évanouit à six mètres : une frange qui suit le trait
+         * de côte au lieu de blanchir des kilomètres de littoral.
+         */
+        private fun waterColor(
+            depthM: Float,
+            bottomRgb: FloatArray,
+            outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
+        ) {
+            val opacity = 1f - exp(-WATER_EXTINCTION * depthM)
+
+            // Couleur de la colonne d'eau : bleu-vert en surface, bleu nuit
+            // en profondeur — la lumière rouge s'éteint la première.
+            val deep = clamp01(depthM / 900f)
+            val wr = 0.055f + (0.015f - 0.055f) * deep
+            val wg = 0.28f + (0.05f - 0.28f) * deep
+            val wb = 0.42f + (0.16f - 0.42f) * deep
+
+            var r = bottomRgb[0] * (1f - opacity) + wr * opacity
+            var g = bottomRgb[1] * (1f - opacity) + wg * opacity
+            var b = bottomRgb[2] * (1f - opacity) + wb * opacity
+
+            val foam = clamp01((FOAM_FADE_M - depthM) / (FOAM_FADE_M - FOAM_FULL_M))
+            if (foam > 0f) {
+                val f = foam * 0.55f
+                r += (0.90f - r) * f
+                g += (0.94f - g) * f
+                b += (0.96f - b) * f
+            }
+
+            outR[idx] = clamp01(r); outG[idx] = clamp01(g); outB[idx] = clamp01(b)
+        }
+
+        /**
+         * Accès de test à [waterColor] : la formule de mélange est le cœur du
+         * rendu de l'eau et mérite d'être vérifiée directement, plutôt qu'à
+         * travers un maillage complet.
+         */
+        internal fun waterColorForTest(depthM: Float, bottomRgb: FloatArray, out: FloatArray) {
+            val r = FloatArray(1); val g = FloatArray(1); val b = FloatArray(1)
+            waterColor(depthM, bottomRgb, r, g, b, 0)
+            out[0] = r[0]; out[1] = g[0]; out[2] = b[0]
+        }
+
+        /** Extinction lumineuse dans l'eau, par mètre. */
+        const val WATER_EXTINCTION = 0.09f
+
+        /** Écume pleine sous cette profondeur de fond, en mètres. */
+        const val FOAM_FULL_M = 1.5f
+
+        /** Écume évanouie au-delà, en mètres. */
+        const val FOAM_FADE_M = 6f
+
+        /**
          * Couleur d'un sommet de tuile.
          *
          * Terres : couleur du biome de la cellule grossière, modulée par
@@ -463,13 +535,10 @@ class TileMesh(
         ) {
             val biome = sampler.biomeAt(dir, vertexIndex)
             if (altitudeM < 0f) {
-                val t = clamp01(-altitudeM / params.maxDepthM)
                 if (biome == Biome.SEA_ICE) {
                     outR[idx] = biome.r; outG[idx] = biome.g; outB[idx] = biome.b
                 } else {
-                    outR[idx] = 0.11f + (0.035f - 0.11f) * t
-                    outG[idx] = 0.36f + (0.085f - 0.36f) * t
-                    outB[idx] = 0.56f + (0.240f - 0.56f) * t
+                    waterColor(-altitudeM, rgb, outR, outG, outB, idx)
                 }
             } else {
                 val tint = (0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)) * jitter

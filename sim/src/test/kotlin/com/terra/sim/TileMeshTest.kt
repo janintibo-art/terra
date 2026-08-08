@@ -526,3 +526,79 @@ class SmoothShadingTest {
         assertTrue(rgb.contentEquals(first), "l'indice de départ change la couleur")
     }
 }
+
+/**
+ * Couleur de l'eau — lot 2.9.
+ *
+ * Les vagues vivent dans le shader et échappent aux tests JVM ; la couleur,
+ * elle, se calcule au maillage et se vérifie. Les propriétés qui comptent :
+ * un haut-fond laisse voir son fond, une fosse ne le laisse pas, l'écume
+ * n'apparaît qu'au rivage, et rien de tout cela ne déplace le trait de côte.
+ */
+class WaterColorTest {
+
+    companion object {
+        private val world: PlanetData by lazy {
+            WorldGenerator.fromName("Ormun", PlanetParams(subdivisions = 4)).generate()
+        }
+    }
+
+    private fun meshAt(level: Int, x: Int, y: Int): TileMesh =
+        TileMesh(
+            TileId(0, level, x, y), world.terrain, CoarseSampler(world),
+            world.params.radiusM.toDouble()
+        )
+
+    @Test
+    fun `l eau peu profonde laisse voir son fond, la fosse non`() {
+        // Propriété de l'atténuation : à profondeur croissante, la couleur
+        // doit s'éloigner de celle du fond et tendre vers celle de l'eau.
+        // On la vérifie sur la formule, seule chose déterministe ici.
+        val bottom = floatArrayOf(0.85f, 0.78f, 0.55f)   // sable clair
+        val out = FloatArray(3)
+        var previousDistance = -1f
+        for (depth in floatArrayOf(0.5f, 3f, 10f, 30f, 100f)) {
+            TileMesh.waterColorForTest(depth, bottom, out)
+            val d = kotlin.math.abs(out[0] - bottom[0]) +
+                    kotlin.math.abs(out[1] - bottom[1]) +
+                    kotlin.math.abs(out[2] - bottom[2])
+            assertTrue(
+                d > previousDistance,
+                "la couleur ne s'éloigne pas du fond à $depth m ($d vs $previousDistance)"
+            )
+            previousDistance = d
+        }
+    }
+
+    @Test
+    fun `l ecume ne parait qu au rivage`() {
+        val bottom = floatArrayOf(0.2f, 0.3f, 0.4f)
+        val shallow = FloatArray(3)
+        val deep = FloatArray(3)
+        TileMesh.waterColorForTest(0.5f, bottom, shallow)
+        TileMesh.waterColorForTest(20f, bottom, deep)
+        // L'écume éclaircit : la somme des canaux doit être plus forte près
+        // du bord qu'au large, malgré un fond identique.
+        assertTrue(
+            shallow.sum() > deep.sum() + 0.3f,
+            "pas d'écume au rivage : ${shallow.sum()} contre ${deep.sum()}"
+        )
+        // Et au-delà de la frange, plus rien.
+        val beyond = FloatArray(3)
+        TileMesh.waterColorForTest(TileMesh.FOAM_FADE_M + 1f, bottom, beyond)
+        val noFoam = FloatArray(3)
+        TileMesh.waterColorForTest(TileMesh.FOAM_FADE_M + 3f, bottom, noFoam)
+        assertTrue(kotlin.math.abs(beyond.sum() - noFoam.sum()) < 0.25f)
+    }
+
+    @Test
+    fun `toutes les composantes restent dans les bornes`() {
+        val out = FloatArray(3)
+        val rng = kotlin.random.Random(21)
+        repeat(3_000) {
+            val bottom = floatArrayOf(rng.nextFloat(), rng.nextFloat(), rng.nextFloat())
+            TileMesh.waterColorForTest(rng.nextFloat() * 900f, bottom, out)
+            for (c in out) assertTrue(c in 0f..1f, "composante hors bornes : $c")
+        }
+    }
+}

@@ -1,5 +1,41 @@
 # Journal des versions
 
+## v0.12.1 — Lot 2.9 : l'océan
+
+L'eau couvre deux tiers de chaque monde et restait rendue comme un plan de
+terrain colorié. Elle devient de l'eau.
+
+### La couleur, calculée au maillage
+
+Le dégradé bathymétrique cède la place à une atténuation de Beer-Lambert
+entre la couleur du **fond** — celle du biome sous-marin — et celle de la
+colonne d'eau. Coefficient 0,09 par mètre, calibré sur l'eau de mer claire :
+le fond reste visible à moitié vers huit mètres, au quart à quinze,
+disparaît au-delà de quarante. Un haut-fond de sable vire donc au turquoise
+et une fosse au bleu nuit, continûment. L'écume s'ajoute sous un mètre et
+demi de fond et s'évanouit à six : une frange qui suit le rivage au lieu de
+blanchir des kilomètres de littoral. Les lacs suivent la même physique, avec
+la terre pour fond.
+
+### La houle, calculée au sommet
+
+Deux trains d'ondes croisés (80 et 53 m de longueur d'onde) déplacent la
+surface le long de la verticale locale et **inclinent la normale** — c'est
+cette inclinaison, plus que le déplacement, qui rend la mer vivante : le
+reflet du soleil se brise en scintillement au lieu de former une tache
+unique. Dérivées analytiques, pas de différences finies.
+
+Trois précautions : la phase avance avec le temps réel et non le temps simulé
+(une mer figée en pause donnerait une photographie, et à ×200 un
+clignotement) ; l'amplitude s'annule près du rivage, pour qu'aucune vague ne
+déplace le trait de côte par rapport à la grille ; et elle s'annule aussi sur
+les tuiles grossières, où une houle de 80 m échantillonnée tous les 150 m
+deviendrait du bruit.
+
+Trois tests sur la formule de mélange : la couleur s'éloigne du fond quand la
+profondeur croît, l'écume ne paraît qu'au rivage, les composantes restent
+bornées.
+
 ## v0.12.0 — Fin du pavage : normales lissées, couleurs interpolées
 
 Deux défauts d'apparence signalés à l'essai, deux causes distinctes, la même

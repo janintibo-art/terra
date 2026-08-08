@@ -171,6 +171,8 @@ class PlanetRenderer(
     private var tUHazeDensity = -1
     private var tURimStrength = -1
     private var tULevelTint = -1
+    private var tUWaveTime = -1
+    private var tUWaveScale = -1
 
     private var skyProgram = 0
     private var skyVbo = 0
@@ -193,6 +195,7 @@ class PlanetRenderer(
     private val drawList = ArrayList<TileStream.GpuTile>(1024)
     private val neededKeys = HashSet<Long>(2048)
     private var frameIndex = 0L
+    private var waveTime = 0f
     private var currentEpoch = -1
 
     // --- Matrices et tampons de travail ---
@@ -257,6 +260,8 @@ class PlanetRenderer(
             tUHazeDensity = GLES20.glGetUniformLocation(tileProgram, "uHazeDensity")
             tURimStrength = GLES20.glGetUniformLocation(tileProgram, "uRimStrength")
             tULevelTint = GLES20.glGetUniformLocation(tileProgram, "uLevelTint")
+            tUWaveTime = GLES20.glGetUniformLocation(tileProgram, "uWaveTime")
+            tUWaveScale = GLES20.glGetUniformLocation(tileProgram, "uWaveScale")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -477,6 +482,14 @@ class PlanetRenderer(
         val rimStrength = (((snapshot.altitudeM - 60_000.0) / 240_000.0).coerceIn(0.0, 1.0)).toFloat()
         GLES20.glUniform1f(tURimStrength, rimStrength)
 
+        // Phase de la houle. Elle avance avec le temps RÉEL, pas le temps
+        // simulé : une mer figée quand on met la simulation en pause donnerait
+        // une impression de photographie, et à ×200 elle deviendrait un
+        // clignotement. Période d'environ six secondes, celle d'une houle
+        // longue vue depuis le rivage.
+        waveTime = (waveTime + dt * 1.05f) % 6.2831853f
+        GLES20.glUniform1f(tUWaveTime, waveTime)
+
         var triangles = 0
         for (tile in drawList) {
             // Diagnostic : teinte par niveau de subdivision, pour voir d'un
@@ -504,6 +517,14 @@ class PlanetRenderer(
                 tUCenterWorld,
                 tile.centerXM.toFloat(), tile.centerYM.toFloat(), tile.centerZM.toFloat()
             )
+            // Amplitude des vagues, atténuée sur les tuiles grossières : une
+            // houle de 80 m échantillonnée tous les 150 m devient du bruit.
+            // Nulle au-delà du niveau 16, pleine à partir du niveau 19.
+            val lvl = TileId.unpack(tile.key).level
+            GLES20.glUniform1f(
+                tUWaveScale, ((lvl - 16) / 3f).coerceIn(0f, 1f)
+            )
+
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, tile.vbo)
             bindTileAttribute(tAPosition, 3, TileMesh.OFFSET_POSITION)
             bindTileAttribute(tAColor, 3, TileMesh.OFFSET_COLOR)
@@ -918,6 +939,8 @@ class PlanetRenderer(
             uniform float uHazeDensity;
             uniform float uRimStrength;
             uniform vec3 uLevelTint;   // composantes < 0 : teinte desactivee
+            uniform float uWaveTime;   // phase de la houle, radians
+            uniform float uWaveScale;  // 0 sur tuile grossiere, 1 de pres
 
             attribute vec3 aPosition;   // relative au centre de tuile, metres
             attribute vec3 aColor;
@@ -932,15 +955,44 @@ class PlanetRenderer(
             varying float vRim;
 
             void main() {
-                vec3 rel = aPosition + uOffset;
-                gl_Position = uViewProj * vec4(rel, 1.0);
-
                 vec3 world = uCenterWorld + aPosition;
                 vec3 sph = normalize(world);
                 vec3 sun = normalize(uSun);
+                vec3 nrm = normalize(aNormal);
+
+                // --- Houle -------------------------------------------------
+                //
+                // Deux trains d'ondes croises, de periodes 80 et 53 m : une
+                // seule direction donnerait des rides de tole ondulee. Elles
+                // deplacent la surface le long de la verticale locale et
+                // inclinent la normale — c'est cette inclinaison qui rend la
+                // mer vivante, bien plus que le deplacement lui-meme.
+                //
+                // L'amplitude s'annule pres du rivage (aMaterial < 1) : une
+                // vague qui deborderait sur la plage deplacerait le trait de
+                // cote par rapport a la grille, donc par rapport aux biomes.
+                vec3 rel = aPosition + uOffset;
+                float openWater = clamp((aMaterial - 0.85) * 6.67, 0.0, 1.0);
+                float waveAmp = uWaveScale * openWater;
+                if (waveAmp > 0.0) {
+                    vec3 t1 = normalize(cross(sph, vec3(0.0, 1.0, 0.0) + sph * 0.01));
+                    vec3 t2 = cross(sph, t1);
+                    float p1 = dot(world, t1) * 0.0785 + uWaveTime;
+                    float p2 = dot(world, t2) * 0.1185 + uWaveTime * 1.31;
+                    float h = sin(p1) * 0.42 + sin(p2) * 0.24;
+                    rel += sph * (h * waveAmp);
+
+                    // Normale inclinee par la pente de la houle : derivees
+                    // analytiques des deux sinus, pas de difference finie.
+                    vec3 slope = t1 * (cos(p1) * 0.42 * 0.0785)
+                               + t2 * (cos(p2) * 0.24 * 0.1185);
+                    nrm = normalize(nrm - slope * waveAmp * 12.0);
+                }
+
+                gl_Position = uViewProj * vec4(rel, 1.0);
 
                 vDay = clamp(dot(sph, sun) * 2.2 + 0.22, 0.0, 1.0);
-                vDiffuse = max(dot(normalize(aNormal), sun), 0.0);
+                vDiffuse = max(dot(nrm, sun), 0.0);
 
                 vec3 view = normalize(-rel);
 
@@ -949,7 +1001,10 @@ class PlanetRenderer(
                 // littorale au lieu de s'arreter au bord d'une facette.
                 float waterness = clamp((aMaterial - 0.25) * 2.0, 0.0, 1.0);
                 vec3 halfway = normalize(sun + view);
-                vSpec = pow(max(dot(sph, halfway), 0.0), 160.0) * 0.32 * waterness;
+                // Reflet calcule sur la normale de la HOULE, pas sur la
+                // verticale : c'est ce qui fait scintiller la mer au lieu de
+                // n'y poser qu'une seule tache de soleil.
+                vSpec = pow(max(dot(nrm, halfway), 0.0), 90.0) * 0.40 * waterness;
 
                 // Halo du limbe, comme le globe : l'atmosphere s'epaissit la
                 // ou le regard frole la sphere. Calcule au sommet, borne [0,1].
