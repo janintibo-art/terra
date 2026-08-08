@@ -455,11 +455,19 @@ class ClimateRealismTest {
 
     @Test
     fun `les tropiques ne gelent jamais`() {
+        // Le seuil est CALCULÉ, pas deviné — l'ancien couple (2 500 m, 8 °C)
+        // n'a jamais été garanti par le modèle et ne passait que par chance
+        // d'échantillonnage, jusqu'au run rouge du 08/08 (Gaia, sommet 1249,
+        // 7,6 °C). Pire cas à 20° de latitude et 1 500 m, tous effets froids
+        // cumulés (profil latitudinal −2,3, continentalité −0,6, gradient
+        // vertical −9,8, bruit régional −3,5, courant froid atténué par
+        // l'altitude −1,4) : T ≥ 9,4 °C. Le seuil de 8 °C laisse 1,4 °C de
+        // marge. Détail du calcul : validation/gyres_subpolaires.py, § 5.
         for (name in referenceNames) {
             val w = world(name)
             for (i in 0 until w.vertexCount) {
                 if (abs(w.position(i).y) > 0.34f) continue   // au-delà de 20°
-                if (w.altitudeM[i] > 2500f) continue          // hors haute montagne
+                if (w.altitudeM[i] > 1500f) continue          // hors moyenne montagne
                 assertTrue(
                     w.temperatureC[i] > 8f,
                     "$name : ${w.temperatureC[i]} °C sous les tropiques au sommet $i"

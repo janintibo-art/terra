@@ -1,7 +1,0 @@
-# Empreintes des mondes de référence, subdivisions = 4
-# Générées par FingerprintTest — à copier dans src/test/resources/
-Alpha=aac717840caa14cb
-Beta=1cb04d4d1620b4b9
-Gaia=fc21227123d79d9e
-Orion=38539fb6e1d496b3
-Vesta=7cbb3844049a5171

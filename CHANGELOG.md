@@ -1,5 +1,50 @@
 # Journal des versions
 
+## v0.15.2 — Correctif climatique : les gyres subpolaires existent
+
+Le premier run CI de la v0.15.1 a mis trois tests au rouge, pour trois causes
+distinctes.
+
+### 1. Le motif est/ouest était faux au-delà de 45° (vrai bug)
+
+Le lot 1.15 appliquait « côte est chaude, côte ouest froide » à toutes les
+latitudes. Or son propre calibrage le contredisait : Bergen (60°, côte
+**ouest**) affiche +7,6 °C quand Nuuk gèle. Au-delà du front des gyres
+(~43°), les gyres **subpolaires** inversent le motif : dérive nord-atlantique
+chaude sur les façades ouest, Labrador et Oyashio froids sur les façades est.
+Correctif : `strength = sin(2·|lat|) · tanh((43° − |lat|) / 8,5°)`. Sur six
+couples terrestres, le signe passe de 3/6 à 6/6 correct
+(`validation/gyres_subpolaires.py`).
+
+Conséquence directe sur les glaces : la v0.15.1 refroidissait de 5 °C des
+côtes subpolaires que la Terre réchauffe. Et l'argument « l'effet est
+symétrique donc la glace ne bouge pas » était faux : le gel est un effet de
+**seuil** — une anomalie froide crée de la glace qu'une anomalie chaude
+ailleurs ne fait pas fondre. Gaia est monté à 16 % de surface glacée.
+L'inversion subpolaire réduit de 22 % l'énergie thermique injectée.
+
+### 2. L'effet des courants ignorait l'altitude (vrai bug)
+
+Un courant marin tempère les basses terres côtières, pas un sommet à 2 400 m.
+L'effet est désormais atténué en `exp(−alt / 1500 m)`. C'est ce qui gelait le
+sommet 1249 de Gaia (7,6 °C sous les tropiques).
+
+### 3. Le test des tropiques passait par chance (test mal calibré)
+
+Le seuil « > 8 °C sous 2 500 m » n'a jamais été garanti : le pire cas
+calculable du modèle à 2 500 m est +3,6 °C, courants ou pas. Le test tenait
+uniquement parce qu'aucun sommet tiré n'avait cumulé tous les effets froids.
+Nouveau couple, calculé : > 8 °C sous **1 500 m**, borne garantie +9,4 °C,
+marge 1,4 °C.
+
+### Empreintes
+
+La génération change (GENERATION_VERSION 12) : la référence
+`src/test/resources/fingerprints.txt` — qui provenait de toute façon d'un
+artefact périmé, voir ci-dessous — est retirée. Le test repasse en mode
+enregistrement ; on figera les empreintes depuis l'artefact du prochain run
+vert.
+
 ## v0.15.1 — Correctif : la latitude n'était pas là où je la croyais
 
 Erreur de compilation. J'ai appelé `Vec3.latitude`, puis `Geodesy.latitude` —

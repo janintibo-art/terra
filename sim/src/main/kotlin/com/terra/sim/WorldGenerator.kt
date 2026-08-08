@@ -13,6 +13,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.tanh
 
 /**
  * Générateur de monde — orchestration des étapes de la Phase 1.
@@ -35,15 +36,41 @@ class WorldGenerator(
          * Amplitude maximale du transport thermique océanique, en °C.
          *
          * Calibré sur les couples terrestres à latitude comparable : Bergen
-         * contre Nuuk donne neuf degrés, Londres contre Terre-Neuve six et
-         * demi, Lisbonne contre Washington trois. L'écart est plus marqué aux
-         * hautes latitudes, ce que le facteur sin(2·lat) reproduit.
-         *
-         * Six degrés d'amplitude signifient douze degrés d'écart entre une
-         * façade chaude et une façade froide vers 45° — le bon ordre de
-         * grandeur, sans dépasser le cas le plus extrême de la Terre.
+         * contre Nuuk donne neuf degrés, Norfolk contre San Francisco quatre.
+         * Six degrés d'amplitude donnent jusqu'à dix degrés d'écart entre une
+         * façade chaude et une façade froide — le bon ordre de grandeur, sans
+         * dépasser le cas le plus extrême de la Terre.
          */
         const val CURRENT_AMPLITUDE_C = 6f
+
+        /**
+         * Latitude du front entre gyres subtropicaux et subpolaires, en
+         * radians (~43°), et largeur de la transition (~8,5°).
+         *
+         * La v0.15.1 appliquait « côte est chaude / côte ouest froide »
+         * partout — et son propre calibrage la contredisait : Bergen (60°,
+         * côte OUEST) est à +7,6 °C quand Nuuk gèle. Au-delà du front, les
+         * gyres SUBPOLAIRES inversent le motif : dérive nord-atlantique
+         * chaude sur les façades ouest (Norvège, Colombie-Britannique),
+         * Labrador et Oyashio froids sur les façades est (Terre-Neuve,
+         * Hokkaïdo). Le front est placé à 43° car sur Terre il oscille entre
+         * 40° (Pacifique nord-ouest) et 45° (Atlantique) ; la transition en
+         * tanh écrase l'effet dans la bande 40–50°, zone au climat mixte.
+         *
+         * Vérifié dans validation/gyres_subpolaires.py : six couples
+         * terrestres, signe correct 6/6 contre 3/6 pour l'ancien profil.
+         */
+        const val GYRE_FRONT_LAT_RAD = 0.7505f      // 43°
+        const val GYRE_FRONT_WIDTH_RAD = 0.1484f    // 8,5°
+
+        /**
+         * Échelle d'atténuation de l'effet des courants avec l'altitude, en
+         * mètres. Un courant marin tempère les basses terres côtières, pas
+         * un sommet à 2 400 m : sans cette atténuation, un versant tropical
+         * baigné par un courant froid pouvait descendre sous 8 °C — le cas
+         * exact du run rouge du 08/08 (Gaia, sommet 1249, 7,6 °C).
+         */
+        const val CURRENT_ALT_SCALE_M = 1500f
         /** Construit un générateur à partir du nom du monde, qui sert de graine. */
         fun fromName(name: String, params: PlanetParams = PlanetParams()): WorldGenerator {
             val clean = WorldNamer.sanitize(name)
@@ -308,8 +335,8 @@ class WorldGenerator(
                     val el = sqrt(ex * ex + ez * ez)
                     if (el > 1e-4f) {
                         val eastward = (tx * ex + tz * ez) / (tl * el)
-                        // sin(2·|lat|) : nul à l'équateur et aux pôles, maximal
-                        // vers 45°, là où les gyres sont les plus vigoureux.
+                        // sin(2·|lat|) : nul à l'équateur et aux pôles,
+                        // maximal aux latitudes moyennes.
                         //
                         // La VALEUR ABSOLUE est indispensable. Sans elle, le
                         // sinus change de signe au sud de l'équateur et le
@@ -318,11 +345,26 @@ class WorldGenerator(
                         // courant du Brésil est chaud comme le Kuroshio. Une
                         // simulation de contrôle a montré que seule la moitié
                         // des cas allait dans le bon sens.
+                        //
+                        // Le tanh inverse le motif au-delà du front des gyres
+                        // (~43°) : gyres subtropicaux en deçà (côte est
+                        // chaude), gyres subpolaires au-delà (côte OUEST
+                        // chaude — Bergen, pas Nuuk). Voir le commentaire de
+                        // GYRE_FRONT_LAT_RAD : l'ancien profil, uniforme,
+                        // avait le signe faux au-delà de 45° et gonflait les
+                        // glaces en refroidissant des façades subpolaires que
+                        // la Terre réchauffe.
                         val lat = Sphere.latitude(v)
-                        val strength = sin(2.0 * abs(lat)).toFloat()
+                        val absLat = abs(lat)
+                        val strength = sin(2.0 * absLat).toFloat() *
+                            tanh((GYRE_FRONT_LAT_RAD - absLat) / GYRE_FRONT_WIDTH_RAD)
                         // Portée de 450 km vers l'intérieur : un courant
-                        // tempère sa côte, pas le continent entier.
-                        val reach = exp(-distanceKm / 450f)
+                        // tempère sa côte, pas le continent entier. Et il
+                        // tempère les basses terres : l'influence maritime
+                        // meurt avec l'altitude, sinon un versant tropical à
+                        // 2 400 m sous courant froid passe sous le gel.
+                        val reach = exp(-distanceKm / 450f) *
+                            exp(-max(0f, altitudeM[i]) / CURRENT_ALT_SCALE_M)
                         t += CURRENT_AMPLITUDE_C * strength * eastward * reach
                     }
                 }
