@@ -594,14 +594,23 @@ class MainActivity : Activity() {
      * Boucle de déplacement du joystick, démarrée à l'engagement du manche
      * et qui s'éteint d'elle-même au relâchement ou à la sortie du mode sol.
      *
-     * CONVENTION DE SIGNE, à vérifier sur appareil : « pousser en haut =
-     * avancer ». Elle est dérivée du contrat de pan() — « le point visé
-     * part à l'opposé du glissement » — donc avancer équivaut à tirer le
-     * terrain vers soi (dyPixels positif), et aller à droite à pousser le
-     * terrain vers la gauche (dxPixels négatif). L'historique du projet
-     * (v0.8.4) montre que ce raisonnement peut se tromper d'un signe sans
-     * qu'aucun test JVM ne le voie : si le sol part à rebours du manche,
-     * l'inversion tient en une ligne ici.
+     * POURQUOI PAS pan() : la v0.17.1 passait par la sémantique écran de
+     * pan(), et le manche s'inversait près du sol. Diagnostic : la
+     * direction-monde du « haut de l'écran » n'est pas la même dans les
+     * deux régimes de caméra — à forte inclinaison la géométrie impose le
+     * cap (vers l'horizon), en vue plongeante la convention validée en
+     * v0.8.4 lui est opposée. Aucun signe unique ne peut satisfaire les
+     * deux, et un signe conditionnel aurait consacré l'incohérence.
+     *
+     * La base du manche est donc PROJETÉE depuis les axes réellement
+     * rendus : « pousser en haut » suit up() de la caméra projeté sur le
+     * plan tangent au sol, « pousser à droite » suit right(), qui est
+     * tangent par construction (f × haut). C'est juste à toute
+     * inclinaison, par construction, sans raisonnement de salon sur les
+     * signes. up() et forward() couvrent mutuellement leurs
+     * dégénérescences : up() devient radial à l'horizon rasant (on prend
+     * alors forward(), horizontal), forward() devient radial en vue
+     * plongeante (up() y est horizontal).
      */
     private fun startJoystickLoop() {
         if (joystickLoopRunning) return
@@ -614,13 +623,31 @@ class MainActivity : Activity() {
                     joystickLoopRunning = false
                     return
                 }
-                val k = joystickSpeedPxPerS * 0.016f
-                cam.pan(
-                    (-joystick.vx * k).toDouble(),
-                    (joystick.vy * k).toDouble(),
-                    glView.height.toDouble().coerceAtLeast(1.0)
-                )
-                settleCamera(cam)
+
+                val radial = cam.focusDirection()
+                val upV = cam.up()
+                var f = upV - radial * (upV dot radial)
+                if (f.lengthSq < 1e-10) {
+                    val fw = cam.forward()
+                    f = fw - radial * (fw dot radial)
+                }
+                if (f.lengthSq >= 1e-12) {
+                    f = f.normalized()
+                    val r = cam.right()
+                    // Même échelle de vitesse que le doigt : mètres par
+                    // pixel à la distance courante, sans la compensation
+                    // d'inclinaison de pan() — la projection la remplace.
+                    val metresPerPixel = 2.0 * cam.rangeM *
+                        kotlin.math.tan(PlanetCamera.DEFAULT_FOV_RAD * 0.5) /
+                        glView.height.toDouble().coerceAtLeast(1.0)
+                    val dM = joystickSpeedPxPerS * 0.016 * metresPerPixel
+                    val move = f * (joystick.vy * dM) + r * (joystick.vx * dM)
+                    cam.moveFocusMetres(
+                        move dot com.terra.core.Geodesy.northAt(radial),
+                        move dot com.terra.core.Geodesy.eastAt(radial)
+                    )
+                    settleCamera(cam)
+                }
                 mainHandler.postDelayed(this, 16L)
             }
         })
@@ -968,6 +995,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.17.1"
+        const val VERSION = "0.17.2"
     }
 }

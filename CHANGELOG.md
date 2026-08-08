@@ -1,5 +1,31 @@
 # Journal des versions
 
+## v0.17.2 — Correctif : le joystick s'inversait près du sol
+
+Le manche allait dans le bon sens en altitude et à rebours au ras du sol.
+Ce n'était pas une erreur de signe de plus : le diagnostic montre que la
+direction-monde du « haut de l'écran » n'est pas la même dans les deux
+régimes de caméra. À forte inclinaison, la géométrie impose que le haut de
+l'écran soit le cap — l'horizon qu'on regarde ; en vue plongeante, la
+convention d'écran validée sur appareil en v0.8.4 lui est opposée. Le
+joystick v0.17.1, câblé sur la sémantique écran de pan(), ne pouvait être
+juste que dans un régime.
+
+Le correctif ne choisit pas un camp et n'ajoute pas de signe conditionnel,
+qui aurait consacré l'incohérence : la base du manche est désormais
+PROJETÉE depuis les axes que le rendu utilise réellement — « pousser en
+haut » suit up() de la caméra projeté sur le plan tangent au sol,
+« pousser à droite » suit right(), tangent par construction. C'est le
+même vecteur que celui qui dessine les pixels : juste à toute inclinaison,
+par construction. up() et forward() couvrent mutuellement leurs
+dégénérescences (horizon rasant et vue plongeante), et la vitesse garde
+l'échelle du doigt, mètres par pixel à la distance courante.
+
+Reste ouverte, notée pour plus tard : l'incohérence de convention d'écran
+entre régimes, qui appartient à pan()/up() et non au joystick. Elle
+resurgira au lot 7.1 (refonte des contrôles tactiles) ; le glissement au
+doigt près du sol mérite d'être ré-examiné à cette occasion.
+
 ## v0.17.1 — Joystick de déplacement en mode sol
 
 Un joystick virtuel apparaît en bas à gauche dès qu'on passe en mode sol, et
