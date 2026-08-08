@@ -1,5 +1,30 @@
 # Journal des versions
 
+## v0.20.0 — Lot 1.13 : la circulation atmosphérique
+
+Chaque monde a désormais ses vents de surface : alizés d'est autour de 15°,
+vents d'ouest autour de 45°, vents polaires d'est vers 75°, est équatorial —
+et les branches méridiennes des cellules de Hadley, Ferrel et polaire, qui
+convergent vers l'équateur (la future zone de convergence intertropicale,
+celle qui fera pleuvoir l'équateur au lot 1.14) et s'inversent d'un
+hémisphère à l'autre. Le zonal encode déjà Coriolis : les alizés sont d'est
+parce que l'air descendant vers l'équateur est dévié vers l'ouest.
+
+Le profil est calibré contre la climatologie du vent de surface : onze
+latitudes de 0° à 85°, toutes dans les tolérances, zéros de régime aux
+positions terrestres (~29° et ~63°). Unités physiques, m/s. Chaque monde y
+ajoute sa respiration — rotation de direction et modulation de vitesse par
+un bruit à grande longueur d'onde, graine dérivée `climat/vents`.
+
+Un huitième calque « Vents » : direction en teinte (la roue chromatique
+parcourt la rose des vents), vitesse en luminosité. Les bandes zonales
+sautent aux yeux, ondulées par la respiration du monde.
+
+Flux de graine indépendant, tableaux hors empreinte : AUCUN bit des mondes
+existants ne bouge, et les empreintes figées le prouvent au push —
+GENERATION_VERSION reste à 12. C'est le lot 1.14, en faisant entrer ces
+vents dans les précipitations, qui l'incrémentera. Cinq tests ajoutés.
+
 ## v0.19.2 — Correctifs de moyenne altitude : dents de scie et voile laiteux
 
 Les captures instrumentées de la v0.19.1 ont permis le diagnostic. Trois

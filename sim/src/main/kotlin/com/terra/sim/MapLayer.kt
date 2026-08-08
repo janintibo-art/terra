@@ -22,7 +22,8 @@ enum class MapLayer(val label: String, val shortLabel: String) {
     PRECIPITATION("Précipitations", "Pluie"),
     CLIMATE_ZONES("Zones climatiques", "Zones"),
     PLATES("Plaques tectoniques", "Plaques"),
-    RIVERS("Écoulement et érosion", "Eaux");
+    RIVERS("Écoulement et érosion", "Eaux"),
+    WINDS("Vents de surface", "Vents");
 
     companion object {
         fun next(current: MapLayer): MapLayer {
@@ -48,7 +49,35 @@ object LayerPalette {
             MapLayer.CLIMATE_ZONES -> climateZone(data, index, out)
             MapLayer.PLATES -> plate(data, index, out)
             MapLayer.RIVERS -> rivers(data, index, out)
+            MapLayer.WINDS -> winds(data, index, out)
         }
+    }
+
+    /**
+     * Vents : la DIRECTION en teinte (est rouge, nord jaune-vert, ouest
+     * cyan, sud violet — la roue chromatique parcourt la rose des vents)
+     * et la VITESSE en luminosité. Les bandes zonales sautent aux yeux :
+     * alizés cyan sombre, vents d'ouest rouge vif, et la respiration du
+     * monde ondule les frontières.
+     */
+    private fun winds(data: PlanetData, i: Int, out: FloatArray) {
+        val e = data.windEastMS[i]
+        val n = data.windNorthMS[i]
+        val speed = kotlin.math.sqrt(e * e + n * n)
+        val value = 0.20f + 0.80f * clamp01(speed / 9f)
+        // Teinte depuis l'angle, conversion HSV -> RGB à saturation pleine.
+        val angle = kotlin.math.atan2(n, e)               // [-π, π]
+        val h = (angle / (2f * com.terra.core.PI_F) + 1f) % 1f
+        val x = 1f - kotlin.math.abs((h * 6f) % 2f - 1f)
+        val (r, g, b) = when ((h * 6f).toInt() % 6) {
+            0 -> Triple(1f, x, 0f)
+            1 -> Triple(x, 1f, 0f)
+            2 -> Triple(0f, 1f, x)
+            3 -> Triple(0f, x, 1f)
+            4 -> Triple(x, 0f, 1f)
+            else -> Triple(1f, 0f, x)
+        }
+        out[0] = r * value; out[1] = g * value; out[2] = b * value
     }
 
     /**

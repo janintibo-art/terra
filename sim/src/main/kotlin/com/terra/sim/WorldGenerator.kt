@@ -434,6 +434,12 @@ class WorldGenerator(
         }
         onProgress(Stage.CLIMATE, 1f)
 
+        // --- Vents de surface (lot 1.13) ---
+        // Après le climat par convention de lecture, mais indépendants de
+        // lui : profil planétaire + graine dérivée. Le lot 1.14 les fera
+        // entrer dans les précipitations — et incrémentera la version.
+        val (windEast, windNorth) = WindField.build(masterSeed, sphere)
+
         // --- Étape 5 : biomes ---
         onProgress(Stage.BIOMES, 0f)
         val biomeId = ByteArray(n)
@@ -505,6 +511,8 @@ class WorldGenerator(
             temperatureC = temperatureC,
             precipMm = precipMm,
             continentality = continentality01,
+            windEastMS = windEast,
+            windNorthMS = windNorth,
             biomeId = biomeId,
             stats = stats,
             terrain = profile,

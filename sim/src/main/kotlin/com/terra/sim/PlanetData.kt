@@ -39,6 +39,14 @@ class PlanetData(
      */
     val continentality: FloatArray,
 
+    /**
+     * Vents de surface — lot 1.13. Est et nord positifs, en m/s. Champ
+     * dérivé du profil de circulation et de sa graine propre : hors
+     * empreinte, comme la continentalité. Consommé par l'humidité au 1.14.
+     */
+    val windEastMS: FloatArray,
+    val windNorthMS: FloatArray,
+
     /** Biome par sommet, stocké par ordinal pour la compacité. */
     val biomeId: ByteArray,
 
