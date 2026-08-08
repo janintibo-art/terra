@@ -1,5 +1,22 @@
 # Journal des versions
 
+## v0.13.1 — Le test de morphing cherchait en pleine mer
+
+Test mal ciblé, pas un défaut du morphing. Il examinait une tuile désignée
+par des indices arbitraires — autant tirer au sort sur une planète couverte
+aux deux tiers d'océan, où l'écart de morphing est nul par conception. D'où
+le message « aucun sommet morphé ».
+
+Les tests partent désormais du sommet de grille le plus élevé du monde et
+descendent jusqu'à la tuile qui le contient. Vérifié par simulation sur un
+relief à l'échelle d'une tuile de niveau 14 : l'écart médian vaut 1,65 m,
+largement détectable.
+
+Leçon voisine de celle des lots précédents : un test qui échantillonne au
+hasard sur une sphère majoritairement océanique ne mesure pas ce qu'il croit.
+Comme pour l'incision — qui cherchait des vallées loin des fleuves — il faut
+**viser l'endroit où l'effet existe**.
+
 ## v0.13.0 — Lot 2.4 : le morphing entre niveaux
 
 Dernier artefact structurel du rendu adaptatif : quand une tuile bascule de

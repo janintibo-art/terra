@@ -626,13 +626,34 @@ class MorphingTest {
         }
     }
 
+    /**
+     * Tuile posée sur un relief franc, à un niveau donné.
+     *
+     * Choisir une tuile par des indices arbitraires revient à tirer au sort
+     * sur une planète couverte aux deux tiers d'océan — où le morphing est
+     * nul par conception. Le premier jet de ce test échouait pour cette seule
+     * raison. On part donc d'un sommet de grille dont l'altitude est élevée,
+     * et l'on descend jusqu'à la tuile qui le contient.
+     */
+    private fun tileOverLand(level: Int): TileId {
+        var best = 0
+        for (i in 0 until world.vertexCount) {
+            if (world.altitudeM[i] > world.altitudeM[best]) best = i
+        }
+        val (face, sN, tN) = CubeSphere.fromSphere(world.sphere.vertices[best])
+        val grid = 1 shl level
+        val x = (((sN + 1f) * 0.5f) * grid).toInt().coerceIn(0, grid - 1)
+        val y = (((tN + 1f) * 0.5f) * grid).toInt().coerceIn(0, grid - 1)
+        return TileId(face, level, x, y)
+    }
+
     @Test
     fun `un sommet d indice pair ne morphe pas`() {
         // Les sommets pairs coïncident déjà avec ceux du parent : leur écart
         // doit être nul, sans quoi la géométrie bougerait là où elle est
         // pourtant commune aux deux niveaux.
         val mesh = TileMesh(
-            TileId(2, 14, 5000, 6000), world.terrain, CoarseSampler(world),
+            tileOverLand(14), world.terrain, CoarseSampler(world),
             world.params.radiusM.toDouble()
         )
         var zero = 0
@@ -652,7 +673,7 @@ class MorphingTest {
     @Test
     fun `l ecart de morphing reste borne par le relief local`() {
         val mesh = TileMesh(
-            TileId(0, 12, 1200, 900), world.terrain, CoarseSampler(world),
+            tileOverLand(12), world.terrain, CoarseSampler(world),
             world.params.radiusM.toDouble()
         )
         var worst = 0f
