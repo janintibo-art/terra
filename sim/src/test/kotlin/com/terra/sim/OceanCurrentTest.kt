@@ -1,5 +1,6 @@
 package com.terra.sim
 
+import com.terra.core.Sphere
 import com.terra.core.Vec3
 import kotlin.math.abs
 import kotlin.test.Test
@@ -74,7 +75,7 @@ class OceanCurrentTest {
         var westSum = 0.0; var westCount = 0
         for (i in 0 until w.vertexCount) {
             if (w.altitudeM[i] <= 0f) continue
-            val lat = Vec3.latitude(w.sphere.vertices[i])
+            val lat = Sphere.latitude(w.sphere.vertices[i])
             // Bande des moyennes latitudes, là où les gyres sont vigoureux.
             if (abs(lat) < 0.5f || abs(lat) > 1.1f) continue
             // Même règle dans les deux hémisphères : Coriolis inverse le sens

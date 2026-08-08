@@ -1,6 +1,7 @@
 package com.terra.sim
 
 import com.terra.core.PI_F
+import com.terra.core.Sphere
 import com.terra.core.Seed
 import com.terra.core.Vec3
 import com.terra.core.clamp
@@ -317,7 +318,7 @@ class WorldGenerator(
                         // courant du Brésil est chaud comme le Kuroshio. Une
                         // simulation de contrôle a montré que seule la moitié
                         // des cas allait dans le bon sens.
-                        val lat = Vec3.latitude(v)
+                        val lat = Sphere.latitude(v)
                         val strength = sin(2.0 * abs(lat)).toFloat()
                         // Portée de 450 km vers l'intérieur : un courant
                         // tempère sa côte, pas le continent entier.

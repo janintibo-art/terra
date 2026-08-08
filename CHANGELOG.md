@@ -1,5 +1,22 @@
 # Journal des versions
 
+## v0.15.1 — Correctif : la latitude n'était pas là où je la croyais
+
+Erreur de compilation. J'ai appelé `Vec3.latitude`, puis `Geodesy.latitude` —
+deux suppositions successives — alors que la fonction vit dans `Sphere`.
+`Geodesy` en possède bien une, mais pour des `Vec3d` : une erreur de **type**,
+pas d'existence.
+
+La parade n'est pas un outil, c'est une discipline : lire l'API avant de
+l'appeler. Une heuristique textuelle ne distingue pas `latitude(Vec3)` de
+`latitude(Vec3d)`, et prétendre le contraire donnerait une fausse sécurité.
+
+Une septième passe de contrôle statique est tout de même ajoutée — elle
+détecte les appels à un membre **absent** d'un `object`, ce qui reste une
+classe d'erreurs réelle, même si elle n'aurait pas vu celle-ci. Les
+constructeurs de classes imbriquées en sont exclus, sans quoi elle signalait
+deux cas légitimes.
+
 ## v0.15.0 — Lot 1.15 : les courants océaniques
 
 Jusqu'ici, la température d'un point ne dépendait que de sa latitude, de son
