@@ -300,6 +300,14 @@ class PlanetRenderer(
         lastFrameNanos = now
         frameIndex++
 
+        // Phase de la houle, avancée ici parce que c'est ici que vit le temps
+        // de trame. Elle suit le temps RÉEL et non le temps simulé : une mer
+        // figée quand on met la simulation en pause donnerait une impression
+        // de photographie, et à ×200 elle deviendrait un clignotement.
+        // Période d'environ six secondes, celle d'une houle longue vue du
+        // rivage.
+        waveTime = (waveTime + dt * 1.05f) % 6.2831853f
+
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
         pendingMesh?.let {
@@ -482,12 +490,6 @@ class PlanetRenderer(
         val rimStrength = (((snapshot.altitudeM - 60_000.0) / 240_000.0).coerceIn(0.0, 1.0)).toFloat()
         GLES20.glUniform1f(tURimStrength, rimStrength)
 
-        // Phase de la houle. Elle avance avec le temps RÉEL, pas le temps
-        // simulé : une mer figée quand on met la simulation en pause donnerait
-        // une impression de photographie, et à ×200 elle deviendrait un
-        // clignotement. Période d'environ six secondes, celle d'une houle
-        // longue vue depuis le rivage.
-        waveTime = (waveTime + dt * 1.05f) % 6.2831853f
         GLES20.glUniform1f(tUWaveTime, waveTime)
 
         var triangles = 0

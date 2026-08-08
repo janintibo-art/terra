@@ -750,6 +750,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.12.2"
+        const val VERSION = "0.12.3"
     }
 }

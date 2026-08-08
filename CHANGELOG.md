@@ -1,5 +1,26 @@
 # Journal des versions
 
+## v0.12.3 — Correctif de compilation : une variable hors de sa portée
+
+Premier échec de **compilation** du projet, et il tenait à une inattention :
+la phase de la houle lisait `dt`, variable locale à `onDrawFrame`, depuis
+`drawDescent` où elle n'existe pas. Le calcul est remonté là où le temps de
+trame vit ; l'uniform, lui, reste au moment du dessin.
+
+Les 229 tests de simulation étaient verts sur ce même commit : seul le module
+Android ne compilait pas.
+
+### Une passe de contrôle en plus
+
+Mes trois contrôles statiques — équilibrage, références orphelines, audit des
+substitutions — ne pouvaient pas voir ce défaut : le premier ne compte que
+des accolades, le deuxième ne regarde que les constantes en majuscules. Une
+quatrième passe vérifie désormais la **portée des variables locales** : tout
+identifiant lu dans une fonction sans y être déclaré, ni paramètre, ni champ
+de la classe. Faute d'analyseur syntaxique, elle procède par heuristique et
+demande un vocabulaire de mots connus, mais elle attrape la classe d'erreurs
+qui vient de coûter un aller-retour.
+
 ## v0.12.2 — Le test de l'eau mesurait deux effets à la fois
 
 Test mal conçu, pas un défaut du rendu. La monotonie vérifiée — la couleur
