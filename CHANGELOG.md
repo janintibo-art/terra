@@ -1,5 +1,31 @@
 # Journal des versions
 
+## v0.11.3 — Les vallées calibrées sur une distribution mesurée
+
+Le test avait raison de rougir, et il désignait un vrai défaut de calibrage.
+
+J'avais documenté `Noise.ridged` comme « massé vers le bas, médiane ~0,30 » —
+**sans jamais le mesurer**. Sa médiane réelle est **0,46**, et 70 % des points
+dépassaient le seuil de 0,35 prévu pour en qualifier un sur quatre. Le tracé
+couvrait donc la moitié du globe : ce n'était pas un réseau de vallées, mais
+une ondulation générale de quelques mètres.
+
+- Seuil porté à **0,62**, calibré sur la distribution mesurée.
+- **Plancher de débit** (8 cellules drainées) : une ligne de crête ne draine
+  qu'elle-même et ne doit rien creuser. Il manquait, et c'est lui qui donnait
+  un creusement partout.
+- Couverture résultante : environ 2 % du sol, avec des creusements jusqu'à
+  120 m sur les axes principaux.
+- La documentation de `Noise.ridged` porte désormais les valeurs mesurées, et
+  non supposées.
+
+C'est la troisième fois qu'une hypothèse non vérifiée sur une distribution de
+bruit coûte un correctif (plage de `fbm` en v0.8.2, arithmétique signée en
+v0.9.7, médiane de `ridged` ici). La règle est désormais : **aucune constante
+calibrée sur une distribution sans avoir échantillonné cette distribution.**
+
+`GENERATION_VERSION` passe à 8.
+
 ## v0.11.2 — Deux tests devenus aveugles
 
 Premiers rouges après le retour de GitHub Actions, et ni l'un ni l'autre

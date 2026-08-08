@@ -93,7 +93,11 @@ class Noise(seed: Seed) {
      * Bruit en crêtes : produit des arêtes vives plutôt que des bosses molles.
      * C'est ce qui donnera des chaînes de montagnes plutôt que des collines.
      *
-     * **Plage de sortie : [0, 1]**, massée vers le bas (médiane ~0,3).
+     * **Plage de sortie : [0, 1], médiane 0,46** — mesurée, pas supposée.
+     * La première rédaction annonçait « massée vers le bas, médiane ~0,3 »
+     * sans vérification, et le calibrage des vallées s'est appuyé dessus :
+     * sept points sur dix dépassaient le seuil prévu pour un sur quatre.
+     * Repères utiles : P(>0,5) = 43 %, P(>0,65) = 17 %, P(>0,8) = 3 %.
      */
     fun ridged(x: Float, y: Float, z: Float, octaves: Int): Float {
         var sum = 0f; var amp = 1f; var freq = 1f; var norm = 0f

@@ -59,7 +59,12 @@ class ValleyIncisionTest {
         }
         assertTrue(samples > 2_000, "échantillon terrestre trop maigre")
         val share = carved.toFloat() / samples
-        assertTrue(share in 0.005f..0.35f, "vallées sur ${share * 100} % du sol")
+        // Couverture attendue ~2 % du sol, calculée sur la distribution
+        // mesurée du bruit en crêtes et du débit. Les bornes laissent une
+        // marge d'un facteur cinq de chaque côté : elles attrapent un réseau
+        // qui déborderait (l'ancien couvrait la moitié du globe) ou qui
+        // disparaîtrait, sans rougir sur la variance entre mondes.
+        assertTrue(share in 0.002f..0.12f, "vallées sur ${share * 100} % du sol")
 
         // Garde-fou : une incision débranchée respecterait trivialement la
         // borne. On exige qu'elle creuse vraiment — mais en cherchant AU BON

@@ -375,8 +375,16 @@ class TerrainProfile(
         if (line <= 0f) return 0f
 
         // Débit : racine, normalisée sur un fleuve de référence.
+        // Débit : sous VALLEY_FLOW_MIN, aucune vallée. Sans ce plancher, les
+        // lignes de crête — qui ne drainent qu'elles-mêmes — recevaient déjà
+        // un creusement de quelques mètres, et le « réseau » couvrait le sol
+        // entier d'une ondulation au lieu de dessiner des vallées.
         val flow = structuralSampler.sample(accum, p, valleyHint.get())
-        val strength = clamp01(sqrtApprox(flow / VALLEY_FLOW_REFERENCE))
+        val sqMin = sqrtApprox(VALLEY_FLOW_MIN)
+        val strength = clamp01(
+            (sqrtApprox(flow) - sqMin) / (sqrtApprox(VALLEY_FLOW_REFERENCE) - sqMin)
+        )
+        if (strength <= 0f) return 0f
 
         // Fondus d'altitude : pas de vallée sur les plaines littorales déjà
         // plates, ni sur les hautes crêtes, qui sont glaciaires et non
@@ -426,9 +434,25 @@ class TerrainProfile(
         /** Fréquence du réseau : longueur d'onde ~40 km sur la sphère unité. */
         const val VALLEY_FREQ = 1_000f
 
-        /** Seuil du bruit en crêtes : règle la largeur (~1,5 km) et la
-         *  couverture (~7 % du sol). */
-        const val VALLEY_THRESHOLD = 0.35f
+        /**
+         * Seuil du bruit en crêtes, au-dessus duquel un tracé de vallée
+         * existe.
+         *
+         * Calibré sur la distribution **mesurée** de [Noise.ridged] : médiane
+         * 0,46, et non 0,30 comme je l'avais supposé sans le vérifier. Avec
+         * l'ancien seuil de 0,35, sept points sur dix dépassaient la barre :
+         * le tracé couvrait la moitié du globe et produisait une ondulation
+         * générale plutôt qu'un réseau. À 0,62, un quart des points
+         * qualifient, et le plancher de débit ramène la couverture réelle à
+         * environ 2 % du sol — des vallées, cette fois.
+         */
+        const val VALLEY_THRESHOLD = 0.62f
+
+        /**
+         * Débit minimal, en cellules drainées, pour qu'une vallée existe. Une
+         * ligne de crête ne draine qu'elle-même : elle ne doit rien creuser.
+         */
+        const val VALLEY_FLOW_MIN = 8f
 
         /** Débit d'un fleuve de référence, en cellules drainées. */
         const val VALLEY_FLOW_REFERENCE = 400f
