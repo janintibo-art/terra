@@ -754,6 +754,13 @@ class MainActivity : Activity() {
                 )
                 clock.restore(clock.tick + jump)
             }
+            is ConsoleCommand.SetLevelTint -> {
+                renderer.debugLevelTint = cmd.enabled ?: !renderer.debugLevelTint
+                showConsoleMessage(
+                    if (renderer.debugLevelTint) "Teinte par niveau activée."
+                    else "Teinte par niveau désactivée."
+                )
+            }
             is ConsoleCommand.Help -> showConsoleMessage(ConsoleCommand.HELP_TEXT)
             is ConsoleCommand.Invalid -> showConsoleMessage(cmd.message)
         }
@@ -1041,6 +1048,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.19.0"
+        const val VERSION = "0.19.1"
     }
 }

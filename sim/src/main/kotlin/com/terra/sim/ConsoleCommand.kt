@@ -22,6 +22,14 @@ sealed class ConsoleCommand {
     /** `soleil <heure>` — avancer l'horloge jusqu'à cette heure locale. */
     data class SetLocalHour(val hour: Double) : ConsoleCommand()
 
+    /**
+     * `teinte [on|off]` — colorer chaque tuile selon son niveau de
+     * subdivision. Sans argument : bascule. L'outil de diagnostic des
+     * artefacts de tuiles : un défaut devient lisible — sa tuile, son
+     * niveau, sa frontière — au lieu d'être une tache anonyme.
+     */
+    data class SetLevelTint(val enabled: Boolean?) : ConsoleCommand()
+
     /** `aide` — texte d'aide. */
     object Help : ConsoleCommand()
 
@@ -36,6 +44,7 @@ sealed class ConsoleCommand {
             "monde <nom>               régénère depuis ce nom-graine\n" +
             "soleil <heure>            avance jusqu'à cette heure locale, ex : soleil 12\n" +
             "mode sol | mode globe     bascule la vue\n" +
+            "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
             "aide                      ce texte"
 
         /**
@@ -62,6 +71,12 @@ sealed class ConsoleCommand {
                         h < 0.0 || h >= 24.0 -> Invalid("Heure hors de [0, 24) : $h")
                         else -> SetLocalHour(h)
                     }
+                }
+                "teinte" -> when (parts.getOrNull(1)?.lowercase()) {
+                    null -> SetLevelTint(null)
+                    "on", "oui" -> SetLevelTint(true)
+                    "off", "non" -> SetLevelTint(false)
+                    else -> Invalid("Usage : teinte [on|off]")
                 }
                 "mode" -> when (parts.getOrNull(1)?.lowercase()) {
                     "sol", "descente" -> SetMode(descent = true)

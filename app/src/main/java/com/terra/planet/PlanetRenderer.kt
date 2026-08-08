@@ -103,6 +103,9 @@ class PlanetRenderer(
 
     // --- Commandes de la descente ---
     @Volatile var descentMode = false
+
+    /** Teinte de diagnostic des tuiles par niveau — console « teinte ». */
+    @Volatile var debugLevelTint = false
     @Volatile var cameraSnapshot: CameraSnapshot? = null
     @Volatile var tileContext: TileContext? = null
 
@@ -501,7 +504,7 @@ class PlanetRenderer(
             // Diagnostic : teinte par niveau de subdivision, pour voir d'un
             // coup d'œil où s'arrête la couverture proche. Cycle de six
             // teintes vives, le niveau se lit à la couleur.
-            if (DIAGNOSTIC_LEVEL_TINT) {
+            if (debugLevelTint) {
                 val lvl = TileId.unpack(tile.key).level
                 val h = (lvl % 6) / 6f
                 GLES20.glUniform3f(
@@ -857,7 +860,8 @@ class PlanetRenderer(
          * compteur ne pouvait le dire. Conservé, éteint — inspecter la
          * structure du niveau de détail coûte un booléen.
          */
-        const val DIAGNOSTIC_LEVEL_TINT = false
+        // Remplacée par le drapeau d'exécution debugLevelTint (v0.19.1) :
+        // recompiler pour diagnostiquer contredisait le lot 0.6.
         private const val DEG = 0.017453292f
 
         /** Téléversements de tuiles par image : au-delà, à-coups visibles. */

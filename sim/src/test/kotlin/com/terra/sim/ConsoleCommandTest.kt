@@ -81,4 +81,19 @@ class ConsoleCommandTest {
         assertTrue(ConsoleCommand.parse("") is ConsoleCommand.Invalid)
         assertTrue(ConsoleCommand.parse("frobnique 3") is ConsoleCommand.Invalid)
     }
+    @Test
+    fun `teinte se bascule, s active et se desactive`() {
+        assertEquals(
+            ConsoleCommand.SetLevelTint(null), ConsoleCommand.parse("teinte")
+        )
+        assertEquals(
+            ConsoleCommand.SetLevelTint(true), ConsoleCommand.parse("teinte on")
+        )
+        assertEquals(
+            ConsoleCommand.SetLevelTint(false), ConsoleCommand.parse("TEINTE off")
+        )
+        assertTrue(ConsoleCommand.parse("teinte bleu") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.HELP_TEXT.contains("teinte"))
+    }
+
 }

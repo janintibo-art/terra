@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.19.1 — Instrumentation : la teinte des tuiles passe à la console
+
+Des artefacts de tuiles apparaissent à moyenne altitude en mode sol — grand
+quadrilatère pâle en travers de la vue, aplat sombre, couture visible — et
+s'effacent près du terrain. Diagnostic préliminaire : le chemin des tuiles
+n'a pas été touché par la v0.19.0 (le globe haute définition a son tampon
+dédié, hors du pool des tuiles ; la passe descente ne dessine pas le globe)
+et la profondeur des jupes est kilométrique au pire — le mur géant vient
+d'ailleurs. Ces défauts sont donc très probablement antérieurs, révélés par
+les tournées au joystick à des altitudes intermédiaires peu visitées.
+
+Plutôt qu'un correctif à l'aveugle — la doctrine du projet est « le HUD de
+debug avant la fonctionnalité » — ce lot rend le diagnostic possible sur
+appareil : la teinte des tuiles par niveau de subdivision, qui existait
+derrière une constante de compilation, devient la commande console
+« teinte [on|off] ». Un défaut teinté devient lisible : sa tuile, son
+niveau, sa frontière, au lieu d'une tache anonyme.
+
+Grammaire testée en CI comme le reste de la console.
+
 ## v0.19.0 — Globe haute définition
 
 Le mode par défaut — le globe contemplatif — était le maillon graphique
