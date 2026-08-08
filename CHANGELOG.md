@@ -1,5 +1,18 @@
 # Journal des versions
 
+## v0.23.1 — Correctif de compilation : TileId expose x/y, pas gx/gy
+
+Erreur de compilation pure (aucun test n'a rougi, :core est passé) : le
+code de végétation supposait des propriétés `gx`/`gy` sur TileId, qui
+s'appellent `x`/`y` — la leçon v0.15.1, « lire l'API avant de l'appeler »,
+enfreinte une fois de plus. Les ambiguïtés compareTo n'étaient que la
+cascade des types en erreur ; les boucles du treillis passent au passage
+sur des bornes entières précalculées.
+
+Trou du filet identifié : le contrôle statique n°6 ne vérifie que les
+membres d'objets compagnons, pas les propriétés d'instance — à étendre
+dans la prochaine archive de relance.
+
 ## v0.23.0 — Végétation minimale : la planète s'habille
 
 Avant-goût de la Phase 3, taillé pour ce moteur : des plantes en pure

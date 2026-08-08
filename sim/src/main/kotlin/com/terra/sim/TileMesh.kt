@@ -336,19 +336,21 @@ class TileMesh(
         val lat = PLANT_LATTICE_LEVEL
         val cellsPerFace = (PLANT_LATTICE_N.toLong() shl lat).toDouble()
         val tileSpan = 1.0 / (1L shl tile.level).toDouble()      // fraction de face
-        val x0 = tile.gx * tileSpan * cellsPerFace
-        val y0 = tile.gy * tileSpan * cellsPerFace
-        val x1 = (tile.gx + 1) * tileSpan * cellsPerFace
-        val y1 = (tile.gy + 1) * tileSpan * cellsPerFace
+        val x0 = tile.x * tileSpan * cellsPerFace
+        val y0 = tile.y * tileSpan * cellsPerFace
+        val x1 = (tile.x + 1) * tileSpan * cellsPerFace
+        val y1 = (tile.y + 1) * tileSpan * cellsPerFace
         // Pas de 2 par axe au niveau 14 (196 cases pour 49 places) ;
         // pas de 1 partout ailleurs.
         val stride = if (tile.level < lat) 1 shl (lat - tile.level) else 1
         val hint = intArrayOf(0)
         var emitted = 0
+        val cxEnd = Math.ceil(x1).toLong()
+        val cyEnd = Math.ceil(y1).toLong()
         var cy = Math.floor(y0).toLong()
-        while (cy < y1 && emitted < PLANT_SLOTS) {
+        while (cy < cyEnd && emitted < PLANT_SLOTS) {
             var cx = Math.floor(x0).toLong()
-            while (cx < x1 && emitted < PLANT_SLOTS) {
+            while (cx < cxEnd && emitted < PLANT_SLOTS) {
                 if ((cx % stride == 0L) && (cy % stride == 0L)) {
                     val next = emitOnePlant(o, tile, cx, cy, x0, x1, y0, y1,
                         cellsPerFace, profile, sampler, hint, planetRadiusM)

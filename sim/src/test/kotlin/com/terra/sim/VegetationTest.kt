@@ -98,7 +98,7 @@ class VegetationTest {
             for (dx in 0..1) {
                 val child = TileId(
                     forestTile.face, 16,
-                    forestTile.gx * 2 + dx, forestTile.gy * 2 + dy
+                    forestTile.x * 2 + dx, forestTile.y * 2 + dy
                 )
                 childPlants.addAll(plantBases(TileMesh(child, world.terrain, sampler, r)))
             }
