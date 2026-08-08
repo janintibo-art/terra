@@ -102,6 +102,17 @@ object LayerPalette {
             }
             return
         }
+        // Édifices volcaniques en orangé vif : ils traversent les plaques
+        // sans égard pour leurs frontières, ce qui se voit d'un coup d'œil.
+        val volcano = data.hotspots.elevationAt(data.sphere.vertices[i])
+        if (volcano > 150f) {
+            val t = clamp01(volcano / 1_500f)
+            out[0] = 0.75f + 0.24f * t
+            out[1] = 0.42f - 0.18f * t
+            out[2] = 0.08f
+            return
+        }
+
         val p = data.plates.plateOf(i)
         val dim = if (data.altitudeM[i] < 0f) 0.55f else 1f
         var r = p.r * dim; var g = p.g * dim; var b = p.b * dim

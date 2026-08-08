@@ -72,7 +72,9 @@ class WorldGenerator(
         val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
         val boundaries = BoundarySet.classify(sphere, plates)
         val boundaryDistance = BoundaryDistanceField.generate(sphere, plates, boundaries)
-        val structuralM = TectonicRelief.build(sphere, plates, boundaryDistance, tectonicScale)
+        val hotspots = HotspotField.generate(masterSeed, plates, sphere)
+        val structuralM =
+            TectonicRelief.build(sphere, plates, boundaryDistance, tectonicScale, hotspots)
         val structuralSampler = FieldSampler(sphere)
         onProgress(Stage.TECTONICS, 1f)
 
@@ -366,6 +368,7 @@ class WorldGenerator(
             plates = plates,
             boundaries = boundaries,
             boundaryDistance = boundaryDistance,
+            hotspots = hotspots,
             hydrology = hydrology
         )
     }

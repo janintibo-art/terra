@@ -68,7 +68,10 @@ object TectonicRelief {
         sphere: Icosphere,
         plates: PlateSet,
         dist: BoundaryDistanceField,
-        tectonicScale: Float
+        tectonicScale: Float,
+        /** Chaînes volcaniques — lot 1.7. Leur relief s'ajoute au structural
+         *  et se trouve donc borné par la même compression finale. */
+        hotspots: HotspotField?
     ): FloatArray {
         val n = sphere.vertexCount
         val out = FloatArray(n)
@@ -127,6 +130,11 @@ object TectonicRelief {
                             450f * k * gauss(dd, 0.030f, 0.020f)
                 }
             }
+
+            // Édifices volcaniques : un panache perce la croûte sans égard
+            // pour les frontières de plaques, c'est ce qui distingue une île
+            // de point chaud d'un arc insulaire.
+            if (hotspots != null) e += hotspots.elevationAt(sphere.vertices[v])
 
             out[v] = e
         }

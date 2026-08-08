@@ -68,6 +68,9 @@ class PlanetData(
     val biomeColorG: FloatArray,
     val biomeColorB: FloatArray,
 
+    /** Points chauds et chaînes volcaniques — lot 1.7. */
+    val hotspots: HotspotField,
+
     /** Érosion et réseau d'écoulement — lot 1.9. Le débit qu'il porte
      *  guidera les rivières (1.10), les lacs (1.11) et l'incision fine. */
     val hydrology: HydrologyField

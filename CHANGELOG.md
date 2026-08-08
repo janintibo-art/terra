@@ -1,5 +1,36 @@
 # Journal des versions
 
+## v0.14.0 — Lot 1.7 : les points chauds
+
+Retour à la Phase 1. Un point chaud est un panache **fixe** dans le manteau ;
+c'est la plaque qui défile au-dessus. Chaque édifice percé est donc emporté
+par elle, et le suivant naît en amont — d'où ces chaînes d'îles alignées dont
+l'âge croît avec la distance, comme la chaîne hawaïenne.
+
+Rien n'est dessiné : la tectonique fournissait déjà l'axe de rotation et la
+vitesse de chaque plaque, et il suffit de **remonter** ce mouvement pour
+placer les édifices successifs. Un panache sous une plaque rapide produit une
+longue traîne d'îles espacées ; sous une plaque lente, un massif compact. Le
+même panache donnerait donc une chaîne différente selon la plaque qu'il perce.
+
+Calibrage mesuré contre la Terre : 8 à 20 panaches par monde, douze édifices
+par chaîne espacés de 20 à 100 km selon la vitesse de la plaque — soit 240 à
+1 200 km de long —, édifice actif à 2 600 m décroissant d'un facteur e tous
+les quatre rangs.
+
+Sur les bornes, la leçon des lots 0.9.x est appliquée d'emblée : le pire
+empilement (socle + collision + volcan + bruit) atteindrait 9 100 m, mais il
+n'y a aucun calibrage à ajuster — `softLimit` comprime l'ensemble sous le
+plafond planétaire, par construction.
+
+Le calque **Plaques** montre les édifices en orangé : ils traversent les
+frontières sans égard pour elles, ce qui distingue au premier coup d'œil une
+île de point chaud d'un arc insulaire.
+
+Cinq tests, dont le central : la direction de la chaîne doit suivre la
+**vitesse de la plaque** au panache, sans quoi l'alignement serait décoratif
+au lieu d'être causé. `GENERATION_VERSION` passe à 10.
+
 ## v0.13.3 — Correctif : une substitution trop large
 
 Erreur de compilation. En simplifiant la sortie de `waterColor`, ma
