@@ -1,5 +1,44 @@
 # Journal des versions
 
+## v0.16.0 — Lot 1.18 : l'éditeur de paramètres en jeu
+
+Douze curseurs sur la recette de la planète — fraction océanique, altitudes,
+climat complet, précipitations, inclinaison, exagération du relief,
+subdivisions — avec régénération immédiate du monde courant. La feuille de
+route promettait que ce lot ferait gagner des semaines sur toutes les phases
+suivantes : chaque réglage climatique futur pourra désormais s'essayer à la
+main avant d'être calibré.
+
+Tout le contenu de l'éditeur (bornes, pas, libellés, écriture) vit dans
+`ParamEditor` en Kotlin pur, couvert par des tests génériques : ajouter un
+paramètre = ajouter une ligne au registre, les tests suivent d'eux-mêmes.
+La couche Android ne fait que dessiner des curseurs.
+
+Trois points durcis d'emblée :
+
+1. **Piège du pas flottant.** La grille d'un curseur ne retombe pas toujours
+   au bit près sur la valeur d'usine (23,4° devient 23,400002 après
+   aller-retour par l'index). L'interface ne réécrit donc QUE les curseurs
+   réellement déplacés — sinon, ouvrir le panneau et régénérer sans rien
+   toucher aurait suffi à changer le monde.
+
+2. **Bug latent de sauvegarde, corrigé avant d'exploser.** Le format 1
+   n'enregistrait ni `oceanThermalInertia` ni `continentalityC` : invisible
+   tant qu'ils n'étaient pas éditables, fatal après — une valeur réglée
+   serait revenue à l'usine au redémarrage. Format 2 avec migration : les
+   sauvegardes v1 se relisent, les nouveaux champs prennent leurs valeurs
+   d'usine, qui sont celles de leur génération.
+
+3. **`affectsGeneration` documenté et testé.** L'inclinaison axiale pilote
+   les saisons et le ciel, pas le climat moyen annuel : un test le fige, et
+   son commentaire prévient qu'au lot 1.12 (insolation) il faudra l'inverser.
+
+Deux absents délibérés, pour que ce lot ne change pas un bit des mondes
+existants (GENERATION_VERSION reste à 12, empreintes intactes) : le rayon
+planétaire, calibré partout pour 6 371 km, et l'activité tectonique, qui
+n'existe pas encore comme paramètre — ce sera le lot 1.18 b, avec son
+incrément de version de génération.
+
 ## v0.15.3 — Correctif de test : mon propre test était mal calibré
 
 Le run de la v0.15.2 a validé le correctif climatique — Gaia 16,0 → 15,7 % de

@@ -32,8 +32,20 @@ object WorldSave {
 
     private const val MAGIC = 0x54455252   // "TERR"
 
-    /** Version du format de fichier. À incrémenter si la structure change. */
-    const val FORMAT_VERSION = 1
+    /**
+     * Version du format de fichier. À incrémenter si la structure change.
+     *
+     *   1 — écriture initiale (lot 0.8)
+     *   2 — v0.16.0 : ajout d'oceanThermalInertia et continentalityC en fin
+     *       d'enregistrement. Ces deux paramètres existaient dans
+     *       [PlanetParams] mais n'étaient PAS persistés — bug latent
+     *       invisible tant qu'on ne les éditait pas, fatal dès l'éditeur du
+     *       lot 1.18 : une valeur réglée aurait silencieusement repris sa
+     *       valeur d'usine au redémarrage, en violation de « la sauvegarde
+     *       de la recette ». Les nouveaux champs sont ajoutés en QUEUE pour
+     *       que le préfixe v1 reste lisible tel quel.
+     */
+    const val FORMAT_VERSION = 2
 
     /**
      * Version de l'algorithme de génération.
@@ -78,6 +90,9 @@ object WorldSave {
             stream.writeFloat(p.lapseRateCPerKm)
             stream.writeFloat(p.maxPrecipMm)
             stream.writeInt(p.subdivisions)
+            // Champs du format 2, en queue pour préserver le préfixe v1.
+            stream.writeFloat(p.oceanThermalInertia)
+            stream.writeFloat(p.continentalityC)
         }
         return bytes.toByteArray()
     }
@@ -94,18 +109,41 @@ object WorldSave {
                 val name = input.readUTF()
                 val tick = input.readLong()
 
+                val radiusM = input.readFloat()
+                val oceanFraction = input.readFloat()
+                val maxAltitudeM = input.readFloat()
+                val maxDepthM = input.readFloat()
+                val reliefExaggeration = input.readFloat()
+                val axialTiltDeg = input.readFloat()
+                val equatorTempC = input.readFloat()
+                val poleTempDropC = input.readFloat()
+                val lapseRateCPerKm = input.readFloat()
+                val maxPrecipMm = input.readFloat()
+                val subdivisions = input.readInt()
+                // Migration v1 → v2 : les sauvegardes anciennes n'ont pas les
+                // deux derniers champs ; elles reçoivent les valeurs d'usine,
+                // qui sont exactement celles avec lesquelles elles avaient
+                // été générées puisque ces paramètres n'étaient pas éditables.
+                val defaults = PlanetParams()
+                val inertia = if (formatVersion >= 2) input.readFloat()
+                              else defaults.oceanThermalInertia
+                val contC = if (formatVersion >= 2) input.readFloat()
+                            else defaults.continentalityC
+
                 val params = PlanetParams(
-                    radiusM = input.readFloat(),
-                    oceanFraction = input.readFloat(),
-                    maxAltitudeM = input.readFloat(),
-                    maxDepthM = input.readFloat(),
-                    reliefExaggeration = input.readFloat(),
-                    axialTiltDeg = input.readFloat(),
-                    equatorTempC = input.readFloat(),
-                    poleTempDropC = input.readFloat(),
-                    lapseRateCPerKm = input.readFloat(),
-                    maxPrecipMm = input.readFloat(),
-                    subdivisions = input.readInt()
+                    radiusM = radiusM,
+                    oceanFraction = oceanFraction,
+                    maxAltitudeM = maxAltitudeM,
+                    maxDepthM = maxDepthM,
+                    reliefExaggeration = reliefExaggeration,
+                    axialTiltDeg = axialTiltDeg,
+                    equatorTempC = equatorTempC,
+                    poleTempDropC = poleTempDropC,
+                    oceanThermalInertia = inertia,
+                    continentalityC = contC,
+                    lapseRateCPerKm = lapseRateCPerKm,
+                    maxPrecipMm = maxPrecipMm,
+                    subdivisions = subdivisions
                 )
                 Snapshot(name, params, tick, formatVersion, generationVersion)
             }

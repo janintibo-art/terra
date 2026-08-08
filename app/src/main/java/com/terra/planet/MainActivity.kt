@@ -18,6 +18,8 @@ import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import com.terra.core.SimClock
 import com.terra.core.clamp
@@ -27,6 +29,7 @@ import com.terra.sim.ConsoleCommand
 import com.terra.sim.PlanetCamera
 import com.terra.sim.TerrainRaycaster
 import com.terra.sim.MapLayer
+import com.terra.sim.ParamEditor
 import com.terra.sim.PlanetData
 import com.terra.sim.PlanetParams
 import com.terra.sim.WorldGenerator
@@ -154,6 +157,7 @@ class MainActivity : Activity() {
         speedLabels.forEachIndexed { index, label ->
             timeBar.addView(makeButton(label) { setSpeed(index) })
         }
+        timeBar.addView(makeButton("Régl.") { showParamEditor() })
         timeBar.addView(makeButton("Monde") { showSeedDialog() })
         modeButton = makeButton("Sol") { toggleDescent() }
         timeBar.addView(modeButton)
@@ -380,10 +384,92 @@ class MainActivity : Activity() {
             .show()
     }
 
+    // ------------------------------------------------- éditeur (lot 1.18)
+
+    /**
+     * Panneau de curseurs sur les paramètres de génération. Toute la
+     * connaissance (bornes, pas, libellés) vient de [ParamEditor] dans
+     * :sim ; ici on ne fait que dessiner.
+     *
+     * SEULS les curseurs réellement déplacés sont réécrits dans les
+     * paramètres : la grille d'un curseur ne retombe pas toujours au bit
+     * près sur la valeur d'usine, et réécrire un paramètre non touché
+     * suffirait à changer le monde à la régénération (voir le commentaire
+     * « piège du pas flottant » dans ParamEditor).
+     */
+    private fun showParamEditor() {
+        val current = params
+        val edits = HashMap<String, Int>()   // id → index de grille choisi
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 24, 40, 8)
+        }
+        for (spec in ParamEditor.specs) {
+            val title = TextView(this).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                text = "${spec.label} : ${spec.format(spec.read(current))}" +
+                    if (spec.affectsGeneration) "" else "   (rendu seul)"
+            }
+            val slider = SeekBar(this).apply {
+                max = spec.steps
+                progress = spec.indexOf(spec.read(current))
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, value: Int, fromUser: Boolean) {
+                        // fromUser : une mise à jour programmatique ne doit
+                        // jamais compter comme une édition.
+                        if (!fromUser) return
+                        edits[spec.id] = value
+                        title.text = "${spec.label} : ${spec.format(spec.valueAt(value))}" +
+                            if (spec.affectsGeneration) "" else "   (rendu seul)"
+                    }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
+            }
+            list.addView(title)
+            list.addView(slider)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Paramètres de la planète")
+            .setView(ScrollView(this).apply { addView(list) })
+            .setPositiveButton("Régénérer") { _, _ ->
+                if (edits.isEmpty()) return@setPositiveButton
+                var p = params
+                for (spec in ParamEditor.specs) {
+                    val index = edits[spec.id] ?: continue
+                    p = spec.write(p, spec.valueAt(index))
+                }
+                applyParams(p)
+            }
+            .setNeutralButton("Défauts") { _, _ ->
+                // Retour à l'usine, subdivisions comprises : c'est la
+                // planète « catalogue », celle des empreintes de référence.
+                applyParams(PlanetParams(subdivisions = 5))
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    /**
+     * Applique un nouveau jeu de paramètres au monde COURANT : même nom,
+     * autre recette. Le temps repart de zéro — c'est une autre planète,
+     * pas la même vieillie — et la sauvegarde suivra par le circuit
+     * habituel, désormais complet grâce au format 2.
+     */
+    private fun applyParams(p: PlanetParams) {
+        if (p == params) return
+        val name = world?.name ?: return
+        params = p
+        clock.reset()
+        staleSave = false
+        generateWorld(name)
+    }
+
     // ---------------------------------------------------------- descente
 
-    private fun toggleDescent() {
-        if (descentActive) {
+    private fun toggleDescent() {        if (descentActive) {
             descentActive = false
             renderer.descentMode = false
             modeButton.text = "Sol"
@@ -750,6 +836,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.15.3"
+        const val VERSION = "0.16.0"
     }
 }
