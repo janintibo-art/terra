@@ -170,6 +170,18 @@ object CubeSphere {
     }
 
     /**
+     * Variante à coordonnées FRACTIONNAIRES, pour placer un point entre les
+     * nœuds de la grille — la végétation s'en sert. Même définition que
+     * [gridDirection] : sur des coordonnées entières, les deux coïncident.
+     */
+    fun gridDirectionF(face: Int, level: Int, gx: Float, gy: Float, meshN: Int): com.terra.core.Vec3 {
+        val total = (meshN.toLong() shl level).toDouble()
+        val s = -1.0 + 2.0 * gx.toDouble() / total
+        val t = -1.0 + 2.0 * gy.toDouble() / total
+        return toSphereD(face, s, t).toVec3()
+    }
+
+    /**
      * Face et coordonnées d'un point de la sphère.
      *
      * Sur une arête ou un coin, plusieurs faces sont également valides ; le

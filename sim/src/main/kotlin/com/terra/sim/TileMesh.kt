@@ -278,7 +278,7 @@ class TileMesh(
         // --- 2. Tampon de sommets ------------------------------------------
         val terrainVerts = n * n * 2 * 3
         val skirtVerts = 4 * n * 2 * 3
-        vertexCount = terrainVerts + skirtVerts
+        vertexCount = terrainVerts + skirtVerts + PLANT_SLOTS * VERTS_PER_PLANT
         vertexData = FloatArray(vertexCount * FLOATS_PER_VERTEX)
         var o = 0
 
@@ -308,8 +308,193 @@ class TileMesh(
         o = emitSkirtEdge(o, corner, 1, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
         o = emitSkirtEdge(o, corner + n * verts, 1, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
         o = emitSkirtEdge(o, corner, verts, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
-        emitSkirtEdge(o, corner + n, verts, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+        o = emitSkirtEdge(o, corner + n, verts, n, depth, relX, relY, relZ, dirX, dirY, dirZ, colR, colG, colB, mat)
+
+        // --- 3. Végétation (lot 3-avancé) -----------------------------------
+        //
+        // Chaque plante est deux quads « cerf-volant » croisés — pied au
+        // sol, ventre à mi-hauteur, pointe au sommet — émis sur leurs deux
+        // faces, l'élagage arrière étant actif. Pas de texture dans ce
+        // moteur : la silhouette et le dégradé de couleur (pied brun,
+        // houppier du biome assombri) font l'arbre. Le pied est posé par
+        // renderedAltitudeAt : la plante touche EXACTEMENT le terrain rendu,
+        // par l'invariant n°3. Voir PLANT_LATTICE_LEVEL pour le treillis.
+        emitPlants(o, tile, profile, sampler, planetRadiusM)
     }
+
+    private fun emitPlants(
+        startOffset: Int,
+        tile: TileId,
+        profile: TerrainProfile,
+        sampler: CoarseSampler,
+        planetRadiusM: Double
+    ) {
+        var o = startOffset
+        if (tile.level < PLANT_MIN_LEVEL) return
+
+        // Emprise de la tuile sur le treillis canonique, en cases.
+        val lat = PLANT_LATTICE_LEVEL
+        val cellsPerFace = (PLANT_LATTICE_N.toLong() shl lat).toDouble()
+        val tileSpan = 1.0 / (1L shl tile.level).toDouble()      // fraction de face
+        val x0 = tile.gx * tileSpan * cellsPerFace
+        val y0 = tile.gy * tileSpan * cellsPerFace
+        val x1 = (tile.gx + 1) * tileSpan * cellsPerFace
+        val y1 = (tile.gy + 1) * tileSpan * cellsPerFace
+        // Pas de 2 par axe au niveau 14 (196 cases pour 49 places) ;
+        // pas de 1 partout ailleurs.
+        val stride = if (tile.level < lat) 1 shl (lat - tile.level) else 1
+        val hint = intArrayOf(0)
+        var emitted = 0
+        var cy = Math.floor(y0).toLong()
+        while (cy < y1 && emitted < PLANT_SLOTS) {
+            var cx = Math.floor(x0).toLong()
+            while (cx < x1 && emitted < PLANT_SLOTS) {
+                if ((cx % stride == 0L) && (cy % stride == 0L)) {
+                    val next = emitOnePlant(o, tile, cx, cy, x0, x1, y0, y1,
+                        cellsPerFace, profile, sampler, hint, planetRadiusM)
+                    if (next != o) emitted++
+                    o = next
+                }
+                cx++
+            }
+            cy++
+        }
+    }
+
+    private fun emitOnePlant(
+        startOffset: Int,
+        tile: TileId,
+        cellX: Long, cellY: Long,
+        x0: Double, x1: Double, y0: Double, y1: Double,
+        cellsPerFace: Double,
+        profile: TerrainProfile,
+        sampler: CoarseSampler,
+        hint: IntArray,
+        planetRadiusM: Double
+    ): Int {
+        val o = startOffset
+        // Les sels de hachage viennent de la CASE canonique : la même
+        // plante renaît identique dans toute tuile qui la contient.
+        val sx = (tile.face.toLong() * 0x9E3779B1L + cellX * 0x85EBCA77L +
+            cellY * 0xC2B2AE3DL).toInt()
+        val ju = profile.micro01(sx * 31 + 1)
+        val jv = profile.micro01(sx * 31 + 2)
+        val px = cellX + 0.15 + 0.70 * ju
+        val py = cellY + 0.15 + 0.70 * jv
+        // La plante n'appartient qu'à la tuile qui contient sa POSITION :
+        // ni doublon ni trou aux frontières.
+        if (px < x0 || px >= x1 || py < y0 || py >= y1) return o
+
+        val d = CubeSphere.gridDirectionF(
+            tile.face, PLANT_LATTICE_LEVEL, px.toFloat(), py.toFloat(), PLANT_LATTICE_N
+        )
+        val a = profile.renderedAltitudeAt(d)
+        if (a <= 0f || profile.lakeDepthAt(d) > 0f) return o
+
+        val near = sampler.nearestVertex(d, hint[0]); hint[0] = near
+        val biome = sampler.biomeAt(d, near)
+        val density = plantDensity(biome)
+        if (density <= 0f) return o
+        if (profile.micro01(sx * 31 + 3) > density) return o
+
+        // Pente : au-delà de ~27 %, ni arbre ni touffe — mesurée sur le
+        // terrain rendu à deux mètres d'écart, comme la roche des pentes.
+        val stepRad = (2.0 / planetRadiusM).toFloat()
+        val east = eastOf(d)
+        val north = northOf(d, east)
+        val aE = profile.renderedAltitudeAt(com.terra.core.Vec3(
+            d.x + east.x * stepRad, d.y + east.y * stepRad, d.z + east.z * stepRad))
+        val aN = profile.renderedAltitudeAt(com.terra.core.Vec3(
+            d.x + north.x * stepRad, d.y + north.y * stepRad, d.z + north.z * stepRad))
+        val gx2 = (aE - a) / 2f; val gy2 = (aN - a) / 2f
+        if (gx2 * gx2 + gy2 * gy2 > 0.27f * 0.27f) return o
+
+        val tree = biome == Biome.RAINFOREST || biome == Biome.TEMPERATE_FOREST ||
+            biome == Biome.BOREAL_FOREST || biome == Biome.WETLAND ||
+            biome == Biome.SAVANNA
+        val size = profile.micro01(sx * 31 + 4)
+        val height = if (tree) 2.5f + 4.5f * size else 0.35f + 0.45f * size
+        val halfW = height * (if (tree) 0.28f else 0.55f)
+
+        val shade = 0.62f + 0.25f * profile.micro01(sx * 31 + 5)
+        val topR = clamp01(biome.r * shade); val topG = clamp01(biome.g * shade)
+        val topB = clamp01(biome.b * shade)
+        val baseR = 0.30f; val baseG = 0.23f; val baseB = 0.15f
+
+        val r = planetRadiusM + a.toDouble()
+        val fx = (d.x * r - centerXM).toFloat()
+        val fy = (d.y * r - centerYM).toFloat()
+        val fz = (d.z * r - centerZM).toFloat()
+
+        var off = o
+        off = emitKite(off, fx, fy, fz, east, d, height, halfW,
+            baseR, baseG, baseB, topR, topG, topB)
+        off = emitKite(off, fx, fy, fz, north, d, height, halfW,
+            baseR, baseG, baseB, topR, topG, topB)
+        return off
+    }
+
+    /** Quad cerf-volant sur ses deux faces : pied, ventre gauche/droit, pointe. */
+    private fun emitKite(
+        startOffset: Int,
+        fx: Float, fy: Float, fz: Float,
+        side: com.terra.core.Vec3, up: com.terra.core.Vec3,
+        height: Float, halfW: Float,
+        baseR: Float, baseG: Float, baseB: Float,
+        topR: Float, topG: Float, topB: Float
+    ): Int {
+        var o = startOffset
+        val midH = height * 0.45f
+        val ax = fx; val ay = fy; val az = fz
+        val bx = fx + up.x * midH - side.x * halfW
+        val by = fy + up.y * midH - side.y * halfW
+        val bz = fz + up.z * midH - side.z * halfW
+        val cx = fx + up.x * height; val cy = fy + up.y * height; val cz = fz + up.z * height
+        val dx = fx + up.x * midH + side.x * halfW
+        val dy = fy + up.y * midH + side.y * halfW
+        val dz = fz + up.z * midH + side.z * halfW
+        val midR = (baseR + topR) * 0.5f; val midG = (baseG + topG) * 0.5f
+        val midB = (baseB + topB) * 0.5f
+        // Face avant : A-B-C, A-C-D ; face arrière en ordre inverse.
+        o = plantVertex(o, ax, ay, az, baseR, baseG, baseB, up)
+        o = plantVertex(o, bx, by, bz, midR, midG, midB, up)
+        o = plantVertex(o, cx, cy, cz, topR, topG, topB, up)
+        o = plantVertex(o, ax, ay, az, baseR, baseG, baseB, up)
+        o = plantVertex(o, cx, cy, cz, topR, topG, topB, up)
+        o = plantVertex(o, dx, dy, dz, midR, midG, midB, up)
+        o = plantVertex(o, ax, ay, az, baseR, baseG, baseB, up)
+        o = plantVertex(o, cx, cy, cz, topR, topG, topB, up)
+        o = plantVertex(o, bx, by, bz, midR, midG, midB, up)
+        o = plantVertex(o, ax, ay, az, baseR, baseG, baseB, up)
+        o = plantVertex(o, dx, dy, dz, midR, midG, midB, up)
+        o = plantVertex(o, cx, cy, cz, topR, topG, topB, up)
+        return o
+    }
+
+    private fun plantVertex(
+        o: Int, x: Float, y: Float, z: Float,
+        r: Float, g: Float, b: Float, up: com.terra.core.Vec3
+    ): Int {
+        vertexData[o] = x; vertexData[o + 1] = y; vertexData[o + 2] = z
+        vertexData[o + 3] = r; vertexData[o + 4] = g; vertexData[o + 5] = b
+        // Normale radiale : la plante s'éclaire comme le sol qui la porte —
+        // pas de normale de feuillage crédible sans vraie géométrie.
+        vertexData[o + 6] = up.x; vertexData[o + 7] = up.y; vertexData[o + 8] = up.z
+        vertexData[o + 9] = MATERIAL_LAND
+        vertexData[o + 10] = 0f   // pas de morphing : la plante naît avec sa tuile
+        return o + FLOATS_PER_VERTEX
+    }
+
+    private fun eastOf(d: com.terra.core.Vec3): com.terra.core.Vec3 {
+        val el = sqrt(d.x * d.x + d.z * d.z)
+        return if (el < 1e-4f) com.terra.core.Vec3(1f, 0f, 0f)
+        else com.terra.core.Vec3(-d.z / el, 0f, d.x / el)
+    }
+
+    private fun northOf(d: com.terra.core.Vec3, e: com.terra.core.Vec3): com.terra.core.Vec3 =
+        com.terra.core.Vec3(
+            d.y * e.z - d.z * e.y, d.z * e.x - d.x * e.z, d.x * e.y - d.y * e.x
+        )
 
     /**
      * Émet un triangle avec normale de facette et matériau, en corrigeant
@@ -507,6 +692,25 @@ class TileMesh(
         const val MATERIAL_LAND = 0f
         const val MATERIAL_WATER = 1f
 
+        /**
+         * Densité de plantes par biome : la fraction des 48 emplacements
+         * réellement peuplée. Les forêts saturent, la savane clairsème ses
+         * arbres, les milieux froids ou arides portent des touffes rares,
+         * la roche et la glace rien.
+         */
+        fun plantDensity(biome: Biome): Float = when (biome) {
+            Biome.RAINFOREST -> 1.0f
+            Biome.TEMPERATE_FOREST -> 0.9f
+            Biome.BOREAL_FOREST -> 0.8f
+            Biome.WETLAND -> 0.6f
+            Biome.GRASSLAND -> 0.5f
+            Biome.SAVANNA -> 0.35f
+            Biome.STEPPE -> 0.25f
+            Biome.TUNDRA -> 0.12f
+            Biome.SEMI_DESERT -> 0.08f
+            else -> 0f
+        }
+
         /** Couleur de roche des pentes — gris-brun neutre, éclairé par la
          *  normale comme le reste du terrain. */
         const val ROCK_R = 0.44f
@@ -525,8 +729,40 @@ class TileMesh(
         fun rockBlend(cosUp: Float): Float =
             clamp01(((1f - cosUp) - 0.0297f) / (0.1520f - 0.0297f))
 
-        /** Nombre de sommets émis pour une tuile, terrain plus jupes. */
-        fun expectedVertexCount(): Int = MESH_N * MESH_N * 6 + 4 * MESH_N * 6
+        /**
+         * Végétation minimale — lot 3-avancé (v0.23.0).
+         *
+         * Budget FIXE d'emplacements par tuile : le pool GPU recycle des
+         * tampons de taille unique, un maillage à taille variable l'aurait
+         * cassé. Un emplacement vide émet un triangle dégénéré (aire
+         * nulle), que le GPU écarte sans coût de remplissage. 48
+         * emplacements × 24 sommets (deux quads croisés × deux faces,
+         * l'élagage arrière étant actif) = 1 152 sommets, soit +60 % de
+         * pool — assumé, et mesurable au HUD.
+         */
+        const val PLANT_SLOTS = 49
+        const val VERTS_PER_PLANT = 24
+
+        /** Niveau à partir duquel les plantes existent (arête ≤ 610 m). */
+        const val PLANT_MIN_LEVEL = 14
+
+        /**
+         * Niveau du TREILLIS CANONIQUE des plantes : chaque plante du monde
+         * vit à une case fixe d'une grille 7×7 par tuile de niveau 15, et
+         * chaque tuile — quel que soit SON niveau — émet les plantes
+         * canoniques qui tombent dans son emprise. Conséquences voulues :
+         * même arbre, même position, même taille à tout niveau de détail
+         * (aucun saut au changement de tuile) ; densité au sol CONSTANTE
+         * (une tuile de niveau 17 porte ~3 plantes, pas 49) ; et au niveau
+         * 14, où 196 cases se disputent 49 emplacements, un pas de 2 sur
+         * chaque axe garde l'échantillon uniforme.
+         */
+        const val PLANT_LATTICE_LEVEL = 15
+        const val PLANT_LATTICE_N = 7
+
+        /** Nombre de sommets émis pour une tuile : terrain, jupes, plantes. */
+        fun expectedVertexCount(): Int =
+            MESH_N * MESH_N * 6 + 4 * MESH_N * 6 + PLANT_SLOTS * VERTS_PER_PLANT
 
         /**
          * Profondeur de jupe, en mètres.

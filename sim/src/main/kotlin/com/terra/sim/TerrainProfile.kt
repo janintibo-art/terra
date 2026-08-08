@@ -424,6 +424,20 @@ class TerrainProfile(
      * Multiplicateurs par canal, bornés par construction — les données de
      * biome restent la couleur de base, ceci n'est que du modelé.
      */
+    /**
+     * Hachage déterministe [0, 1) salé par la graine du monde — SplitMix64,
+     * le finaliseur maison. Sert aux tirages discrets de la végétation :
+     * présence, gigue, taille, nuance. Deux appareils, même monde, même
+     * forêt au brin près ; deux mondes, des forêts différentes.
+     */
+    fun micro01(salt: Int): Float {
+        var z = seed.value + salt.toLong() * -0x61c8864680b583ebL
+        z = (z xor (z ushr 30)) * -0x40a7b892e31b1a47L
+        z = (z xor (z ushr 27)) * -0x6b2fb644ecceee15L
+        z = z xor (z ushr 31)
+        return ((z ushr 40).toInt() and 0xFFFFFF).toFloat() / 0x1000000.toFloat()
+    }
+
     fun groundTintAt(p: Vec3, out: FloatArray) {
         val patch = micro.fbm(p.x * 5_000f + 11f, p.y * 5_000f - 4f, p.z * 5_000f + 27f, 2)
         val mottle = micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2)

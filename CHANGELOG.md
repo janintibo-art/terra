@@ -1,5 +1,34 @@
 # Journal des versions
 
+## v0.23.0 — Végétation minimale : la planète s'habille
+
+Avant-goût de la Phase 3, taillé pour ce moteur : des plantes en pure
+géométrie colorée par sommet — deux quads « cerf-volant » croisés, pied
+brun, houppier du biome assombri — INTÉGRÉES au maillage des tuiles avec un
+budget fixe de 49 emplacements. Le pool GPU, l'élagage, le morphing et le
+renderer n'ont pas changé d'une ligne.
+
+La pièce maîtresse est le TREILLIS CANONIQUE : chaque plante du monde vit à
+une case fixe d'une grille de niveau 15, et chaque tuile — quel que soit
+son niveau — émet les plantes canoniques de son emprise. Même arbre, même
+position, même taille à tout niveau de détail : un test le vérifie au
+centimètre entre une tuile mère et ses quatre filles. Densité au sol
+constante (une tuile de niveau 17 porte ~3 plantes, pas 49), aucune
+explosion en descendant, aucun saut en montant.
+
+Répartition : forêts saturées (tropicale 100 %, tempérée 90 %, boréale
+80 %), savane clairsemée d'arbres, prairies et steppes en touffes, milieux
+arides ou glacés nus. Ni sur l'eau, ni dans les lacs, ni au-delà de 27 %
+de pente. Le pied est posé par le terrain continu : la plante touche
+exactement le sol rendu, par l'invariant n°3. Tout le tirage sort d'un
+hachage salé par la graine du monde : deux appareils plantent la même
+forêt au brin près.
+
+Coûts, dits d'avance : +1 176 sommets par tuile de pool (+60 %, ~39 Mo de
+réserve GPU au lieu de 24), à lire au HUD. Les emplacements vides sont des
+triangles dégénérés, écartés sans coût de remplissage. Rendu pur :
+GENERATION_VERSION inchangé, empreintes intactes.
+
 ## v0.22.0 — Lot 2.17 a : le micro-détail du sol
 
 La plaine rapprochée était un aplat vert : une seule échelle de moucheture
