@@ -712,3 +712,57 @@ class MorphingTest {
         }
     }
 }
+
+/**
+ * Frange de rivage — lot 2.9b.
+ *
+ * L'escalier des côtes venait du dernier basculement par seuil d'un rendu
+ * devenu partout continu. Ces tests portent sur la largeur de la frange, qui
+ * doit s'adapter au niveau : large de loin pour effacer la marche, fine de
+ * près pour qu'une plage reste franche.
+ */
+class ShoreBlendTest {
+
+    @Test
+    fun `la frange retrecit quand le niveau s affine`() {
+        var previous = Float.MAX_VALUE
+        for (level in 2..TileId.MAX_LEVEL) {
+            val blend = TileMesh.shoreBlendM(level)
+            assertTrue(
+                blend <= previous,
+                "la frange s'élargit du niveau ${level - 1} au niveau $level"
+            )
+            previous = blend
+        }
+    }
+
+    @Test
+    fun `la frange couvre une maille de loin et reste fine de pres`() {
+        // Propriété qui justifie la formule : de loin, la frange doit couvrir
+        // la variation d'altitude d'une maille sur une côte de pente typique
+        // (4 %), sinon la transition retombe dans une seule maille et
+        // redevient une marche.
+        for (level in intArrayOf(4, 8, 12)) {
+            val edge = (Math.PI * 0.5 / (1 shl level)).toFloat() * 6_371_000f
+            val step = edge / TileMesh.MESH_N
+            assertTrue(
+                TileMesh.shoreBlendM(level) >= step * 0.04f,
+                "au niveau $level la frange ne couvre pas une maille"
+            )
+        }
+        // De près, elle doit rester au plancher : un rivage net.
+        for (level in intArrayOf(18, 20, TileId.MAX_LEVEL)) {
+            assertTrue(
+                TileMesh.shoreBlendM(level) <= 2.5f,
+                "au niveau $level la frange est trop large pour une plage"
+            )
+        }
+    }
+
+    @Test
+    fun `la frange reste positive a tout niveau`() {
+        for (level in 0..TileId.MAX_LEVEL) {
+            assertTrue(TileMesh.shoreBlendM(level) > 0f)
+        }
+    }
+}

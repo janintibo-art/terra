@@ -1,5 +1,34 @@
 # Journal des versions
 
+## v0.13.2 — Lot 2.9b : la frange de rivage
+
+Les côtes se dessinaient encore en marches d'escalier vues de loin. C'était
+le dernier basculement **par seuil** d'un rendu devenu partout continu :
+couleurs, normales, altitudes s'interpolent, mais le passage terre/eau
+tombait d'un coup au franchissement du niveau de la mer. En vue orbitale, où
+une maille couvre des kilomètres, la transition se produisait donc dans une
+seule maille — d'où la marche.
+
+Terre et eau se mélangent désormais sur une frange dont la largeur suit le
+niveau de tuile : **3 km au niveau 4, 195 m au niveau 8, deux mètres à partir
+du niveau 16**. Assez large de loin pour effacer l'escalier, assez fine de
+près pour qu'une plage reste franche. La formule vient d'une mesure : la
+frange doit couvrir la variation d'altitude d'une maille sur une côte de
+pente typique, faute de quoi la transition retombe dans une maille et
+redevient une marche. Vérifié par simulation avant écriture — la couleur
+glisse sans saut à tous les niveaux testés.
+
+### Nettoyage au passage
+
+`waterColor` écrivait ses trois canaux dans trois tableaux distincts, ce qui
+la rendait inutilisable pour le mélange de rivage. Elle rend maintenant un
+seul tableau de trois, avec des tampons de travail par fil — allouer trois
+flottants par sommet ferait un demi-million d'allocations par seconde en
+descente, exactement ce que le lot B0 avait supprimé.
+
+Trois tests sur la frange : elle rétrécit quand le niveau s'affine, elle
+couvre une maille de loin, elle reste fine de près.
+
 ## v0.13.1 — Le test de morphing cherchait en pleine mer
 
 Test mal ciblé, pas un défaut du morphing. Il examinait une tuile désignée

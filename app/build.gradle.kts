@@ -11,8 +11,8 @@ android {
         applicationId = "com.terra.planet"
         minSdk = 24
         targetSdk = 34
-        versionCode = 49
-        versionName = "0.13.1"
+        versionCode = 50
+        versionName = "0.13.2"
     }
 
     buildTypes {

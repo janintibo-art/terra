@@ -115,6 +115,7 @@ class TileMesh(
         // Indice de départ pour la marche du CoarseSampler : chaque sommet part
         // de la cellule trouvée pour le précédent, ce qui réduit la recherche à
         // une ou deux étapes au lieu d'une trentaine.
+        val shoreBlend = shoreBlendM(tile.level)
         var hint = -1
         val colorHint = intArrayOf(0)
         val rgb = FloatArray(3)
@@ -144,7 +145,8 @@ class TileMesh(
                 hint = sampler.nearestVertex(df, hint)
                 val jitter = if (a > 0f) profile.colorJitterAt(df) else 1f
                 sampler.sampleBiomeColor(df, colorHint, rgb)
-                colorFor(sampler, hint, df, a, jitter, rgb, profile.params, colR, colG, colB, idx)
+                colorFor(sampler, hint, df, a, jitter, rgb, shoreBlend,
+                    profile.params, colR, colG, colB, idx)
 
                 // Eau douce : le lac reprend la teinte du ciel plus qu'il ne
                 // la tire du fond, et s'assombrit avec la profondeur.
@@ -154,13 +156,15 @@ class TileMesh(
                 val lakeDepth = profile.lakeDepthAt(df)
                 if (lakeDepth > 0f) {
                     rgb[0] = colR[idx]; rgb[1] = colG[idx]; rgb[2] = colB[idx]
-                    waterColor(lakeDepth, rgb, colR, colG, colB, idx)
+                    val lakeOut = seaScratchTl.get()
+                    waterColor(lakeDepth, rgb, lakeOut)
+                    colR[idx] = lakeOut[0]; colG[idx] = lakeOut[1]; colB[idx] = lakeOut[2]
                 }
 
                 // Matériau : eau de mer près du rivage, ou eau douce dès que
                 // le lac atteint un mètre — même fondu de rive dans les deux
                 // cas, pour que le reflet meure doucement sur les hauts-fonds.
-                val seaness = clamp01((8f - a) / 23f)
+                val seaness = clamp01((shoreBlend - a) / (2f * shoreBlend))
                 val lakeness = clamp01(lakeDepth / 1.5f)
                 mat[idx] = max(seaness, lakeness)
                 idx++
@@ -527,7 +531,10 @@ class TileMesh(
         private fun waterColor(
             depthM: Float,
             bottomRgb: FloatArray,
-            outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
+            /** Reçoit R, G, B. Un seul tableau plutôt que trois : la couleur
+             *  de l'eau sert aussi au mélange de rivage, où une écriture
+             *  dispersée serait inutilisable. */
+            out: FloatArray
         ) {
             val opacity = 1f - exp(-WATER_EXTINCTION * depthM)
 
@@ -550,7 +557,7 @@ class TileMesh(
                 b += (0.96f - b) * f
             }
 
-            outR[idx] = clamp01(r); outG[idx] = clamp01(g); outB[idx] = clamp01(b)
+            out[0] = clamp01(r); out[1] = clamp01(g); out[2] = clamp01(b)
         }
 
         /**
@@ -559,9 +566,42 @@ class TileMesh(
          * travers un maillage complet.
          */
         internal fun waterColorForTest(depthM: Float, bottomRgb: FloatArray, out: FloatArray) {
-            val r = FloatArray(1); val g = FloatArray(1); val b = FloatArray(1)
-            waterColor(depthM, bottomRgb, r, g, b, 0)
-            out[0] = r[0]; out[1] = g[0]; out[2] = b[0]
+            waterColor(depthM, bottomRgb, out)
+        }
+
+        /**
+         * Tampons de travail du calcul de couleur, un jeu par fil.
+         *
+         * Allouer trois flottants par sommet ferait un demi-million
+         * d'allocations par seconde pendant une descente — exactement ce que
+         * le lot B0 s'était employé à supprimer. Un état par fil ne partage
+         * rien et ne coûte rien.
+         */
+        private val seaScratchTl = ThreadLocal.withInitial { FloatArray(3) }
+        private val bottomScratchTl = ThreadLocal.withInitial { FloatArray(3) }
+
+        /**
+         * Demi-largeur de la frange de mélange terre / eau, en mètres, pour
+         * un niveau de tuile donné — lot 2.9b.
+         *
+         * ## L'escalier que cela corrige
+         *
+         * Tout le rendu s'interpole désormais — couleurs, normales,
+         * altitudes —, sauf le passage terre/eau, qui basculait sur un seuil
+         * d'altitude. Vu de loin, une maille couvre des kilomètres et le
+         * terrain y franchit le niveau de la mer d'un coup : la côte se
+         * dessinait en marches d'escalier, très visible en vue orbitale.
+         *
+         * La frange doit couvrir la variation d'altitude d'une maille, faute
+         * de quoi la transition retombe dans une seule maille et redevient
+         * une marche. Mesuré sur une pente côtière typique de 4 % : 3 km au
+         * niveau 4, 195 m au niveau 8, 12 m au niveau 12, et le plancher de
+         * deux mètres à partir du niveau 16 — de près, le rivage doit rester
+         * franc, c'est là qu'on voit une plage.
+         */
+        fun shoreBlendM(level: Int): Float {
+            val edge = (Math.PI * 0.5 / (1 shl level)).toFloat() * 6_371_000f
+            return max(2f, edge / MESH_N * 0.08f)
         }
 
         /** Extinction lumineuse dans l'eau, par mètre. */
@@ -587,33 +627,54 @@ class TileMesh(
             jitter: Float,
             /** Couleur de biome déjà interpolée : R, G, B. */
             rgb: FloatArray,
+            /** Demi-largeur de la frange de rivage, en mètres. */
+            shoreBlend: Float,
             params: PlanetParams,
             outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
         ) {
             val biome = sampler.biomeAt(dir, vertexIndex)
-            if (altitudeM < 0f) {
-                if (biome == Biome.SEA_ICE) {
-                    outR[idx] = biome.r; outG[idx] = biome.g; outB[idx] = biome.b
-                } else {
-                    waterColor(-altitudeM, rgb, outR, outG, outB, idx)
-                }
-            } else {
-                val tint = (0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)) * jitter
-                var r = clamp01(rgb[0] * tint)
-                var g = clamp01(rgb[1] * tint)
-                var b = clamp01(rgb[2] * tint)
-                // Frange humide : sous douze mètres d'altitude, la terre se
-                // fond vers l'eau claire — c'est elle qui efface les dents de
-                // scie du trait de côte, l'autre moitié venant du matériau
-                // spéculaire continu.
-                val wet = 1f - clamp01(altitudeM / 12f)
-                if (wet > 0f) {
-                    r += (0.30f - r) * wet * 0.55f
-                    g += (0.52f - g) * wet * 0.55f
-                    b += (0.60f - b) * wet * 0.55f
-                }
-                outR[idx] = r; outG[idx] = g; outB[idx] = b
+            val sea = seaScratchTl.get()
+
+            // La banquise couvre l'eau : ni bathymétrie ni frange.
+            if (biome == Biome.SEA_ICE) {
+                outR[idx] = biome.r; outG[idx] = biome.g; outB[idx] = biome.b
+                return
             }
+
+            // Eau franche, au-delà de la frange.
+            if (altitudeM <= -shoreBlend) {
+                waterColor(-altitudeM, rgb, sea)
+                outR[idx] = sea[0]; outG[idx] = sea[1]; outB[idx] = sea[2]
+                return
+            }
+
+            // Terre, teintée par l'altitude et mouchetée.
+            val tint = (0.88f + 0.24f * clamp01(altitudeM / params.maxAltitudeM)) * jitter
+            var r = clamp01(rgb[0] * tint)
+            var g = clamp01(rgb[1] * tint)
+            var b = clamp01(rgb[2] * tint)
+
+            // Frange de rivage — lot 2.9b.
+            //
+            // Le passage terre/eau était le dernier basculement par seuil
+            // d'un rendu devenu partout continu : vu de loin, une maille
+            // couvre des kilomètres, le terrain y franchissait le niveau de
+            // la mer d'un coup, et la côte se dessinait en marches
+            // d'escalier. Le mélange s'étale désormais sur une frange large
+            // de plusieurs mailles en orbite et de deux mètres au sol — assez
+            // pour effacer l'escalier de loin, assez fine pour qu'une plage
+            // reste une plage de près.
+            if (altitudeM < shoreBlend) {
+                val wet = clamp01((shoreBlend - altitudeM) / (2f * shoreBlend))
+                val bottom = bottomScratchTl.get()
+                bottom[0] = r; bottom[1] = g; bottom[2] = b
+                waterColor(max(0.2f, shoreBlend - altitudeM), bottom, sea)
+                r += (sea[0] - r) * wet
+                g += (sea[1] - g) * wet
+                b += (sea[2] - b) * wet
+            }
+
+            out[0] = clamp01(r); out[1] = clamp01(g); out[2] = clamp01(b)
         }
     }
 }
