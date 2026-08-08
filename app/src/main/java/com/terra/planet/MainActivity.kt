@@ -120,6 +120,20 @@ class MainActivity : Activity() {
     private lateinit var rightHandle: TextView
     private var leftOpen = false
     private var rightOpen = false
+
+    // Joystick du mode sol (v0.17.1). Sa boucle de déplacement tourne à
+    // 16 ms — la boucle UI, à 100 ms, donnerait un défilement par saccades —
+    // et ne vit QUE pendant que le manche est engagé : zéro coût au repos.
+    private lateinit var joystick: JoystickView
+    private var joystickLoopRunning = false
+
+    /**
+     * Vitesse plein manche, en pixels de glissement équivalents par seconde.
+     * Le joystick passe par cam.pan(), la même mécanique que le doigt :
+     * la vitesse au sol reste donc proportionnelle à l'altitude, sans code
+     * dédié. 900 px/s ≈ un glissement de doigt soutenu.
+     */
+    private val joystickSpeedPxPerS = 900f
     private var speedIndex = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -197,6 +211,11 @@ class MainActivity : Activity() {
             addView(timeBar)
         }
 
+        joystick = JoystickView(this).apply {
+            visibility = View.GONE
+            onEngaged = { startJoystickLoop() }
+        }
+
         // Position fermée recalée à CHAQUE layout : c'est ce qui garde le
         // tiroir correctement replié après une rotation d'écran, quand la
         // largeur du panneau change. Un post{} unique ne suffirait pas.
@@ -212,6 +231,14 @@ class MainActivity : Activity() {
             addView(hud, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
             addView(leftDrawer, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
             addView(rightDrawer, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
+            // Au-dessus de la poignée gauche, sous le pouce. Taille en
+            // pixels physiques via la densité : 140 dp sur tout écran.
+            val joySize = (140f * resources.displayMetrics.density).toInt()
+            addView(joystick, FrameLayout.LayoutParams(joySize, joySize,
+                Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = (18f * resources.displayMetrics.density).toInt()
+                bottomMargin = (64f * resources.displayMetrics.density).toInt()
+            })
             addView(loading, FrameLayout.LayoutParams(-1, -1))
         })
 
@@ -539,6 +566,7 @@ class MainActivity : Activity() {
     private fun toggleDescent() {        if (descentActive) {
             descentActive = false
             renderer.descentMode = false
+            joystick.visibility = View.GONE
             modeButton.text = "Sol"
             refreshButtonStates()
             return
@@ -555,10 +583,47 @@ class MainActivity : Activity() {
             )
         }
         descentActive = true
+        joystick.visibility = View.VISIBLE
         modeButton.text = "Globe"
         camera?.let { settleCamera(it) }
         renderer.descentMode = true
         refreshButtonStates()
+    }
+
+    /**
+     * Boucle de déplacement du joystick, démarrée à l'engagement du manche
+     * et qui s'éteint d'elle-même au relâchement ou à la sortie du mode sol.
+     *
+     * CONVENTION DE SIGNE, à vérifier sur appareil : « pousser en haut =
+     * avancer ». Elle est dérivée du contrat de pan() — « le point visé
+     * part à l'opposé du glissement » — donc avancer équivaut à tirer le
+     * terrain vers soi (dyPixels positif), et aller à droite à pousser le
+     * terrain vers la gauche (dxPixels négatif). L'historique du projet
+     * (v0.8.4) montre que ce raisonnement peut se tromper d'un signe sans
+     * qu'aucun test JVM ne le voie : si le sol part à rebours du manche,
+     * l'inversion tient en une ligne ici.
+     */
+    private fun startJoystickLoop() {
+        if (joystickLoopRunning) return
+        joystickLoopRunning = true
+        mainHandler.post(object : Runnable {
+            override fun run() {
+                val cam = camera
+                if (!descentActive || cam == null ||
+                    (joystick.vx == 0f && joystick.vy == 0f)) {
+                    joystickLoopRunning = false
+                    return
+                }
+                val k = joystickSpeedPxPerS * 0.016f
+                cam.pan(
+                    (-joystick.vx * k).toDouble(),
+                    (joystick.vy * k).toDouble(),
+                    glView.height.toDouble().coerceAtLeast(1.0)
+                )
+                settleCamera(cam)
+                mainHandler.postDelayed(this, 16L)
+            }
+        })
     }
 
     /**
@@ -903,6 +968,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.17.0"
+        const val VERSION = "0.17.1"
     }
 }

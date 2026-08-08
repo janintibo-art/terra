@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.17.1 — Joystick de déplacement en mode sol
+
+Un joystick virtuel apparaît en bas à gauche dès qu'on passe en mode sol, et
+disparaît au retour au globe. Le doigt sur le terrain continue de fonctionner
+comme avant : les deux modes de déplacement coexistent.
+
+Choix de conception :
+
+- Le joystick passe par `cam.pan()`, la même mécanique que le glissement du
+  doigt : la vitesse reste proportionnelle à l'altitude sans aucun code
+  dédié — plein manche équivaut à un glissement soutenu de 900 px/s.
+- Sa boucle de déplacement tourne à 16 ms mais ne vit que pendant que le
+  manche est engagé : zéro coût au repos, et la boucle UI à 100 ms n'est pas
+  touchée.
+- La vue consomme ses événements tactiles : un doigt sur le joystick ne fait
+  jamais tourner le globe derrière.
+- Convention « pousser en haut = avancer », dérivée du contrat de pan() ;
+  l'historique (v0.8.4) prouve que ces signes ne se devinent pas de salon —
+  si le sol part à rebours, l'inversion tient en une ligne, commentée.
+
+Fonctionnalité purement Android, sans test JVM possible.
+
 ## v0.17.0 — Lot 1.18 b : le curseur d'activité tectonique
 
 Un treizième curseur, de 0 à 2 : il multiplie l'amplitude de tout le relief
