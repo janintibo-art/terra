@@ -110,6 +110,16 @@ class MainActivity : Activity() {
 
     private val speeds = listOf(0f, 1f, 20f, 200f)
     private val speedLabels = listOf("❚❚", "×1", "×20", "×200")
+
+    // Tiroirs latéraux (v0.16.2) : les barres vivent dans deux panneaux
+    // rétractables, calques à gauche, temps et monde à droite. Fermés, seule
+    // la poignée dépasse ; l'écran reste nu pour la contemplation.
+    private lateinit var leftDrawer: LinearLayout
+    private lateinit var rightDrawer: LinearLayout
+    private lateinit var leftHandle: TextView
+    private lateinit var rightHandle: TextView
+    private var leftOpen = false
+    private var rightOpen = false
     private var speedIndex = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,45 +152,66 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         }
 
+        // Les barres deviennent des COLONNES : l'ordre des enfants est
+        // inchangé, refreshButtonStates() continue d'indexer les mêmes
+        // boutons. Largeur uniforme pour un bord de tiroir net.
+        val column = { LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, -2) }
+
         layerBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(16, 8, 16, 20)
+            orientation = LinearLayout.VERTICAL
+            setPadding(12, 8, 4, 8)
         }
         for (layer in MapLayer.values()) {
-            layerBar.addView(makeButton(layer.shortLabel) { switchLayer(layer) })
+            layerBar.addView(makeButton(layer.shortLabel) { switchLayer(layer) }, column())
         }
 
         timeBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            // Bas resserré : cette barre est empilée au-dessus des calques
-            // depuis la v0.16.1, le grand retrait d'écran reste à layerBar.
-            setPadding(16, 8, 16, 4)
+            orientation = LinearLayout.VERTICAL
+            setPadding(4, 8, 12, 8)
         }
         speedLabels.forEachIndexed { index, label ->
-            timeBar.addView(makeButton(label) { setSpeed(index) })
+            timeBar.addView(makeButton(label) { setSpeed(index) }, column())
         }
-        timeBar.addView(makeButton("Régl.") { showParamEditor() })
-        timeBar.addView(makeButton("Monde") { showSeedDialog() })
+        timeBar.addView(makeButton("Régl.") { showParamEditor() }, column())
+        timeBar.addView(makeButton("Monde") { showSeedDialog() }, column())
         modeButton = makeButton("Sol") { toggleDescent() }
-        timeBar.addView(modeButton)
+        timeBar.addView(modeButton, column())
+
+        // Poignées : toujours visibles au coin, elles font coulisser le
+        // panneau. Le chevron pointe vers l'endroit où le tiroir ira.
+        leftHandle = makeButton("❯") { toggleDrawer(left = true) }
+        rightHandle = makeButton("❮") { toggleDrawer(left = false) }
+
+        leftDrawer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(layerBar)
+            addView(leftHandle, LinearLayout.LayoutParams(-2, -2).apply {
+                gravity = Gravity.BOTTOM
+            })
+        }
+        rightDrawer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(rightHandle, LinearLayout.LayoutParams(-2, -2).apply {
+                gravity = Gravity.BOTTOM
+            })
+            addView(timeBar)
+        }
+
+        // Position fermée recalée à CHAQUE layout : c'est ce qui garde le
+        // tiroir correctement replié après une rotation d'écran, quand la
+        // largeur du panneau change. Un post{} unique ne suffirait pas.
+        layerBar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (!leftOpen) leftDrawer.translationX = -layerBar.width.toFloat()
+        }
+        timeBar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (!rightOpen) rightDrawer.translationX = timeBar.width.toFloat()
+        }
 
         setContentView(FrameLayout(this).apply {
             addView(glView, FrameLayout.LayoutParams(-1, -1))
             addView(hud, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
-            // Les deux barres partageaient la même ligne, ancrées l'une à
-            // gauche et l'autre à droite : l'ajout du bouton « Régl. »
-            // (v0.16.0) a fait dépasser leur largeur cumulée et « Eaux »
-            // passait sous « ×1 ». Empilées, elles ne peuvent plus se
-            // chevaucher, quels que soient l'écran et les boutons à venir.
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(timeBar, LinearLayout.LayoutParams(-2, -2).apply {
-                    gravity = Gravity.END
-                })
-                addView(layerBar, LinearLayout.LayoutParams(-2, -2).apply {
-                    gravity = Gravity.START
-                })
-            }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+            addView(leftDrawer, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+            addView(rightDrawer, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
         })
 
@@ -396,6 +427,28 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Annuler", null)
             .show()
+    }
+
+    /**
+     * Coulisse un tiroir. La cible est calculée depuis la largeur MESURÉE du
+     * panneau, jamais une constante : les libellés changent (« Sol » devient
+     * « Globe »), la police d'accessibilité peut grossir, et une largeur
+     * codée en dur laisserait un jour un bord de panneau dépasser.
+     */
+    private fun toggleDrawer(left: Boolean) {
+        if (left) {
+            leftOpen = !leftOpen
+            leftHandle.text = if (leftOpen) "❮" else "❯"
+            leftDrawer.animate()
+                .translationX(if (leftOpen) 0f else -layerBar.width.toFloat())
+                .setDuration(160).start()
+        } else {
+            rightOpen = !rightOpen
+            rightHandle.text = if (rightOpen) "❯" else "❮"
+            rightDrawer.animate()
+                .translationX(if (rightOpen) 0f else timeBar.width.toFloat())
+                .setDuration(160).start()
+        }
     }
 
     // ------------------------------------------------- éditeur (lot 1.18)
@@ -850,6 +903,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.16.1"
+        const val VERSION = "0.16.2"
     }
 }

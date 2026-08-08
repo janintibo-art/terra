@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.16.2 — Interface : deux tiroirs latéraux rétractables
+
+Les barres empilées de la v0.16.1 mangeaient le bas de l'écran. À la place,
+deux tiroirs coulissants : les calques s'ouvrent depuis la gauche, le temps
+et le monde depuis la droite. Fermés, seules deux poignées en chevron
+subsistent aux coins inférieurs — l'écran redevient une fenêtre sur la
+planète, ce qui est la vocation du mode contemplatif.
+
+Détails qui comptent :
+
+- Les barres deviennent des colonnes mais gardent leurs enfants dans le même
+  ordre : `refreshButtonStates()` indexe les boutons par position, et cette
+  invariance lui évite toute retouche.
+- La position fermée est recalée à chaque layout, pas mesurée une fois : une
+  rotation d'écran change la largeur des panneaux, et un tiroir replié doit
+  le rester exactement.
+- La cible du coulissement vient de la largeur mesurée, jamais d'une
+  constante : « Sol » devient « Globe », la police d'accessibilité grossit,
+  et une largeur codée en dur finirait par laisser dépasser un bord.
+
+Correctif purement Android, sans test JVM possible.
+
 ## v0.16.1 — Correctif d'interface : les barres se chevauchaient
 
 Le bouton « Régl. » de la v0.16.0 a fait dépasser la largeur cumulée des deux
