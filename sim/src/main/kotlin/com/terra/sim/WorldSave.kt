@@ -44,8 +44,9 @@ object WorldSave {
      *       valeur d'usine au redémarrage, en violation de « la sauvegarde
      *       de la recette ». Les nouveaux champs sont ajoutés en QUEUE pour
      *       que le préfixe v1 reste lisible tel quel.
+     *   3 — v0.17.0 : ajout de tectonicActivity en queue (lot 1.18 b).
      */
-    const val FORMAT_VERSION = 2
+    const val FORMAT_VERSION = 3
 
     /**
      * Version de l'algorithme de génération.
@@ -55,6 +56,11 @@ object WorldSave {
      *   2 — v0.4.0 : profil thermique réaliste, continentalité, variété du relief
      *  12 — v0.15.2 : courants — inversion subpolaire du motif est/ouest,
      *       atténuation de l'effet avec l'altitude
+     *
+     * Resté à 12 au lot 1.18 b (v0.17.0) : l'activité tectonique est un
+     * multiplicateur post-tirages, exactement neutre à sa valeur d'usine —
+     * aucune recette existante ne change. TectonicActivityTest le verrouille
+     * au bit près ; si ce test casse, incrémenter ICI, pas l'assouplir.
      */
     const val GENERATION_VERSION = 12
 
@@ -93,6 +99,8 @@ object WorldSave {
             // Champs du format 2, en queue pour préserver le préfixe v1.
             stream.writeFloat(p.oceanThermalInertia)
             stream.writeFloat(p.continentalityC)
+            // Champ du format 3.
+            stream.writeFloat(p.tectonicActivity)
         }
         return bytes.toByteArray()
     }
@@ -129,6 +137,8 @@ object WorldSave {
                               else defaults.oceanThermalInertia
                 val contC = if (formatVersion >= 2) input.readFloat()
                             else defaults.continentalityC
+                val activity = if (formatVersion >= 3) input.readFloat()
+                               else defaults.tectonicActivity
 
                 val params = PlanetParams(
                     radiusM = radiusM,
@@ -143,7 +153,8 @@ object WorldSave {
                     continentalityC = contC,
                     lapseRateCPerKm = lapseRateCPerKm,
                     maxPrecipMm = maxPrecipMm,
-                    subdivisions = subdivisions
+                    subdivisions = subdivisions,
+                    tectonicActivity = activity
                 )
                 Snapshot(name, params, tick, formatVersion, generationVersion)
             }

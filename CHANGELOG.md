@@ -1,5 +1,30 @@
 # Journal des versions
 
+## v0.17.0 — Lot 1.18 b : le curseur d'activité tectonique
+
+Un treizième curseur, de 0 à 2 : il multiplie l'amplitude de tout le relief
+d'origine tectonique — chaînes, cordillères, fosses, arcs, dorsales, rifts,
+et désormais aussi les édifices de points chauds, car un monde à activité
+nulle doit être mort, Hawaï comprise. Le socle isostatique et le bruit
+d'habillage n'en dépendent pas : à zéro, il reste des continents plats qui
+flottent ; à deux, des orogenèses doublées, bornées par la compression
+finale qui garantit les plafonds par construction.
+
+Le point central du lot : **GENERATION_VERSION reste à 12, empreintes
+intactes**, contrairement à ce qui était annoncé. Le curseur agit APRÈS les
+tirages aléatoires — aucun flux n'est consommé différemment — et à sa valeur
+d'usine la multiplication par 1,0 est exacte en arithmétique IEEE : aucune
+recette existante ne change d'un bit. Ce pari est verrouillé par un test au
+bit près, dont le commentaire est explicite : s'il casse un jour, la réponse
+est d'incrémenter la version, pas d'assouplir le test. C'est aussi pourquoi
+le NOMBRE de plaques n'est pas paramétré : son tirage consomme le flux, le
+paramétrer aurait tout décalé.
+
+Autres verrous : à activité nulle, le champ structural ne contient exactement
+que ±socle (tout terme qui échapperait au curseur ferait échouer le test) ;
+l'étendue du relief croît strictement avec l'activité ; format de sauvegarde
+3 avec migration testée depuis les flux v1 et v2.
+
 ## v0.16.2 — Interface : deux tiroirs latéraux rétractables
 
 Les barres empilées de la v0.16.1 mangeaient le bas de l'écran. À la place,

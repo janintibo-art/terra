@@ -129,14 +129,20 @@ class WorldGenerator(
         val reliefScale = reliefRng.nextFloatRange(0.45f, 1.0f)
         val peakiness = reliefRng.nextFloatRange(1.6f, 3.2f)
         val trenchScale = reliefRng.nextFloatRange(0.6f, 1.0f)
-        val tectonicScale = exp(0.8f * ln(reliefScale))
+        // L'activité multiplie l'échelle tectonique APRÈS les tirages :
+        // aucun flux aléatoire n'est consommé différemment, et à 1,0 la
+        // multiplication est neutre au bit près (lot 1.18 b).
+        val tectonicScale = exp(0.8f * ln(reliefScale)) * params.tectonicActivity
 
         val plates = PlateSet.generate(masterSeed, sphere, params.oceanFraction)
         val boundaries = BoundarySet.classify(sphere, plates)
         val boundaryDistance = BoundaryDistanceField.generate(sphere, plates, boundaries)
         val hotspots = HotspotField.generate(masterSeed, plates, sphere)
         val structuralM =
-            TectonicRelief.build(sphere, plates, boundaryDistance, tectonicScale, hotspots)
+            TectonicRelief.build(
+                sphere, plates, boundaryDistance, tectonicScale, hotspots,
+                params.tectonicActivity
+            )
         val structuralSampler = FieldSampler(sphere)
         onProgress(Stage.TECTONICS, 1f)
 

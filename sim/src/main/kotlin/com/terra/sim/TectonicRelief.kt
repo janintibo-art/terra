@@ -71,7 +71,15 @@ object TectonicRelief {
         tectonicScale: Float,
         /** Chaînes volcaniques — lot 1.7. Leur relief s'ajoute au structural
          *  et se trouve donc borné par la même compression finale. */
-        hotspots: HotspotField?
+        hotspots: HotspotField?,
+        /**
+         * Activité tectonique (lot 1.18 b), appliquée aux seuls points
+         * chauds — les termes de frontière la reçoivent déjà via
+         * `tectonicScale`, prémultiplié par l'appelant. Un panache est du
+         * magmatisme : un monde à activité nulle doit être mort, Hawaï
+         * comprise. À 1,0, multiplication neutre au bit près.
+         */
+        activity: Float = 1f
     ): FloatArray {
         val n = sphere.vertexCount
         val out = FloatArray(n)
@@ -134,7 +142,7 @@ object TectonicRelief {
             // Édifices volcaniques : un panache perce la croûte sans égard
             // pour les frontières de plaques, c'est ce qui distingue une île
             // de point chaud d'un arc insulaire.
-            if (hotspots != null) e += hotspots.elevationAt(sphere.vertices[v])
+            if (hotspots != null) e += hotspots.elevationAt(sphere.vertices[v]) * activity
 
             out[v] = e
         }

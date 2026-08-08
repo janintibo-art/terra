@@ -189,7 +189,21 @@ data class PlanetParams(
     val maxPrecipMm: Float = 3_600f,
 
     /** Niveau de subdivision de l'icosphère. */
-    val subdivisions: Int = 5
+    val subdivisions: Int = 5,
+
+    /**
+     * Activité tectonique — lot 1.18 b. Multiplie l'amplitude de tout le
+     * relief d'origine tectonique : chaînes, cordillères, fosses, arcs,
+     * dorsales, rifts et édifices de points chauds. Le socle isostatique
+     * n'en dépend pas (c'est de la flottaison, pas de l'orogenèse), le
+     * bruit d'habillage non plus.
+     *
+     * À 1,0 — la valeur d'usine — la multiplication par 1,0f est EXACTE
+     * en arithmétique IEEE : les mondes existants ne changent pas d'un
+     * bit, ce qui autorise à ne pas incrémenter GENERATION_VERSION. Un
+     * test le verrouille. Placé en dernier pour ne décaler aucun appel.
+     */
+    val tectonicActivity: Float = 1f
 )
 
 /** Mesures relevées pendant la génération, pour le HUD et les tests. */

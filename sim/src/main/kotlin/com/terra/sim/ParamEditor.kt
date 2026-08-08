@@ -17,11 +17,11 @@ import kotlin.math.roundToInt
  *    registres de la caméra ont été calibrés pour 6 371 km. Un rayon
  *    divisé par dix sans recalibrage donnerait des tuiles incohérentes ;
  *    à traiter comme un lot propre si les mini-planètes tentent un jour.
- *  - l'activité tectonique : il n'existe pas encore de paramètre — le
- *    nombre de plaques est tiré dans [Tectonics]. En créer un change la
- *    génération, donc GENERATION_VERSION et les empreintes ; ce sera le
- *    lot 1.18 b, séparé exprès pour que celui-ci laisse les mondes
- *    existants intacts au bit près.
+ *  - le NOMBRE de plaques : le tirage vit dans [Tectonics] et consomme
+ *    le flux aléatoire ; le paramétrer décalerait tous les mondes. Le
+ *    curseur d'activité (lot 1.18 b) agit en aval des tirages, sur les
+ *    amplitudes seulement — c'est ce qui le rend neutre au bit près à
+ *    sa valeur d'usine.
  */
 object ParamEditor {
 
@@ -110,6 +110,8 @@ object ParamEditor {
             { it.axialTiltDeg }, { p, v -> p.copy(axialTiltDeg = v) }),
         Spec("relief", "Exagération du relief", "", 0f, 0.15f, 0.005f, 3, false,
             { it.reliefExaggeration }, { p, v -> p.copy(reliefExaggeration = v) }),
+        Spec("tecto", "Activité tectonique", "", 0f, 2f, 0.05f, 2, true,
+            { it.tectonicActivity }, { p, v -> p.copy(tectonicActivity = v) }),
         Spec("subdiv", "Subdivisions de la grille", "", 4f, 6f, 1f, 0, true,
             { it.subdivisions.toFloat() },
             { p, v -> p.copy(subdivisions = v.roundToInt()) })
