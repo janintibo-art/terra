@@ -1,5 +1,44 @@
 # Journal des versions
 
+## v0.15.0 — Lot 1.15 : les courants océaniques
+
+Jusqu'ici, la température d'un point ne dépendait que de sa latitude, de son
+altitude et de sa distance à la mer. Deux côtes de même latitude, l'une à
+l'est d'un continent et l'autre à l'ouest, étaient donc identiques — alors
+que sur Terre elles diffèrent de trois à neuf degrés.
+
+### Pas besoin d'identifier les bassins
+
+Les gyres subtropicaux ramènent de l'eau équatoriale le long du bord ouest de
+chaque bassin et de l'eau polaire le long du bord est. Vu depuis la terre,
+cela signifie qu'une côte **orientale** de continent est baignée par un
+courant chaud — Gulf Stream, Kuroshio, courant du Brésil — et une côte
+**occidentale** par un courant froid — Californie, Canaries, Benguela.
+Savoir de quel côté est la mer suffit donc, et le BFS qui calculait déjà la
+distance à l'océan propage sans surcoût le sommet marin le plus proche.
+
+Amplitude de six degrés, calibrée sur les couples terrestres à latitude
+comparable, modulée par sin(2·|lat|) — maximale vers 45°, nulle à l'équateur
+et aux pôles — et par une portée de 450 km vers l'intérieur.
+
+### Un bug attrapé par la simulation, pas par un test
+
+La première version employait sin(2·lat) sans valeur absolue. Le sinus change
+de signe au sud de l'équateur : le transport s'y inversait, et les côtes
+orientales de l'hémisphère sud devenaient froides alors que le courant du
+Brésil est chaud comme le Kuroshio. Une simulation de contrôle a montré que
+**seule la moitié des cas allait dans le bon sens** ; avec la valeur absolue,
+la totalité, pour un contraste moyen de 6,2 °C entre façades.
+
+Aucun test JVM n'aurait signalé ce défaut : il aurait produit un climat
+cohérent, simplement inversé sur la moitié de la planète.
+
+Quatre tests : neutralité thermique planétaire, contraste est/ouest effectif,
+déterminisme, et glaces dans leurs bornes.
+
+`GENERATION_VERSION` passe à 11 — le climat change, donc les biomes.
+**Les empreintes seront à re-figer**, comme annoncé.
+
 ## v0.14.1 — La plaque du panache, publiée plutôt que redevinée
 
 Deux rouges sur la v0.14.0, de natures opposées.

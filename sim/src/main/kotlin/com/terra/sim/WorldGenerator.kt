@@ -8,6 +8,8 @@ import com.terra.core.clamp01
 import com.terra.core.lerp
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.math.ln
 import kotlin.math.max
 
@@ -27,6 +29,20 @@ class WorldGenerator(
 ) {
 
     companion object {
+
+        /**
+         * Amplitude maximale du transport thermique océanique, en °C.
+         *
+         * Calibré sur les couples terrestres à latitude comparable : Bergen
+         * contre Nuuk donne neuf degrés, Londres contre Terre-Neuve six et
+         * demi, Lisbonne contre Washington trois. L'écart est plus marqué aux
+         * hautes latitudes, ce que le facteur sin(2·lat) reproduit.
+         *
+         * Six degrés d'amplitude signifient douze degrés d'écart entre une
+         * façade chaude et une façade froide vers 45° — le bon ordre de
+         * grandeur, sans dépasser le cas le plus extrême de la Terre.
+         */
+        const val CURRENT_AMPLITUDE_C = 6f
         /** Construit un générateur à partir du nom du monde, qui sert de graine. */
         fun fromName(name: String, params: PlanetParams = PlanetParams()): WorldGenerator {
             val clean = WorldNamer.sanitize(name)
@@ -176,6 +192,11 @@ class WorldGenerator(
         // uniformes et fades.
         val adjacency = sphere.buildAdjacency()
         val stepsToOcean = IntArray(n) { Int.MAX_VALUE }
+        // Sommet océanique dont chaque point est le plus proche. Le BFS le
+        // propage sans surcoût, et il donne l'ORIENTATION de la façade —
+        // savoir de quel côté est la mer suffit à décider si la côte est
+        // baignée par un courant chaud ou froid (lot 1.15).
+        val nearestOcean = IntArray(n) { -1 }
         run {
             val queue = IntArray(n)
             var head = 0
@@ -183,6 +204,7 @@ class WorldGenerator(
             for (i in 0 until n) {
                 if (altitudeM[i] < 0f) {
                     stepsToOcean[i] = 0
+                    nearestOcean[i] = i
                     queue[tail++] = i
                 }
             }
@@ -192,6 +214,7 @@ class WorldGenerator(
                 for (w in adjacency[v]) {
                     if (stepsToOcean[w] > d) {
                         stepsToOcean[w] = d
+                        nearestOcean[w] = nearestOcean[v]
                         queue[tail++] = w
                     }
                 }
@@ -250,6 +273,59 @@ class WorldGenerator(
                              else stepsToOcean[i] * kmPerStep
             val continentality = clamp01(distanceKm / 1800f)
             t -= continentality * params.continentalityC * latFactor
+
+            // --- Courants océaniques (lot 1.15) ---
+            //
+            // Les gyres subtropicaux ramènent de l'eau équatoriale le long du
+            // bord OUEST de chaque bassin, et de l'eau polaire le long du
+            // bord EST. Vu depuis la terre, cela signifie qu'une côte
+            // ORIENTALE de continent est baignée par un courant chaud
+            // (Gulf Stream, Kuroshio, courant du Brésil) et une côte
+            // OCCIDENTALE par un courant froid (Californie, Canaries,
+            // Benguela). La règle vaut dans les deux hémisphères — Coriolis
+            // inverse le sens de rotation des gyres, mais aussi la géographie
+            // des bords, et les deux inversions se compensent.
+            //
+            // Il n'est donc pas nécessaire d'identifier les bassins : savoir
+            // de quel côté est la mer suffit.
+            val oceanIdx = nearestOcean[i]
+            if (oceanIdx >= 0 && oceanIdx != i) {
+                val o = sphere.vertices[oceanIdx]
+                // Composante EST de la direction vers la mer, sur la tangente.
+                val radial = v.x * o.x + v.y * o.y + v.z * o.z
+                val tx = o.x - v.x * radial
+                val ty = o.y - v.y * radial
+                val tz = o.z - v.z * radial
+                val tl = sqrt(tx * tx + ty * ty + tz * tz)
+                if (tl > 1e-6f) {
+                    // Est local : produit vectoriel de l'axe polaire par la
+                    // verticale, normalisé. Nul aux pôles, où la notion d'est
+                    // n'a pas de sens — et où les courants n'en ont pas non
+                    // plus.
+                    val ex = -v.z
+                    val ez = v.x
+                    val el = sqrt(ex * ex + ez * ez)
+                    if (el > 1e-4f) {
+                        val eastward = (tx * ex + tz * ez) / (tl * el)
+                        // sin(2·|lat|) : nul à l'équateur et aux pôles, maximal
+                        // vers 45°, là où les gyres sont les plus vigoureux.
+                        //
+                        // La VALEUR ABSOLUE est indispensable. Sans elle, le
+                        // sinus change de signe au sud de l'équateur et le
+                        // transport s'y inverse — les côtes orientales de
+                        // l'hémisphère sud deviendraient froides, alors que le
+                        // courant du Brésil est chaud comme le Kuroshio. Une
+                        // simulation de contrôle a montré que seule la moitié
+                        // des cas allait dans le bon sens.
+                        val lat = Vec3.latitude(v)
+                        val strength = sin(2.0 * abs(lat)).toFloat()
+                        // Portée de 450 km vers l'intérieur : un courant
+                        // tempère sa côte, pas le continent entier.
+                        val reach = exp(-distanceKm / 450f)
+                        t += CURRENT_AMPLITUDE_C * strength * eastward * reach
+                    }
+                }
+            }
 
             // --- Altitude ---
             val altKm = max(0f, altitudeM[i]) / 1000f
