@@ -1,5 +1,7 @@
 package com.terra.planet
 
+import com.terra.sim.Biome
+import com.terra.sim.GlobeRefinement
 import com.terra.sim.LayerPalette
 import com.terra.sim.MapLayer
 import com.terra.sim.PlanetData
@@ -19,7 +21,18 @@ import kotlin.math.sqrt
  * pour obtenir des facettes nettes (low-poly). Une normale unique par sommet
  * partagé produirait un lissage qui effacerait complètement le style visuel.
  */
-class PlanetMesh(data: PlanetData, val layer: MapLayer = MapLayer.BIOME) {
+class PlanetMesh(
+    data: PlanetData,
+    val layer: MapLayer = MapLayer.BIOME,
+    /**
+     * Raffinement haute définition (v0.19.0). Fourni : la géométrie vient
+     * du terrain continu, un niveau plus fin que la grille — côtes tracées
+     * là où le terrain croise le niveau de la mer. Absent : chemin
+     * historique sur la grille, conservé pour la génération en cours et
+     * comme filet de repli.
+     */
+    refinement: GlobeRefinement? = null
+) {
 
     val vertexData: FloatArray
     val vertexCount: Int
@@ -37,7 +50,7 @@ class PlanetMesh(data: PlanetData, val layer: MapLayer = MapLayer.BIOME) {
     }
 
     init {
-        val sphere = data.sphere
+        val sphere = refinement?.sphere ?: data.sphere
         val faces = sphere.faces
         vertexCount = sphere.faceCount * 3
         vertexData = FloatArray(vertexCount * FLOATS_PER_VERTEX)
@@ -48,7 +61,7 @@ class PlanetMesh(data: PlanetData, val layer: MapLayer = MapLayer.BIOME) {
         val pz = FloatArray(sphere.vertexCount)
         for (i in 0 until sphere.vertexCount) {
             val v = sphere.vertices[i]
-            val r = data.renderRadius(i)
+            val r = refinement?.renderRadius?.get(i) ?: data.renderRadius(i)
             px[i] = v.x * r; py[i] = v.y * r; pz[i] = v.z * r
         }
 
@@ -56,8 +69,29 @@ class PlanetMesh(data: PlanetData, val layer: MapLayer = MapLayer.BIOME) {
         val colors = FloatArray(sphere.vertexCount * 3)
         val tmp = FloatArray(3)
         for (i in 0 until sphere.vertexCount) {
-            LayerPalette.color(layer, data, i, tmp)
+            // En mode raffiné, la couleur vient de la CELLULE la plus
+            // proche : les données n'existent qu'à la résolution de la
+            // grille, les interpoler peindrait une précision mensongère.
+            val cell = refinement?.nearestCell?.get(i) ?: i
+            LayerPalette.color(layer, data, cell, tmp)
+            // Cas de couture du calque biomes : un sommet fin SOUS le
+            // niveau de la mer dont la cellule la plus proche est
+            // terrestre recevrait une couleur de terre sur une facette
+            // marine — pixels bruns dans l'eau le long des côtes. On lui
+            // donne la mer côtière, le biome littoral par définition.
+            if (refinement != null && layer == MapLayer.BIOME &&
+                refinement.water[i] && !data.biome(cell).isWater
+            ) {
+                val b = Biome.SHALLOW_SEA
+                tmp[0] = b.r; tmp[1] = b.g; tmp[2] = b.b
+            }
             colors[i * 3] = tmp[0]; colors[i * 3 + 1] = tmp[1]; colors[i * 3 + 2] = tmp[2]
+        }
+        // Nature aquatique par sommet : le terrain continu en mode raffiné
+        // (le trait de côte suit le vrai niveau de la mer), le biome de la
+        // grille sinon — strictement le comportement historique.
+        val vertexWater = BooleanArray(sphere.vertexCount) { i ->
+            refinement?.water?.get(i) ?: data.biome(i).isWater
         }
 
         var o = 0
@@ -76,9 +110,9 @@ class PlanetMesh(data: PlanetData, val layer: MapLayer = MapLayer.BIOME) {
 
             // Une face est aquatique seulement si ses trois sommets le sont :
             // le trait de côte reste ainsi net au lieu de baver sur la mer.
-            val waterCount = (if (data.biome(i0).isWater) 1 else 0) +
-                             (if (data.biome(i1).isWater) 1 else 0) +
-                             (if (data.biome(i2).isWater) 1 else 0)
+            val waterCount = (if (vertexWater[i0]) 1 else 0) +
+                             (if (vertexWater[i1]) 1 else 0) +
+                             (if (vertexWater[i2]) 1 else 0)
             val material = if (waterCount == 3) MATERIAL_WATER else MATERIAL_LAND
 
             for (k in 0..2) {

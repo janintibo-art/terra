@@ -128,6 +128,12 @@ class MainActivity : Activity() {
     private lateinit var joystick: JoystickView
     private var joystickLoopRunning = false
 
+    // Globe haute définition (v0.19.0) : géométrie du globe évaluée sur le
+    // terrain continu, un niveau plus fin que la grille. Construit une fois
+    // par monde sur le fil de travail ; les changements de calque le
+    // réutilisent et ne refont que la passe de couleurs.
+    @Volatile private var globeDetail: com.terra.sim.GlobeRefinement? = null
+
     /**
      * Vitesse plein manche, en pixels de glissement équivalents par seconde.
      * Le joystick passe par cam.pan(), la même mécanique que le doigt :
@@ -361,7 +367,11 @@ class MainActivity : Activity() {
                 data.fingerprint
 
                 val meshStart = System.nanoTime()
-                val mesh = PlanetMesh(data, currentLayer)
+                // Le raffinement précède le maillage : ~40 000 évaluations
+                // du terrain continu, une seule fois par monde.
+                val detail = com.terra.sim.GlobeRefinement(data)
+                globeDetail = detail
+                val mesh = PlanetMesh(data, currentLayer, detail)
                 meshBuildMs = (System.nanoTime() - meshStart) / 1_000_000L
 
                 world = data
@@ -413,7 +423,7 @@ class MainActivity : Activity() {
         val data = world ?: return
         worker.execute {
             val started = System.nanoTime()
-            val mesh = PlanetMesh(data, layer)
+            val mesh = PlanetMesh(data, layer, globeDetail)
             meshBuildMs = (System.nanoTime() - started) / 1_000_000L
             renderer.pendingMesh = mesh
         }
@@ -1031,6 +1041,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.18.0"
+        const val VERSION = "0.19.0"
     }
 }

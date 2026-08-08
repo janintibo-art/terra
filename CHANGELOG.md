@@ -1,5 +1,37 @@
 # Journal des versions
 
+## v0.19.0 — Globe haute définition
+
+Le mode par défaut — le globe contemplatif — était le maillon graphique
+faible : dessiné sur la grille de simulation elle-même, 10 242 sommets, des
+côtes en escalier et des facettes de 250 km, quand le mode sol affichait
+déjà un terrain fin. Le lot corrige l'asymétrie sans toucher au style.
+
+Le principe est une récolte directe de l'invariant n°3 : le terrain est une
+fonction CONTINUE, exacte aux sommets de la grille. La géométrie du globe
+est donc évaluée un niveau plus fin — quatre fois plus de triangles, ~82 000
+— sur cette fonction : le trait de côte passe là où le terrain croise
+réellement le niveau de la mer, plus au bord des cellules. Les facettes
+demeurent (c'est le style assumé du globe), quatre fois plus fines.
+
+Les COULEURS restent par cellule, au plus proche voisin : les données
+climatiques n'existent qu'à la résolution de la grille, les interpoler
+peindrait une précision mensongère. Tous les calques en profitent —
+Biomes, Température, Pluie, Plaques — avec un cas de couture traité : un
+sommet fin sous le niveau de la mer dont la cellule la plus proche est
+terrestre reçoit la mer côtière, pas des pixels bruns dans l'eau.
+
+Le raffinement (~40 000 évaluations du terrain continu) est calculé UNE
+fois par monde, sur le fil de travail ; le changement de calque le
+réutilise et ne refait que la passe de couleurs. Coûts attendus, à lire
+dans le HUD : « gen » +0,5 à 1 s, « maille » du même ordre qu'avant,
+tampon de sommets 9,8 Mo (plafonné : le niveau 7 en pèserait 39).
+
+Cinq tests ajoutés, dont la coïncidence bit à bit entre grille et
+raffinement sur les sommets partagés — l'invariant n°3 vu du globe — et la
+cohérence mer/terre du trait de côte fin. GENERATION_VERSION inchangé :
+le rendu s'affine, le monde ne bouge pas d'un bit.
+
 ## v0.18.0 — Lot 1.12 : l'insolation et les saisons thermiques
 
 Ouverture du chantier atmosphérique (1.12–1.14), mené en trois livraisons
