@@ -738,16 +738,24 @@ class ShoreBlendTest {
 
     @Test
     fun `la frange couvre une maille de loin et reste fine de pres`() {
-        // Propriété qui justifie la formule : de loin, la frange doit couvrir
-        // la variation d'altitude d'une maille sur une côte de pente typique
-        // (4 %), sinon la transition retombe dans une seule maille et
-        // redevient une marche.
-        for (level in intArrayOf(4, 8, 12)) {
+        // Contrat v0.19.2, recalibré sur les côtes générées (les 4 % du
+        // calibrage initial laissaient des dents de scie, constatées sur
+        // appareil) : aux niveaux intermédiaires, la frange couvre une
+        // maille de pente raide (25 % en borne de test pour 30 % posés) ;
+        // aux niveaux grossiers, elle sature mais couvre toujours le saut
+        // isostatique côtier (1 100 m) avec marge.
+        for (level in intArrayOf(8, 10, 12, 14)) {
             val edge = (Math.PI * 0.5 / (1 shl level)).toFloat() * 6_371_000f
             val step = edge / TileMesh.MESH_N
             assertTrue(
-                TileMesh.shoreBlendM(level) >= step * 0.04f,
-                "au niveau $level la frange ne couvre pas une maille"
+                TileMesh.shoreBlendM(level) >= step * 0.25f,
+                "au niveau $level la frange ne couvre pas une maille de côte raide"
+            )
+        }
+        for (level in intArrayOf(2, 4, 6)) {
+            assertTrue(
+                TileMesh.shoreBlendM(level) >= 1_300f,
+                "au niveau $level la frange ne couvre plus le saut isostatique"
             )
         }
         // De près, elle doit rester au plancher : un rivage net.

@@ -486,7 +486,16 @@ class PlanetRenderer(
         // Brume : densité choisie pour ~40 % d'atténuation à l'horizon bas —
         // repère de profondeur à peu de frais, et elle voile la transition de
         // niveau de détail au loin en attendant le morphing du lot 2.4.
-        val hazeDensity = (0.5 / max(20_000.0, horizonM)).toFloat()
+        // La brume est de l'AIR entre l'œil et le sol : au-dessus de
+        // l'atmosphère, il n'y en a plus, et la loi en 0,5/horizon voilait
+        // encore un tiers des tuiles lointaines à 400 km d'altitude — le
+        // délavage laiteux constaté en v0.19.1. Extinction linéaire de
+        // 20 km (pleine brume, l'échelle de hauteur de l'air est de 8 km)
+        // à 120 km (plus rien, on rejoint la montée du halo de limbe qui
+        // prend le relais entre 60 et 300 km).
+        val atmosphere = ((120_000.0 - snapshot.altitudeM) / 100_000.0)
+            .coerceIn(0.0, 1.0)
+        val hazeDensity = (0.5 / max(20_000.0, horizonM) * atmosphere).toFloat()
         GLES20.glUniform1f(tUHazeDensity, hazeDensity)
         val dayF = dayFactorAtEye(snapshot, sunLx, sunLz)
         GLES20.glUniform3f(tUHaze, 0.62f * dayF + 0.01f, 0.72f * dayF + 0.012f, 0.85f * dayF + 0.02f)

@@ -594,14 +594,24 @@ class TileMesh(
          *
          * La frange doit couvrir la variation d'altitude d'une maille, faute
          * de quoi la transition retombe dans une seule maille et redevient
-         * une marche. Mesuré sur une pente côtière typique de 4 % : 3 km au
-         * niveau 4, 195 m au niveau 8, 12 m au niveau 12, et le plancher de
-         * deux mètres à partir du niveau 16 — de près, le rivage doit rester
-         * franc, c'est là qu'on voit une plage.
+         * une marche. Recalibrée en v0.19.2 sur la pente côtière RÉELLE des
+         * mondes générés (~30 %, socle isostatique franchi en une à deux
+         * mailles), avec saturation à 1 400 m : 1,4 km aux niveaux 2 à 7,
+         * 733 m au niveau 8, 46 m au niveau 12, plancher de deux mètres à
+         * partir du niveau 16 — de près, le rivage reste franc, c'est là
+         * qu'on voit une plage.
          */
         fun shoreBlendM(level: Int): Float {
             val edge = (Math.PI * 0.5 / (1 shl level)).toFloat() * 6_371_000f
-            return max(2f, edge / MESH_N * 0.08f)
+            // Pente de 30 % — les côtes générées franchissent le socle
+            // isostatique (+200 / −900 m) en une ou deux mailles, pas les
+            // 4 % du calibrage initial : c'est ce qui redonnait des dents
+            // de scie aux niveaux 5 à 8 (constaté sur appareil, v0.19.1).
+            // Saturation à 1 400 m : au-delà d'une certaine maille, le
+            // dénivelé côtier PAR MAILLE cesse de croître — il est borné
+            // par le relief côtier total — et une frange linéaire aurait
+            // noyé les plateaux continentaux entiers en turquoise.
+            return max(2f, kotlin.math.min(edge / MESH_N * 0.30f, 1_400f))
         }
 
         /** Extinction lumineuse dans l'eau, par mètre. */

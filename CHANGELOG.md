@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.19.2 — Correctifs de moyenne altitude : dents de scie et voile laiteux
+
+Les captures instrumentées de la v0.19.1 ont permis le diagnostic. Trois
+défauts distincts, deux corrigés :
+
+**1. Le trait de côte en dents de scie (corrigé).** Le mélange de rivage
+était calibré pour une pente côtière de 4 % ; or les côtes générées
+franchissent le socle isostatique (+200 / −900 m) en une ou deux mailles —
+pente apparente de 10 à 30 %. La frange retombait dans une seule maille et
+la transition redevenait une marche, exactement comme le prédisait son
+propre commentaire. Recalibrage : pente de 30 % avec saturation à 1 400 m
+(le dénivelé côtier par maille est borné par le relief côtier total — une
+frange linéaire aurait noyé les plateaux continentaux en turquoise).
+Frange aux niveaux 5-8 : de 0,4-0,8 km à 0,7-1,4 km. Le test de contrat
+est réécrit avec les nouvelles bornes, calculées.
+
+**2. Le voile laiteux d'altitude (corrigé).** La brume de distance en
+0,5/horizon voilait encore un tiers des tuiles lointaines à 400 km
+d'altitude — au-dessus de l'atmosphère, où il n'y a plus d'air à traverser.
+Extinction linéaire de 20 km (pleine brume) à 120 km (nulle), là où le halo
+de limbe prend le relais (60-300 km). Depuis l'orbite basse, le terrain
+redevient net.
+
+**3. Le limbe polygonal des tuiles géantes (point ouvert, assumé).** À
+1 500-2 000 km, la silhouette de la planète est dessinée par des tuiles de
+niveau 3-4 aux bords droits — la « tuile flottante » enneigée des captures
+en était une, vue par la tranche dans le voile. Le correctif de fond
+appartient aux registres d'échelle (lot 2.7) : au-dessus d'un seuil, rendre
+le disque planétaire par le globe haute définition et réserver les tuiles
+au champ proche. Chantier notable, à décider séparément.
+
+GENERATION_VERSION inchangé : tout est rendu, rien n'est monde.
+
 ## v0.19.1 — Instrumentation : la teinte des tuiles passe à la console
 
 Des artefacts de tuiles apparaissent à moyenne altitude en mode sol — grand
