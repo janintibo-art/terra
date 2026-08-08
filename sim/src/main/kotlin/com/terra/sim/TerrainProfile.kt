@@ -451,11 +451,23 @@ class TerrainProfile(
         /**
          * Débit minimal, en cellules drainées, pour qu'une vallée existe. Une
          * ligne de crête ne draine qu'elle-même : elle ne doit rien creuser.
+         *
+         * Valeur basse — et c'est voulu. Le débit consulté ici est
+         * **interpolé** entre les sommets de la grille, ce qui écrête
+         * fortement les pics : un fleuve drainant 400 cellules ne garde cette
+         * valeur qu'au sommet exact, et retombe vers 1 dès qu'on s'en éloigne
+         * de quelques kilomètres. Un plancher à 8 ne laissait donc survivre
+         * que des points isolés — 0,14 % du sol au lieu des 2 % visés.
          */
-        const val VALLEY_FLOW_MIN = 8f
+        const val VALLEY_FLOW_MIN = 3f
 
-        /** Débit d'un fleuve de référence, en cellules drainées. */
-        const val VALLEY_FLOW_REFERENCE = 400f
+        /**
+         * Débit au-delà duquel la vallée atteint sa profondeur maximale, en
+         * cellules drainées. Abaissé de 400 à 120 pour la même raison que
+         * [VALLEY_FLOW_MIN] : sur des valeurs interpolées, 400 n'était
+         * pratiquement jamais atteint ailleurs qu'au sommet d'un exutoire.
+         */
+        const val VALLEY_FLOW_REFERENCE = 120f
 
         /** Pas de vallée sous cette altitude : les plaines littorales sont
          *  déjà plates, et creuser près du rivage ferait entrer la mer. */

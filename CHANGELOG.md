@@ -1,5 +1,28 @@
 # Journal des versions
 
+## v0.11.4 — Le débit interpolé écrête les pics
+
+Le message du test disait **0,14 %** : le réseau avait presque disparu, il
+n'avait pas débordé. J'avais supposé l'inverse et j'aurais corrigé dans le
+mauvais sens — attendre le chiffre exact aura évité un aller-retour de plus.
+
+La cause : le débit consulté par l'incision est **interpolé** entre les
+sommets de la grille, ce qui écrête fortement les pics. Un fleuve drainant
+400 cellules ne garde cette valeur qu'au sommet exact et retombe vers 1
+quelques kilomètres plus loin. Un plancher à 8 ne laissait donc survivre que
+des points isolés. Plancher ramené à 3, référence de 400 à 120.
+
+### Le test change de nature
+
+La couverture exacte du réseau est un réglage **esthétique**, sensible au
+calibrage et à la variance entre mondes ; deux allers-retours s'y sont usés,
+une fois pour trop, une fois pour trop peu. Le test ne vérifie donc plus
+qu'une borne haute — le réseau ne recouvre pas tout — et laisse la mesure qui
+a du sens à l'assertion suivante : le creusement doit dépasser dix mètres
+près des sommets les plus drainés. Une propriété, plutôt qu'un réglage.
+
+`GENERATION_VERSION` passe à 9.
+
 ## v0.11.3 — Les vallées calibrées sur une distribution mesurée
 
 Le test avait raison de rougir, et il désignait un vrai défaut de calibrage.
