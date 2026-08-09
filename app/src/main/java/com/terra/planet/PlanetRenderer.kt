@@ -1729,6 +1729,8 @@ class PlanetRenderer(
             varying float vRim;
             varying float vCloudShade;
             varying float vDusk;
+            varying float vFresnel;
+            varying float vFoam;
 """ + CLOUD_FIELD_GLSL + """
             void main() {
                 vec3 world = uCenterWorld + aPosition;
@@ -1804,6 +1806,33 @@ class PlanetRenderer(
                 // Reflet calcule sur la normale de la HOULE, pas sur la
                 // verticale : c'est ce qui fait scintiller la mer au lieu de
                 // n'y poser qu'une seule tache de soleil.
+                // --- Reflexion de Fresnel (lot 2.9, volet reflets) ---
+                //
+                // Une mer regardee d'aplomb est sombre et laisse voir sa
+                // profondeur ; regardee de biais, elle devient un miroir.
+                // C'est LE trait visuel de l'eau, et il manquait
+                // entierement. Approximation de Schlick, R0 = 0,02 pour
+                // n = 1,33 : 2 % a la verticale, 24 % a 75 degres, 65 % a
+                // 85 — la bande argentee que l'on voit depuis toute plage,
+                // et que le mode pieton regarde precisement de biais.
+                //
+                // La normale utilisee est celle de la HOULE : les cretes et
+                // les creux ne renvoient pas le meme ciel, ce qui fait
+                // scintiller la surface au lieu de la vitrifier.
+                float cosView = max(dot(nrm, view), 0.0);
+                float fres = 0.02 + 0.98 * pow(1.0 - cosView, 5.0);
+                vFresnel = fres * waterness;
+
+                // --- Ecume de rivage ---
+                //
+                // La frange ou aMaterial passe de terre a eau : c'est la
+                // laisse, la ou la houle butte sur le fond. Modulee par le
+                // temps de houle pour respirer au lieu de figer un ourlet
+                // blanc.
+                float shore = waterness * (1.0 - clamp((aMaterial - 0.55) * 4.0, 0.0, 1.0));
+                float pulse = 0.55 + 0.45 * sin(uWaveTime * 1.7 + dot(world, sph) * 0.0009);
+                vFoam = shore * pulse * uWaveScale;
+
                 float ndh = max(dot(nrm, halfway), 0.0);
                 // Eau : reflet serre et vif. Sol : un lustre LARGE et faible,
                 // qui existe sur toute surface reelle — sable et roche
@@ -1869,6 +1898,8 @@ class PlanetRenderer(
             varying float vRim;
             varying float vCloudShade;
             varying float vDusk;
+            varying float vFresnel;
+            varying float vFoam;
 
             void main() {
                 // L'ombre du nuage attenue la lumiere DIRECTE seulement :
@@ -1881,6 +1912,14 @@ class PlanetRenderer(
                 vec3 color = vColor * 0.12 * vDay
                            + vColor * (0.88 * vDiffuse * vCloudShade) * vDay * sunColor;
                 color += vec3(0.90, 0.94, 1.0) * vSpec * vDay * sunColor;
+
+                // La mer renvoie le CIEL, dont uHaze porte deja la couleur du
+                // moment (bleu de jour, orange au couchant, sombre la nuit) :
+                // le reflet suit donc l'heure sans calcul supplementaire.
+                color = mix(color, uHaze * (0.55 + 0.45 * vDay), vFresnel * 0.85);
+
+                // Ecume par-dessus le reflet : elle flotte SUR l'eau.
+                color = mix(color, vec3(0.92, 0.95, 0.97) * vDay, vFoam * 0.65);
                 color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
                 // Lueur nocturne plus franche qu'en orbite : au sol, un noir
                 // total rend la face nocturne intestable. Clair de lune

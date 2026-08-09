@@ -1,5 +1,34 @@
 # Journal des versions
 
+## v0.32.1 — L'eau réfléchit enfin le ciel (lot 2.9, volet reflets)
+
+**Réflexion de Fresnel.** Une mer regardée d'aplomb est sombre et laisse
+voir sa profondeur ; regardée de biais, elle devient un miroir. C'est LE
+trait visuel de l'eau, et il manquait entièrement — la mer de Terra était
+une surface diffuse avec une tache de soleil. Approximation de Schlick,
+R0 = 0,02 pour n = 1,33 : 2 % à la verticale, 24 % à 75°, 65 % à 85°. La
+bande argentée que l'on voit depuis toute plage — et que le mode piéton
+regarde précisément de biais.
+
+Deux détails qui font la qualité : la normale utilisée est celle de la
+HOULE, si bien que crêtes et creux ne renvoient pas le même ciel et que la
+surface scintille au lieu de se vitrifier ; et le reflet reprend la couleur
+du ciel du moment (uHaze), donc il vire à l'orange au couchant et
+s'assombrit la nuit sans un calcul de plus.
+
+**Écume de rivage.** La frange où le matériau passe de terre à eau est la
+laisse, là où la houle butte sur le fond. Elle blanchit, modulée par le
+temps de houle pour respirer au lieu de figer un ourlet.
+
+**Ce que ce lot ne fait PAS**, et qui reste au lot 2.9 complet : l'eau
+appartient toujours au maillage du terrain, à rayon constant. La
+transparence en eau peu profonde — voir le fond depuis la surface —
+demande la profondeur au fragment, donc un canal de sommet supplémentaire
+ou une surface d'eau séparée. C'est un vrai lot, pas un réglage.
+
+Budget de varyings vérifié avant écriture : 12 flottants sur les 32
+garantis par GLES2.
+
 ## v0.32.0 — Crépuscule et rugosité des matériaux
 
 Deux petits lots groupés, tous deux issus du croisement graphique.
