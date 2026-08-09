@@ -77,7 +77,23 @@ class TileMeshTest {
                 val radius = sqrt(px * px + py * py + pz * pz)
 
                 val dir = Vec3d(px, py, pz).normalized().toVec3()
-                val expected = max(w.terrain.renderedAltitudeAt(dir), 0f).toDouble()
+                val aTrue = w.terrain.renderedAltitudeAt(dir).toDouble()
+
+                // Lot 2.9-a : le terrain est rendu à l'altitude VRAIE — le
+                // fond marin existe — SAUF la banquise, écrêtée à zéro. La
+                // décision se prend sur le biome au sommet de GRILLE, que ce
+                // test ne peut pas reconstruire exactement (la direction
+                // refaite depuis des positions float32 peut basculer d'une
+                // cellule de biome à un ulp près, sur une frontière). Sous
+                // la mer, on accepte donc la plus proche des deux surfaces
+                // légales ; la garantie forte — fond à l'altitude vraie,
+                // sans ambiguïté de banquise — est portée par TileWaterTest
+                // sur une tuile équatoriale, où la glace est impossible.
+                val expected = if (aTrue >= 0.0) aTrue else {
+                    val err = abs(radius - r - aTrue)
+                    val errIced = abs(radius - r - 0.0)
+                    if (err <= errIced) aTrue else 0.0
+                }
 
                 worst = max(worst, abs(radius - r - expected))
                 maxRel = max(maxRel, sqrt(rx * rx + ry * ry + rz * rz))

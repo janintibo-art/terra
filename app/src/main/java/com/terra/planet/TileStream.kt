@@ -46,7 +46,10 @@ class TileStream(private val gpu: GpuBufferPool) {
         val vertexCount: Int,
         val centerXM: Double,
         val centerYM: Double,
-        val centerZM: Double
+        val centerZM: Double,
+        /** Couche d'eau (lot 2.9-a) : sa position dans le même VBO. */
+        val waterOffsetBytes: Int,
+        val waterVertexCount: Int
     ) {
         var lastUsedFrame: Long = 0L
     }
@@ -122,7 +125,12 @@ class TileStream(private val gpu: GpuBufferPool) {
 
             val buf = ensureStaging(mesh.sizeBytes)
             buf.clear()
-            buf.asFloatBuffer().put(mesh.vertexData)
+            // Terrain puis eau, bout à bout dans le même VBO : un seul
+            // téléversement, une seule entrée de cache, une seule époque —
+            // la couche d'eau ne peut pas se désynchroniser de sa tuile.
+            val floats = buf.asFloatBuffer()
+            floats.put(mesh.vertexData)
+            floats.put(mesh.waterData)
             buf.position(0)
 
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo)
@@ -131,7 +139,8 @@ class TileStream(private val gpu: GpuBufferPool) {
 
             val tile = GpuTile(
                 key, vbo, mesh.vertexCount,
-                mesh.centerXM, mesh.centerYM, mesh.centerZM
+                mesh.centerXM, mesh.centerYM, mesh.centerZM,
+                mesh.vertexData.size * 4, mesh.waterVertexCount
             )
             tile.lastUsedFrame = currentFrame
             cache[key] = tile

@@ -69,7 +69,15 @@ class TileMesh(
     val vertexData: FloatArray
     val vertexCount: Int
 
-    val sizeBytes: Int get() = vertexData.size * 4
+    /**
+     * Couche d'eau (lot 2.9-a) : sommets à 5 flottants (position relative,
+     * profondeur, morph de profondeur), téléversés dans le MÊME VBO à la
+     * suite du terrain. Vide pour une tuile sans mer.
+     */
+    val waterData: FloatArray
+    val waterVertexCount: Int
+
+    val sizeBytes: Int get() = (vertexData.size + waterData.size) * 4
 
     init {
         val n = MESH_N
@@ -108,6 +116,10 @@ class TileMesh(
         val dirY = FloatArray(verts * verts)
         val dirZ = FloatArray(verts * verts)
         val ao = FloatArray(verts * verts) { 1f }
+        // Altitude RENDUE (vraie sous la mer, écrêtée sur la banquise) et
+        // profondeur d'eau par sommet — lot 2.9-a.
+        val rAlt = FloatArray(verts * verts)
+        val wDepth = FloatArray(verts * verts)
         val colR = FloatArray(verts * verts)
         val colG = FloatArray(verts * verts)
         val colB = FloatArray(verts * verts)
@@ -128,10 +140,17 @@ class TileMesh(
                 val df = d.toVec3()
                 val a = profile.renderedAltitudeAt(df)
 
-                // L'eau fait partie du maillage, à rayon constant — décision
-                // notée dans l'état du projet ; une surface d'eau dédiée
-                // viendra au lot 2.9.
-                val renderAlt = max(a, 0f)
+                // Lot 2.9-a : le fond marin EXISTE. Le terrain est rendu à
+                // son altitude vraie sous la mer ; la surface de l'eau est
+                // une couche séparée émise en fin de construction. Seule la
+                // banquise reste écrêtée au niveau de la mer : c'est une
+                // surface SOLIDE posée sur l'eau, pas une colonne d'eau —
+                // l'écrêter EST son rendu, et elle n'émet pas d'eau dessous.
+                hint = sampler.nearestVertex(df, hint)
+                val iced = sampler.biomeAt(df, hint) == Biome.SEA_ICE
+                val renderAlt = if (a < 0f && !iced) a else max(a, 0f)
+                rAlt[idx] = renderAlt
+                wDepth[idx] = if (iced) 0f else max(0f, -a)
                 val r = planetRadiusM + renderAlt.toDouble()
 
                 relX[idx] = d.x * r - cx
@@ -144,7 +163,6 @@ class TileMesh(
                 // triangle, au lieu d'être copiée du plus proche. Sans cela,
                 // chaque cellule de la grille peignait un polygone uni, et la
                 // planète apparaissait pavée d'hexagones de 115 km.
-                hint = sampler.nearestVertex(df, hint)
                 sampler.sampleBiomeColor(df, colorHint, rgb)
                 // Teinte de sol (lot 2.17 a) : appliquée à la couleur de
                 // biome AVANT le rivage, pour que les hauts-fonds héritent
@@ -172,10 +190,13 @@ class TileMesh(
                     colR[idx] = lakeOut[0]; colG[idx] = lakeOut[1]; colB[idx] = lakeOut[2]
                 }
 
-                // Matériau : eau de mer près du rivage, ou eau douce dès que
-                // le lac atteint un mètre — même fondu de rive dans les deux
-                // cas, pour que le reflet meure doucement sur les hauts-fonds.
-                val seaness = clamp01((shoreBlend - a) / (2f * shoreBlend))
+                // Matériau (lot 2.9-a) : la mer n'est plus un matériau du
+                // terrain — le terrain y est le FOND, mat = 0, et la houle,
+                // le Fresnel et l'écume du shader de tuile s'y éteignent
+                // d'eux-mêmes, sans toucher au shader. La banquise garde son
+                // matériau d'eau (le reflet de la glace) ; les lacs restent
+                // strictement à l'identique jusqu'au lot 2.9-c.
+                val seaness = if (iced) clamp01((shoreBlend - a) / (2f * shoreBlend)) else 0f
                 val lakeness = clamp01(lakeDepth / 1.5f)
                 mat[idx] = max(seaness, lakeness)
                 idx++
@@ -196,15 +217,17 @@ class TileMesh(
                 val iOdd = (i and 1) == 1
                 val jOdd = (j and 1) == 1
                 val parentAlt = when {
-                    !iOdd && !jOdd -> alt[c]
-                    iOdd && !jOdd -> (alt[c - 1] + alt[c + 1]) * 0.5f
-                    !iOdd && jOdd -> (alt[c - verts] + alt[c + verts]) * 0.5f
-                    else -> (alt[c - verts - 1] + alt[c - verts + 1] +
-                            alt[c + verts - 1] + alt[c + verts + 1]) * 0.25f
+                    !iOdd && !jOdd -> rAlt[c]
+                    iOdd && !jOdd -> (rAlt[c - 1] + rAlt[c + 1]) * 0.5f
+                    !iOdd && jOdd -> (rAlt[c - verts] + rAlt[c + verts]) * 0.5f
+                    else -> (rAlt[c - verts - 1] + rAlt[c - verts + 1] +
+                            rAlt[c + verts - 1] + rAlt[c + verts + 1]) * 0.25f
                 }
-                // L'eau reste plane à toute échelle : morpher son altitude
-                // ferait onduler la surface de la mer au gré des bascules.
-                morphDelta[c] = if (alt[c] <= 0f) 0f else max(parentAlt, 0f) - max(alt[c], 0f)
+                // Lot 2.9-a : le cas spécial « la mer reste plane » est mort
+                // avec la surface de mer du terrain — le fond marin morphe
+                // comme n'importe quel relief. La banquise, écrêtée à zéro
+                // dans rAlt, a un parent à zéro : plate par construction.
+                morphDelta[c] = parentAlt - rAlt[c]
             }
         }
 
@@ -420,6 +443,93 @@ class TileMesh(
         // renderedAltitudeAt : la plante touche EXACTEMENT le terrain rendu,
         // par l'invariant n°3. Voir PLANT_LATTICE_LEVEL pour le treillis.
         emitPlants(o, tile, profile, sampler, planetRadiusM, alt, verts, off)
+
+        // --- 4. Couche d'eau calquée (lot 2.9-a) ---------------------------
+        //
+        // Mêmes cellules de grille que le terrain : la validation
+        // (eau_transparence.py) montre que la PROFONDEUR l'exige — avec la
+        // pente côtière réelle de 30 %, une eau plus grossière balaierait
+        // des dizaines de mètres de profondeur par maille, et tout le
+        // dégradé littoral tiendrait dans un triangle. Seules les cellules
+        // dont au moins un coin est en eau émettent leurs deux triangles :
+        // une tuile continentale ne paie rien.
+        //
+        // Surface au rayon de la mer + 5 cm : le biais écarte le z-fighting
+        // du rivage (bande d'affleurement < 2 m à pente 30 %), invisible
+        // sous une houle de ±0,66 m. Pas de jupes : à rayon constant,
+        // l'écart entre niveaux voisins est la sagitta de la maille
+        // grossière — 12 cm au niveau 8, vus de plus de 100 km : moins d'un
+        // pixel partout.
+        //
+        // Le canal de morph porte l'écart de PROFONDEUR vers le parent : la
+        // position, à rayon constant, n'a rien à morpher, mais la couleur
+        // (fonction de la profondeur) doit basculer aussi continûment que
+        // le terrain qu'elle recouvre.
+        var waterCells = 0
+        for (j in 0 until n) {
+            for (i in 0 until n) {
+                val c = (j + off) * verts + (i + off)
+                if (wDepth[c] > 0f || wDepth[c + 1] > 0f ||
+                    wDepth[c + verts] > 0f || wDepth[c + verts + 1] > 0f) waterCells++
+            }
+        }
+        waterVertexCount = waterCells * 6
+        waterData = FloatArray(waterVertexCount * WATER_FLOATS_PER_VERTEX)
+        if (waterCells > 0) {
+            // Profondeur au niveau parent : même règle d'interpolation que
+            // l'altitude — sommets pairs inchangés, impairs au milieu.
+            val depthMorph = FloatArray(verts * verts)
+            for (j in 0..n) {
+                for (i in 0..n) {
+                    val c = (j + off) * verts + (i + off)
+                    val iOdd = (i and 1) == 1
+                    val jOdd = (j and 1) == 1
+                    val parentDepth = when {
+                        !iOdd && !jOdd -> wDepth[c]
+                        iOdd && !jOdd -> (wDepth[c - 1] + wDepth[c + 1]) * 0.5f
+                        !iOdd && jOdd -> (wDepth[c - verts] + wDepth[c + verts]) * 0.5f
+                        else -> (wDepth[c - verts - 1] + wDepth[c - verts + 1] +
+                                wDepth[c + verts - 1] + wDepth[c + verts + 1]) * 0.25f
+                    }
+                    depthMorph[c] = parentDepth - wDepth[c]
+                }
+            }
+            val rw = planetRadiusM + WATER_SURFACE_BIAS_M
+            var wo = 0
+            for (j in 0 until n) {
+                for (i in 0 until n) {
+                    val v00 = (j + off) * verts + (i + off)
+                    val v10 = v00 + 1
+                    val v01 = v00 + verts
+                    val v11 = v01 + 1
+                    if (wDepth[v00] <= 0f && wDepth[v10] <= 0f &&
+                        wDepth[v01] <= 0f && wDepth[v11] <= 0f) continue
+                    // Même ordre de parcours que les facettes du terrain :
+                    // même orientation, même élagage arrière.
+                    wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v10, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v11, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v11, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v01, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                }
+            }
+        }
+    }
+
+    /** Écrit un sommet d'eau : position au rayon de la mer, profondeur, morph. */
+    private fun emitWaterVertex(
+        o: Int, v: Int, rw: Double,
+        cx: Double, cy: Double, cz: Double,
+        dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
+        wDepth: FloatArray, depthMorph: FloatArray
+    ): Int {
+        waterData[o] = (dirX[v] * rw - cx).toFloat()
+        waterData[o + 1] = (dirY[v] * rw - cy).toFloat()
+        waterData[o + 2] = (dirZ[v] * rw - cz).toFloat()
+        waterData[o + 3] = wDepth[v]
+        waterData[o + 4] = depthMorph[v]
+        return o + WATER_FLOATS_PER_VERTEX
     }
 
     private fun emitPlants(
@@ -830,6 +940,49 @@ class TileMesh(
         const val MATERIAL_LAND = 0f
         const val MATERIAL_WATER = 1f
 
+        // ---- Couche d'eau (lot 2.9-a) — tous chiffres de eau_transparence.py
+        const val WATER_FLOATS_PER_VERTEX = 5
+        const val WATER_STRIDE_BYTES = WATER_FLOATS_PER_VERTEX * 4
+        const val WATER_OFFSET_POSITION = 0
+        const val WATER_OFFSET_DEPTH = 3
+        const val WATER_OFFSET_MORPH = 4
+
+        /** Biais radial de la surface : écarte le z-fighting du rivage. */
+        const val WATER_SURFACE_BIAS_M = 0.05
+
+        /** Fond marin de référence (sable), assombri avec la profondeur. */
+        const val SEAFLOOR_R = 0.55f
+        const val SEAFLOOR_G = 0.50f
+        const val SEAFLOOR_B = 0.38f
+
+        // Longueurs d'extinction par canal, en mètres — le rouge meurt en
+        // quelques mètres, le bleu porte le plus loin. La lumière fait
+        // l'aller-retour jusqu'au fond : 2d dans l'exponentielle.
+        const val WATER_LAMBDA_R = 3.5f
+        const val WATER_LAMBDA_G = 14.0f
+        const val WATER_LAMBDA_B = 32.0f
+        const val WATER_DEEP_R = 0.015f
+        const val WATER_DEEP_G = 0.11f
+        const val WATER_DEEP_B = 0.24f
+
+        /**
+         * Couleur de l'eau par absorption — RÉFÉRENCE du shader d'eau.
+         *
+         * Le fragment GLSL porte exactement cette expression ; comme GLES2
+         * n'offre aucun filet de test, la formule vit aussi ici, testée en
+         * CI contre les bornes calculées du script de validation. Toute
+         * retouche se fait DES DEUX CÔTÉS, l'audit shader (passe 8) et le
+         * commentaire du fragment le rappellent.
+         */
+        fun waterAbsorptionColor(depthM: Float, out: FloatArray) {
+            val tr = exp(-2f * depthM / WATER_LAMBDA_R)
+            val tg = exp(-2f * depthM / WATER_LAMBDA_G)
+            val tb = exp(-2f * depthM / WATER_LAMBDA_B)
+            out[0] = SEAFLOOR_R * tr + WATER_DEEP_R * (1f - tr)
+            out[1] = SEAFLOOR_G * tg + WATER_DEEP_G * (1f - tg)
+            out[2] = SEAFLOOR_B * tb + WATER_DEEP_B * (1f - tb)
+        }
+
         /**
          * Densité de plantes par biome : la fraction des 48 emplacements
          * réellement peuplée. Les forêts saturent, la savane clairsème ses
@@ -1030,7 +1183,6 @@ class TileMesh(
          * rien et ne coûte rien.
          */
         private val seaScratchTl = ThreadLocal.withInitial { FloatArray(3) }
-        private val bottomScratchTl = ThreadLocal.withInitial { FloatArray(3) }
 
         /**
          * Demi-largeur de la frange de mélange terre / eau, en mètres, pour
@@ -1095,7 +1247,6 @@ class TileMesh(
             outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
         ) {
             val biome = sampler.biomeAt(dir, vertexIndex)
-            val sea = seaScratchTl.get()
 
             // La banquise couvre l'eau : ni bathymétrie ni frange.
             if (biome == Biome.SEA_ICE) {
@@ -1103,10 +1254,19 @@ class TileMesh(
                 return
             }
 
-            // Eau franche, au-delà de la frange.
-            if (altitudeM <= -shoreBlend) {
-                waterColor(-altitudeM, rgb, sea)
-                outR[idx] = sea[0]; outG[idx] = sea[1]; outB[idx] = sea[2]
+            // Fond marin (lot 2.9-a) : plus de teinte d'eau — l'eau est une
+            // couche séparée dessinée par-dessus. Le fond est un sable qui
+            // s'assombrit avec la profondeur (la lumière qui l'atteint a
+            // déjà traversé la colonne). Invisible sous l'eau opaque de ce
+            // sous-lot, il devient le décor de la transparence au 2.9-b.
+            // Échelle de 600 m : nuit complète vers 2 000 m, cohérente avec
+            // les λ d'absorption du shader d'eau (plus rien ne remonte
+            // au-delà de ~120 m de toute façon).
+            if (altitudeM <= 0f) {
+                val k = 0.06f + 0.94f * exp(altitudeM / 600f)
+                outR[idx] = SEAFLOOR_R * k
+                outG[idx] = SEAFLOOR_G * k
+                outB[idx] = SEAFLOOR_B * k
                 return
             }
 
@@ -1116,25 +1276,13 @@ class TileMesh(
             var g = clamp01(rgb[1] * tint)
             var b = clamp01(rgb[2] * tint)
 
-            // Frange de rivage — lot 2.9b.
-            //
-            // Le passage terre/eau était le dernier basculement par seuil
-            // d'un rendu devenu partout continu : vu de loin, une maille
-            // couvre des kilomètres, le terrain y franchissait le niveau de
-            // la mer d'un coup, et la côte se dessinait en marches
-            // d'escalier. Le mélange s'étale désormais sur une frange large
-            // de plusieurs mailles en orbite et de deux mètres au sol — assez
-            // pour effacer l'escalier de loin, assez fine pour qu'une plage
-            // reste une plage de près.
-            if (altitudeM < shoreBlend) {
-                val wet = clamp01((shoreBlend - altitudeM) / (2f * shoreBlend))
-                val bottom = bottomScratchTl.get()
-                bottom[0] = r; bottom[1] = g; bottom[2] = b
-                waterColor(max(0.2f, shoreBlend - altitudeM), bottom, sea)
-                r += (sea[0] - r) * wet
-                g += (sea[1] - g) * wet
-                b += (sea[2] - b) * wet
-            }
+            // Lot 2.9-a : la frange de rivage du TERRAIN disparaît — c'est
+            // désormais la couche d'eau qui dessine la côte. Sa grille est
+            // celle du terrain : la profondeur s'interpole vers zéro au
+            // trait de côte dans chaque cellule, ce qui lisse la ligne
+            // exactement comme la frange le faisait, de l'orbite au sol.
+            // La plage au-dessus de l'eau redevient du sable SEC ; l'ourlet
+            // mouillé est rendu par l'écume de la couche d'eau.
 
             outR[idx] = clamp01(r); outG[idx] = clamp01(g); outB[idx] = clamp01(b)
         }

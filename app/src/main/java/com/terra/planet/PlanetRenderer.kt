@@ -188,6 +188,29 @@ class PlanetRenderer(
 
     // --- Ressources du chemin descente ---
     private var tileProgram = 0
+
+    // --- Couche d'eau (lot 2.9-a) ---
+    private var waterProgram = 0
+    private var wAPosition = -1
+    private var wADepth = -1
+    private var wAMorph = -1
+    private var wUViewProj = -1
+    private var wUOffset = -1
+    private var wUCenterWorld = -1
+    private var wUSun = -1
+    private var wUHaze = -1
+    private var wUHazeDensity = -1
+    private var wUCenterRel = -1
+    private var wUCosHorizon = -1
+    private var wULimbBand = -1
+    private var wULimbStrength = -1
+    private var wURimStrength = -1
+    private var wUWaveTime = -1
+    private var wUWaveScale = -1
+    private var wUCloudDrift = -1
+    private var wUCloudShadow = -1
+    private var wUTileCover = -1
+    private var wUMorph = -1
     private var tAPosition = -1
     private var tAColor = -1
     private var tANormal = -1
@@ -293,6 +316,7 @@ class PlanetRenderer(
         vbo = 0
         uploadedVertexCount = 0
         tileProgram = 0
+        waterProgram = 0
         skyProgram = 0
         skyVbo = 0
         starProgram = 0; starVbo = 0; starsUploaded = false
@@ -350,6 +374,30 @@ class PlanetRenderer(
             tUWaveScale = GLES20.glGetUniformLocation(tileProgram, "uWaveScale")
             tAMorph = GLES20.glGetAttribLocation(tileProgram, "aMorph")
             tUMorph = GLES20.glGetUniformLocation(tileProgram, "uMorph")
+        }
+
+        waterProgram = buildProgram(WATER_VERTEX_SHADER, WATER_FRAGMENT_SHADER)
+        if (waterProgram != 0) {
+            wAPosition = GLES20.glGetAttribLocation(waterProgram, "aPosition")
+            wADepth = GLES20.glGetAttribLocation(waterProgram, "aDepth")
+            wAMorph = GLES20.glGetAttribLocation(waterProgram, "aMorph")
+            wUViewProj = GLES20.glGetUniformLocation(waterProgram, "uViewProj")
+            wUOffset = GLES20.glGetUniformLocation(waterProgram, "uOffset")
+            wUCenterWorld = GLES20.glGetUniformLocation(waterProgram, "uCenterWorld")
+            wUSun = GLES20.glGetUniformLocation(waterProgram, "uSun")
+            wUHaze = GLES20.glGetUniformLocation(waterProgram, "uHaze")
+            wUHazeDensity = GLES20.glGetUniformLocation(waterProgram, "uHazeDensity")
+            wUCenterRel = GLES20.glGetUniformLocation(waterProgram, "uCenterRel")
+            wUCosHorizon = GLES20.glGetUniformLocation(waterProgram, "uCosHorizon")
+            wULimbBand = GLES20.glGetUniformLocation(waterProgram, "uLimbBand")
+            wULimbStrength = GLES20.glGetUniformLocation(waterProgram, "uLimbStrength")
+            wURimStrength = GLES20.glGetUniformLocation(waterProgram, "uRimStrength")
+            wUWaveTime = GLES20.glGetUniformLocation(waterProgram, "uWaveTime")
+            wUWaveScale = GLES20.glGetUniformLocation(waterProgram, "uWaveScale")
+            wUCloudDrift = GLES20.glGetUniformLocation(waterProgram, "uCloudDrift")
+            wUCloudShadow = GLES20.glGetUniformLocation(waterProgram, "uCloudShadow")
+            wUTileCover = GLES20.glGetUniformLocation(waterProgram, "uTileCover")
+            wUMorph = GLES20.glGetUniformLocation(waterProgram, "uMorph")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -641,12 +689,13 @@ class PlanetRenderer(
         val gG = (0.58f * dayF + 0.024f * night + 0.010f) * groundFade
         val gB = (0.72f * dayF + 0.040f * night + 0.020f) * groundFade
         val limbOn = limbStrength
-        GLES20.glUniform3f(
-            tUHaze,
-            (0.62f * dayF + 0.01f) * (1f - limbOn) + gR * limbOn,
-            (0.72f * dayF + 0.012f) * (1f - limbOn) + gG * limbOn,
-            (0.85f * dayF + 0.02f) * (1f - limbOn) + gB * limbOn
-        )
+        // Valeurs posées dans des locaux : la couche d'eau (lot 2.9-a) doit
+        // baigner dans EXACTEMENT le même air que le terrain, donc recevoir
+        // les mêmes uniformes — pas une seconde évaluation des formules.
+        val hazeR = (0.62f * dayF + 0.01f) * (1f - limbOn) + gR * limbOn
+        val hazeG = (0.72f * dayF + 0.012f) * (1f - limbOn) + gG * limbOn
+        val hazeB = (0.85f * dayF + 0.02f) * (1f - limbOn) + gB * limbOn
+        GLES20.glUniform3f(tUHaze, hazeR, hazeG, hazeB)
 
         // Halo atmosphérique du limbe : plein en orbite, nul au sol — en vue
         // rasante, la direction de visée est presque tangente partout et le
@@ -746,6 +795,78 @@ class PlanetRenderer(
         disableAttribute(tAMaterial)
         disableAttribute(tAMorph)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+
+        // --- Couche d'eau (lot 2.9-a), après TOUT le terrain ---------------
+        //
+        // Opaque dans ce sous-lot : profondeur écrite, test actif — l'ordre
+        // terrain → eau n'est ici qu'une préparation du mélange alpha du
+        // 2.9-b, où il deviendra obligatoire. Les uniformes d'atmosphère
+        // reprennent LES MÊMES valeurs locales que le terrain : la mer
+        // baigne dans le même air, sinon elle se découperait au loin.
+        if (waterProgram != 0) {
+            GLES20.glUseProgram(waterProgram)
+            GLES20.glUniformMatrix4fv(wUViewProj, 1, false, mvp, 0)
+            GLES20.glUniform3f(wUSun, sunLx, sunY, sunLz)
+            GLES20.glUniform3f(wUHaze, hazeR, hazeG, hazeB)
+            GLES20.glUniform1f(wUHazeDensity, hazeDensity)
+            GLES20.glUniform3f(
+                wUCenterRel,
+                (-snapshot.eyeXM).toFloat(), (-snapshot.eyeYM).toFloat(),
+                (-snapshot.eyeZM).toFloat()
+            )
+            GLES20.glUniform1f(wUCosHorizon, cosHorizon)
+            GLES20.glUniform1f(wULimbBand, limbBand)
+            GLES20.glUniform1f(wULimbStrength, limbStrength)
+            GLES20.glUniform1f(wURimStrength, rimStrength)
+            GLES20.glUniform1f(wUWaveTime, waveTime)
+            GLES20.glUniform1f(wUCloudDrift, cloudDrift)
+            GLES20.glUniform1f(
+                wUCloudShadow,
+                (CLOUD_ALTITUDE_M / max(1.0, radius)).toFloat()
+            )
+            for (tile in drawList) {
+                if (tile.waterVertexCount == 0) continue
+                GLES20.glUniform3f(
+                    wUOffset,
+                    (tile.centerXM - snapshot.eyeXM).toFloat(),
+                    (tile.centerYM - snapshot.eyeYM).toFloat(),
+                    (tile.centerZM - snapshot.eyeZM).toFloat()
+                )
+                GLES20.glUniform3f(
+                    wUCenterWorld,
+                    tile.centerXM.toFloat(), tile.centerYM.toFloat(), tile.centerZM.toFloat()
+                )
+                // Amplitude de houle, humidité et morphing : formules
+                // reprises TELLES QUELLES de la boucle du terrain — la houle
+                // et la bascule de niveau de l'eau doivent être synchrones
+                // avec la tuile qu'elle recouvre.
+                val lvl = TileId.unpack(tile.key).level
+                GLES20.glUniform1f(
+                    wUWaveScale, ((lvl - 16) / 3f).coerceIn(0f, 1f)
+                )
+                GLES20.glUniform1f(wUTileCover, tileCover(tile))
+                val tileRadius = (Math.PI * 0.5 / (1 shl lvl)) * radius * 0.75
+                val switchDist = 2.0 * tileRadius / 1.4
+                val dxm = tile.centerXM - snapshot.eyeXM
+                val dym = tile.centerYM - snapshot.eyeYM
+                val dzm = tile.centerZM - snapshot.eyeZM
+                val dist = sqrt(dxm * dxm + dym * dym + dzm * dzm)
+                val morph = (((dist / switchDist) - MORPH_START) / (1.0 - MORPH_START))
+                    .coerceIn(0.0, 1.0).toFloat()
+                GLES20.glUniform1f(wUMorph, morph)
+
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, tile.vbo)
+                bindWaterAttribute(wAPosition, 3, tile.waterOffsetBytes, TileMesh.WATER_OFFSET_POSITION)
+                bindWaterAttribute(wADepth, 1, tile.waterOffsetBytes, TileMesh.WATER_OFFSET_DEPTH)
+                bindWaterAttribute(wAMorph, 1, tile.waterOffsetBytes, TileMesh.WATER_OFFSET_MORPH)
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, tile.waterVertexCount)
+                triangles += tile.waterVertexCount / 3
+            }
+            disableAttribute(wAPosition)
+            disableAttribute(wADepth)
+            disableAttribute(wAMorph)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        }
         drawnTriangles = triangles
 
         // --- Nuages, APRÈS le terrain : ils se mélangent par-dessus. ---
@@ -1114,6 +1235,37 @@ class PlanetRenderer(
         GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, quad.size * 4, buf, GLES20.GL_STATIC_DRAW)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
         return ids[0]
+    }
+
+    /**
+     * Humidité moyenne au centre d'une tuile, pour l'ombre des nuages —
+     * même échantillonnage CPU que la boucle du terrain (une cellule
+     * d'humidité fait 155 km, l'approximation par tuile est excellente).
+     */
+    private fun tileCover(tile: TileStream.GpuTile): Float {
+        val map = pendingHumidity ?: return 0.5f
+        val len = kotlin.math.sqrt(
+            tile.centerXM * tile.centerXM + tile.centerYM * tile.centerYM +
+                tile.centerZM * tile.centerZM
+        ).coerceAtLeast(1.0)
+        return com.terra.sim.HumidityMap.coverAt(
+            map,
+            com.terra.core.Vec3(
+                (tile.centerXM / len).toFloat(),
+                (tile.centerYM / len).toFloat(),
+                (tile.centerZM / len).toFloat()
+            )
+        )
+    }
+
+    /** Attribut de la couche d'eau : stride 5 flottants, base = offset du VBO. */
+    private fun bindWaterAttribute(location: Int, size: Int, baseBytes: Int, offsetFloats: Int) {
+        if (location < 0) return
+        GLES20.glEnableVertexAttribArray(location)
+        GLES20.glVertexAttribPointer(
+            location, size, GLES20.GL_FLOAT, false,
+            TileMesh.WATER_STRIDE_BYTES, baseBytes + offsetFloats * 4
+        )
     }
 
     private fun bindTileAttribute(location: Int, size: Int, offsetFloats: Int) {
@@ -1950,6 +2102,194 @@ class PlanetRenderer(
                     color *= (knee + over / (1.0 + over * 1.7)) / peak;
                 }
 
+                color = mix(color, uHaze, vFog);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        """
+
+        /**
+         * Couche d'eau — lot 2.9-a.
+         *
+         * Structure du shader de tuile, blocs repris bit à bit (houle,
+         * ombres de nuages, Fresnel, crépuscule, limbe, brume) : la mer doit
+         * baigner dans le même air et onduler à la même phase que la tuile
+         * qu'elle recouvre. Divergences, toutes commentées : openWater est
+         * une rampe de PROFONDEUR (plus de aMaterial), la couleur vient de
+         * l'absorption par canal (miroir exact de
+         * TileMesh.waterAbsorptionColor, testée en CI), et il n'y a PAS de
+         * lueur nocturne — l'eau réfléchit, elle ne rétrodiffuse pas
+         * (leçon des filaments, v0.32.2).
+         */
+        private const val WATER_VERTEX_SHADER = """
+            uniform mat4 uViewProj;
+            uniform vec3 uOffset;       // centre de tuile - oeil, en metres
+            uniform vec3 uCenterWorld;  // centre de tuile, repere planete
+            uniform vec3 uSun;          // soleil, repere planete
+            uniform float uHazeDensity;
+            uniform float uRimStrength;
+            uniform vec3 uCenterRel;   // centre planetaire en repere camera
+            uniform float uCosHorizon; // cos(angle nadir -> horizon)
+            uniform float uLimbBand;   // largeur angulaire du fondu de limbe
+            uniform float uLimbStrength; // 0 sous 600 km, 1 au-dela de 1500
+            uniform float uWaveTime;   // phase de la houle, radians
+            uniform float uWaveScale;  // 0 sur tuile grossiere, 1 de pres
+            uniform float uCloudDrift;   // meme derive que la coquille
+            uniform float uCloudShadow;  // altitude relative des nuages ; 0 = desactive
+            uniform float uTileCover;    // humidite moyenne de la tuile, [0,1]
+
+            uniform float uMorph;      // 0 geometrie fine, 1 geometrie parente
+
+            attribute vec3 aPosition;   // relative au centre de tuile, metres
+            attribute float aDepth;     // profondeur d'eau sous le sommet, metres
+            attribute float aMorph;     // ecart de profondeur vers le parent
+
+            varying float vDepth;
+            varying float vDiffuse;
+            varying float vDay;
+            varying float vSpec;
+            varying float vFog;
+            varying float vRim;
+            varying float vCloudShade;
+            varying float vDusk;
+            varying float vFresnel;
+            varying float vFoam;
+""" + CLOUD_FIELD_GLSL + """
+            void main() {
+                vec3 world = uCenterWorld + aPosition;
+                vec3 sph = normalize(world);
+                vec3 sun = normalize(uSun);
+                // Surface de mer : normale radiale, avant la houle.
+                vec3 nrm = sph;
+
+                // Continuite entre niveaux : la POSITION, a rayon constant,
+                // n'a rien a morpher (l'ecart inter-niveaux est la sagitta,
+                // sub-pixel partout) ; la PROFONDEUR rejoint celle du parent
+                // pour que la couleur bascule sans ressaut, comme l'altitude
+                // du terrain qu'elle recouvre.
+                float depth = aDepth + aMorph * uMorph;
+                vDepth = depth;
+                vec3 rel = aPosition + uOffset;
+
+                // --- Houle : bloc du shader de tuile, bit a bit. Seule la
+                // source d'openWater change : rampe de PROFONDEUR (nulle au
+                // trait de cote, pleine a 2 m) au lieu de la rampe de
+                // materiau — meme intention, une vague qui deborderait sur
+                // la plage deplacerait le trait de cote face aux biomes.
+                float openWater = clamp(depth * 0.5, 0.0, 1.0);
+                float waveAmp = uWaveScale * openWater;
+                if (waveAmp > 0.0) {
+                    vec3 t1 = normalize(cross(sph, vec3(0.0, 1.0, 0.0) + sph * 0.01));
+                    vec3 t2 = cross(sph, t1);
+                    float p1 = dot(world, t1) * 0.0785 + uWaveTime;
+                    float p2 = dot(world, t2) * 0.1185 + uWaveTime * 1.31;
+                    float h = sin(p1) * 0.42 + sin(p2) * 0.24;
+                    rel += sph * (h * waveAmp);
+                    vec3 slope = t1 * (cos(p1) * 0.42 * 0.0785)
+                               + t2 * (cos(p2) * 0.24 * 0.1185);
+                    nrm = normalize(nrm - slope * waveAmp * 12.0);
+                }
+
+                gl_Position = uViewProj * vec4(rel, 1.0);
+
+                vDay = clamp(dot(sph, sun) * 2.2 + 0.22, 0.0, 1.0);
+                vDiffuse = max(dot(nrm, sun), 0.0);
+
+                // --- Ombres de nuages : bloc du shader de tuile, bit a bit.
+                vCloudShade = 1.0;
+                if (uCloudShadow > 0.0) {
+                    float cosSun = max(dot(sph, sun), 0.12);
+                    vec3 shadowDir = normalize(sph + sun * (uCloudShadow / cosSun));
+                    vCloudShade = 1.0 - cloudOpacity(shadowDir, uCloudDrift, uTileCover) * 0.55;
+                }
+
+                vec3 view = normalize(-rel);
+                vec3 halfway = normalize(sun + view);
+                // --- Fresnel de Schlick : bloc du shader de tuile, avec
+                // waterness = 1 — ici tout est eau.
+                float cosView = max(dot(nrm, view), 0.0);
+                float fres = 0.02 + 0.98 * pow(1.0 - cosView, 5.0);
+                vFresnel = fres;
+
+                // --- Ecume : la ou l'eau devient mince. Rampe reprise du
+                // fondu de rive historique (pleine sous 0,4 m, morte a
+                // 1,2 m), meme pulsation que l'ancienne ecume de tuile.
+                float shore = 1.0 - clamp((depth - 0.4) * 1.25, 0.0, 1.0);
+                float pulse = 0.55 + 0.45 * sin(uWaveTime * 1.7 + dot(world, sph) * 0.0009);
+                vFoam = shore * pulse * uWaveScale;
+
+                float ndh = max(dot(nrm, halfway), 0.0);
+                vSpec = pow(ndh, 90.0) * 0.40;
+
+                // --- Crepuscule, halo de limbe, brume : blocs du shader de
+                // tuile, bit a bit.
+                float sunElev = dot(sph, sun);
+                float dusk = clamp(1.0 - abs(sunElev) * 6.0, 0.0, 1.0);
+                vDusk = dusk * dusk * dusk;
+
+                float rim = pow(1.0 - max(dot(sph, view), 0.0), 3.5);
+                vRim = rim * uRimStrength * vDay;
+
+                float dist = length(rel);
+                float fogDist = 1.0 - exp(-dist * uHazeDensity);
+                vec3 ray = normalize(rel);
+                vec3 nadir = normalize(uCenterRel);
+                float cosToNadir = dot(ray, nadir);
+                float limb = 1.0 - smoothstep(uCosHorizon, uCosHorizon + uLimbBand, cosToNadir);
+                vFog = max(fogDist, limb * uLimbStrength);
+            }
+        """
+
+        private const val WATER_FRAGMENT_SHADER = """
+            precision mediump float;
+
+            uniform vec3 uHaze;
+
+            varying float vDepth;
+            varying float vDiffuse;
+            varying float vDay;
+            varying float vSpec;
+            varying float vFog;
+            varying float vRim;
+            varying float vCloudShade;
+            varying float vDusk;
+            varying float vFresnel;
+            varying float vFoam;
+
+            void main() {
+                // Profondeur bornee AVANT l'exponentielle : en mediump,
+                // exp(-6000) sur une fosse oceanique est hors du domaine du
+                // flottant 16 bits (les lecons uDrift/uSnow : ne jamais
+                // supposer mieux que la norme GLES2). A 200 m tous les
+                // canaux ont converge depuis longtemps (le bleu a 120 m).
+                float d = min(vDepth, 200.0);
+
+                // Couleur par absorption — MIROIR EXACT de
+                // TileMesh.waterAbsorptionColor (lambda 3,5 / 14 / 32 m,
+                // aller-retour 2d, fond sable, eau profonde), testee en CI.
+                // Toute retouche se fait DES DEUX COTES.
+                vec3 t = exp(vec3(-2.0 * d / 3.5, -2.0 * d / 14.0, -2.0 * d / 32.0));
+                vec3 base = vec3(0.55, 0.50, 0.38) * t
+                          + vec3(0.015, 0.11, 0.24) * (1.0 - t);
+
+                // Eclairage : structure du fragment de tuile, bit a bit.
+                vec3 sunColor = mix(vec3(1.0, 1.0, 1.0), vec3(1.32, 0.72, 0.42), vDusk);
+                vec3 color = base * 0.12 * vDay
+                           + base * (0.88 * vDiffuse * vCloudShade) * vDay * sunColor;
+                color += vec3(0.90, 0.94, 1.0) * vSpec * vDay * sunColor;
+                color = mix(color, uHaze * (0.55 + 0.45 * vDay), vFresnel * 0.85);
+                color = mix(color, vec3(0.92, 0.95, 0.97) * vDay, vFoam * 0.65);
+                color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
+
+                // PAS de lueur nocturne : l'eau REFLECHIT, elle ne
+                // retrodiffuse pas (lecon v0.32.2) — de nuit, la mer est le
+                // point le plus sombre du paysage, structurellement.
+
+                float peak = max(color.r, max(color.g, color.b));
+                float knee = 0.82;
+                if (peak > knee) {
+                    float over = peak - knee;
+                    color *= (knee + over / (1.0 + over * 1.7)) / peak;
+                }
                 color = mix(color, uHaze, vFog);
                 gl_FragColor = vec4(color, 1.0);
             }

@@ -1,5 +1,40 @@
 # Journal des versions
 
+## v0.34.0 — Lot 2.9-a : le fond marin existe, l'eau devient une couche
+
+La mer n'est plus une facette du terrain écrêtée au niveau zéro. Le terrain
+est rendu à son altitude VRAIE, fosses comprises, peint en fond de sable qui
+s'assombrit avec la profondeur ; par-dessus, une couche d'eau dédiée — tuiles
+calquées une pour une sur celles du terrain, sommets à 5 flottants (position
+au rayon de la mer + 5 cm, profondeur, morph de profondeur), téléversée dans
+le même VBO à la suite du terrain, dessinée après lui. Tous les chiffres
+(calque 1:1 imposé par la pente côtière de 30 %, biais anti-affleurement de
+5 cm, λ d'absorption 3,5/14/32 m, surcoût VBO ≈ 32 %) sortent de
+`validation/eau_transparence.py`.
+
+Écart assumé au découpage annoncé : houle, Fresnel et écume déménagent dans
+le shader d'eau DÈS ce sous-lot — une mer opaque ET immobile aurait masqué
+toute régression visuelle. Le shader de TUILE, lui, n'est pas touché : la
+mer y met simplement son matériau à zéro et ses termes d'eau s'y éteignent
+d'eux-mêmes, pendant que les lacs continuent de s'en servir à l'identique
+jusqu'au 2.9-c. L'eau est OPAQUE dans ce sous-lot (la transparence est le
+2.9-b) ; pas de lueur nocturne sur l'eau (leçon v0.32.2, structurelle ici).
+
+La banquise reste écrêtée au niveau de la mer — c'est une surface solide,
+pas une colonne d'eau — et n'émet pas d'eau dessous. La frange de rivage du
+terrain disparaît : la couche d'eau, dont la profondeur s'interpole vers
+zéro au trait de côte, dessine la ligne d'eau à sa place. La collision
+caméra était déjà écrêtée de son côté (`heightAboveTerrain`) : mode piéton
+et descente inchangés.
+
+Génération intouchée : `GENERATION_VERSION` reste à 13, empreintes
+identiques. Tests : `TileWaterTest` (comptage exact des cellules,
+profondeur et morph au bit près en rejouant l'ordre d'émission, rayon de
+surface, fond marin à l'altitude vraie sur une tuile équatoriale où la
+banquise est impossible, bornes d'absorption reprises du script) ; le test
+d'altitude de `TileMeshTest` accepte désormais les deux surfaces légales
+sous la mer, la garantie forte étant portée par la tuile équatoriale.
+
 ## v0.33.0 — La concurrence entre dans le filet de la CI
 
 `TileWorkerPool` était la seule classe d'`:app` sans rien d'Android — hormis
