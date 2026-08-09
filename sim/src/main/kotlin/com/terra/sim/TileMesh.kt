@@ -712,10 +712,22 @@ class TileMesh(
             val outY = relY[a] - dirY[a] * radial
             val outZ = relZ[a] - dirZ[a] * radial
 
+            // Assombrissement de la jupe. Elle garde la normale RADIALE —
+            // c'est ce qui la fond dans le sol qu'elle prolonge — mais un
+            // mur vertical ainsi éclairé reçoit la lumière comme un sol
+            // horizontal : au soleil rasant il devient plus CLAIR que le
+            // terrain voisin, d'où les bandes pâles et les traits blancs
+            // constatés sur appareil. Physiquement, ce rebord est dans
+            // l'ombre de la lèvre qui le surplombe : on l'assombrit donc,
+            // et s'il affleure il passe pour une ombre de ressaut au lieu
+            // d'un mur lumineux.
+            val k = SKIRT_SHADE
             o = emitSkirtTriangle(o, relX[a], relY[a], relZ[a], relX[b], relY[b], relZ[b], axL, ayL, azL,
-                outX, outY, outZ, dirX[a], dirY[a], dirZ[a], colR[a], colG[a], colB[a], mat[a])
+                outX, outY, outZ, dirX[a], dirY[a], dirZ[a],
+                colR[a] * k, colG[a] * k, colB[a] * k, mat[a])
             o = emitSkirtTriangle(o, relX[b], relY[b], relZ[b], bxL, byL, bzL, axL, ayL, azL,
-                outX, outY, outZ, dirX[b], dirY[b], dirZ[b], colR[b], colG[b], colB[b], mat[b])
+                outX, outY, outZ, dirX[b], dirY[b], dirZ[b],
+                colR[b] * k, colG[b] * k, colB[b] * k, mat[b])
         }
         return o
     }
@@ -816,6 +828,14 @@ class TileMesh(
          */
         const val AO_GAIN = 12f
 
+        /**
+         * Assombrissement des jupes. Un rebord de tuile est physiquement à
+         * l'ombre de la lèvre qui le surplombe ; à 55 % il se lit comme une
+         * ombre de ressaut plutôt que comme un mur, dans le pire cas où il
+         * affleure.
+         */
+        const val SKIRT_SHADE = 0.55f
+
         /** Couleur de roche des pentes — gris-brun neutre, éclairé par la
          *  normale comme le reste du terrain. */
         const val ROCK_R = 0.44f
@@ -878,7 +898,17 @@ class TileMesh(
          */
         fun skirtDepthM(tile: TileId, planetRadiusM: Double): Double {
             val edgeM = (Math.PI * 0.5 / (1 shl tile.level)) * planetRadiusM
-            return max(edgeM * 0.005, 1.5) + 4.0
+            // La jupe doit couvrir l'écart d'altitude entre cette tuile et
+            // sa voisine d'un niveau plus grossier — soit la variation du
+            // terrain sur une MAILLE, à la pente côtière raide mesurée en
+            // v0.19.2 (30 %). L'ancienne loi (0,5 % de l'ARÊTE, plancher
+            // 5,5 m) se trompait deux fois : trop courte aux niveaux
+            // grossiers, et trente fois trop longue au ras du sol — un mur
+            // de cinq mètres à côté du piéton, visible dès qu'il affleure.
+            val stepM = edgeM / MESH_N
+            // Plancher de 20 cm : sous cette taille la jupe ne sert plus à
+            // rien, mais zéro rouvrirait les fissures que le lot 2.5 ferme.
+            return max(stepM * 0.30, 0.20)
         }
 
         /**

@@ -211,6 +211,65 @@ class TileMeshTest {
         }
     }
 
+    @Test
+    fun `la jupe est plus sombre que le bord qu elle prolonge`() {
+        // Une jupe garde la normale radiale pour se fondre dans le sol —
+        // mais un mur vertical ainsi éclairé reçoit la lumière comme un sol
+        // horizontal et devient plus CLAIR que le terrain au soleil rasant :
+        // bandes pâles et traits blancs constatés sur appareil (v0.29.x).
+        // Elle doit donc être assombrie : si elle affleure, elle se lit
+        // comme une ombre de ressaut.
+        val w = WorldGenerator.fromName("Gaia", PlanetParams(subdivisions = 4)).generate()
+        val mesh = TileMesh(TileId(0, 12, 300, 400), w.terrain, CoarseSampler(w),
+            w.params.radiusM.toDouble())
+        val n = TileMesh.MESH_N
+        val terrainFloats = n * n * 6 * TileMesh.FLOATS_PER_VERTEX
+        val skirtFloats = 4 * n * 6 * TileMesh.FLOATS_PER_VERTEX
+
+        fun meanLuminance(from: Int, count: Int): Double {
+            var sum = 0.0
+            var seen = 0
+            var v = from
+            val end = from + count
+            while (v < end) {
+                sum += mesh.vertexData[v + TileMesh.OFFSET_COLOR] * 0.3 +
+                    mesh.vertexData[v + TileMesh.OFFSET_COLOR + 1] * 0.6 +
+                    mesh.vertexData[v + TileMesh.OFFSET_COLOR + 2] * 0.1
+                seen++
+                v += TileMesh.FLOATS_PER_VERTEX
+            }
+            return if (seen == 0) 0.0 else sum / seen
+        }
+
+        val terrain = meanLuminance(0, terrainFloats)
+        val skirt = meanLuminance(terrainFloats, skirtFloats)
+        assertTrue(terrain > 0.0 && skirt > 0.0, "luminances nulles : lecture erronée")
+        assertTrue(
+            skirt < terrain * 0.85,
+            "jupe à $skirt contre terrain à $terrain : elle n'est pas assombrie"
+        )
+    }
+
+    @Test
+    fun `la profondeur de jupe suit la maille et reste discrete au sol`() {
+        val r = 6_371_000.0
+        // Aux niveaux grossiers, elle doit couvrir des centaines de mètres ;
+        // au ras du sol, ne plus dresser un mur devant le piéton. Bornes
+        // calculées : 0,30 × maille, plancher 20 cm.
+        val coarse = TileMesh.skirtDepthM(TileId(0, 8, 0, 0), r)
+        val fine = TileMesh.skirtDepthM(TileId(0, 20, 0, 0), r)
+        assertTrue(coarse > 300.0, "jupe trop courte au niveau 8 : $coarse m")
+        assertTrue(fine < 1.0, "jupe de $fine m au niveau 20 : un mur devant le piéton")
+        assertTrue(fine >= 0.20, "plancher non respecté : $fine m")
+        // Monotonie : jamais plus profonde à niveau plus fin.
+        var previous = Double.MAX_VALUE
+        for (level in 4..22) {
+            val d = TileMesh.skirtDepthM(TileId(0, level, 0, 0), r)
+            assertTrue(d <= previous, "profondeur non monotone au niveau $level")
+            previous = d
+        }
+    }
+
     // -------------------------------------------------- précision relative
 
     @Test

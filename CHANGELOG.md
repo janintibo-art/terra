@@ -1,5 +1,34 @@
 # Journal des versions
 
+## v0.30.2 — Jupes visibles et traits blancs : une seule cause
+
+Les deux derniers défauts visuels de l'audit ont la même origine, et ce
+n'était pas celle que je supposais.
+
+Une jupe porte la normale RADIALE — c'est ce qui la fond dans le sol
+qu'elle prolonge. Mais un mur vertical ainsi éclairé reçoit la lumière
+comme un sol horizontal : au soleil rasant, il devient plus CLAIR que le
+terrain voisin. D'où les bandes pâles au premier plan ET les fins traits
+blancs sur le sable — le même mur, vu de face ou par la tranche.
+
+Correctif en deux volets :
+
+- **Teinte.** La jupe est assombrie à 55 %. Physiquement, ce rebord est
+  dans l'ombre de la lèvre qui le surplombe ; s'il affleure, il se lit
+  désormais comme une ombre de ressaut et non comme un mur lumineux.
+- **Profondeur.** L'ancienne loi (0,5 % de l'ARÊTE, plancher 5,5 m) se
+  trompait dans les deux sens, le calcul l'a montré : trop courte aux
+  niveaux grossiers (786 m au niveau 6 pour un besoin de 1 466 m) et
+  TRENTE FOIS trop longue au ras du sol — un mur de cinq mètres à côté du
+  piéton. Nouvelle loi : 0,30 × la MAILLE, plancher 20 cm. Elle donne
+  2 932 m au niveau 6 et 72 cm au niveau 18 : plus généreuse là où les
+  fissures menacent, discrète là où l'œil est proche.
+
+Le test existant qui mesure l'écart RÉEL entre niveaux sur trois mondes
+reste le juge de la non-régression des fissures. Deux tests ajoutés : la
+jupe doit être plus sombre que le bord qu'elle prolonge, et sa profondeur
+doit suivre la maille en restant monotone.
+
 ## v0.30.1 — Durabilité, cycle de vie, portabilité
 
 Second lot d'audit. Trois correctifs, aucun visuel.
