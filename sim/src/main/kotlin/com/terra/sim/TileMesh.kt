@@ -721,13 +721,13 @@ class TileMesh(
             // l'ombre de la lèvre qui le surplombe : on l'assombrit donc,
             // et s'il affleure il passe pour une ombre de ressaut au lieu
             // d'un mur lumineux.
-            val k = SKIRT_SHADE
+            val shade = SKIRT_SHADE
             o = emitSkirtTriangle(o, relX[a], relY[a], relZ[a], relX[b], relY[b], relZ[b], axL, ayL, azL,
                 outX, outY, outZ, dirX[a], dirY[a], dirZ[a],
-                colR[a] * k, colG[a] * k, colB[a] * k, mat[a])
+                colR[a] * shade, colG[a] * shade, colB[a] * shade, mat[a])
             o = emitSkirtTriangle(o, relX[b], relY[b], relZ[b], bxL, byL, bzL, axL, ayL, azL,
                 outX, outY, outZ, dirX[b], dirY[b], dirZ[b],
-                colR[b] * k, colG[b] * k, colB[b] * k, mat[b])
+                colR[b] * shade, colG[b] * shade, colB[b] * shade, mat[b])
         }
         return o
     }

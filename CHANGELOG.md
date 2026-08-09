@@ -1,5 +1,23 @@
 # Journal des versions
 
+## v0.31.2 — Un garde-fou calibré sur un chiffre faux
+
+Le test de fidélité de la carte d'humidité échouait — mais pas sur la
+fidélité : sur son propre garde-fou. Il échantillonnait un sommet sur 37
+et exigeait au moins 100 échantillons, seuil calibré en supposant 10 242
+sommets. Or les tests génèrent au niveau 4 : 2 562 sommets, donc 70
+échantillons. Le garde-fou tombait avant que la projection soit évaluée.
+
+Correctif : parcours EXHAUSTIF. Deux mille lectures de tableau ne coûtent
+rien, et il n'y a plus aucun pas à calibrer — la même logique que les
+quartiles du test d'occlusion : supprimer la constante plutôt que la
+corriger. L'avertissement « Name shadowed: k » des jupes est levé au
+passage.
+
+Septième seuil deviné du projet, mais d'un genre nouveau : ce n'était ni
+la valeur ni la population, c'était un CHIFFRE DE RÉFÉRENCE faux — le
+nombre de sommets de la grille de test, pris de mémoire au lieu d'être lu.
+
 ## v0.31.1 — Les nuages suivent enfin les pluies (dette du lot 2.14 soldée)
 
 Le lot 2.14 prescrivait une couche « pilotée par l'humidité SIMULÉE en

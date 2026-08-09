@@ -45,9 +45,15 @@ class HumidityMapTest {
         // grille de simulation, la carte relue dans leur direction doit
         // donner la couverture attendue de LEUR pluie. Tolérance d'une
         // demi-cellule de carte, l'erreur d'échantillonnage inévitable.
+        // Parcours EXHAUSTIF : la première mouture échantillonnait un
+        // sommet sur 37 et exigeait 100 échantillons — un seuil calibré sur
+        // 10 242 sommets alors que les tests génèrent au niveau 4, soit
+        // 2 562. Le garde-fou tombait avant même que la fidélité soit
+        // évaluée. Deux mille lectures de tableau ne coûtent rien : on les
+        // fait toutes, et il n'y a plus de pas à calibrer.
         var checked = 0
         var worst = 0f
-        for (i in 0 until world.vertexCount step 37) {
+        for (i in 0 until world.vertexCount) {
             val v = world.position(i)
             val expected = (HumidityMap.MIN_COVER + (1f - HumidityMap.MIN_COVER) *
                 ((world.precipMm[i] - HumidityMap.DRY_MM) /
@@ -57,7 +63,7 @@ class HumidityMapTest {
             if (gap > worst) worst = gap
             checked++
         }
-        assertTrue(checked > 100, "échantillon trop petit : $checked")
+        assertEquals(world.vertexCount, checked, "tous les sommets doivent être vérifiés")
         // La carte a 256×128 cellules pour 10 242 sommets : elle est PLUS
         // fine que la grille, l'écart ne vient que du plus proche voisin aux
         // frontières de cellules. 0,35 laisse la marge sans tolérer une
