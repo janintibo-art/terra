@@ -1,5 +1,30 @@
 # Journal des versions
 
+## v0.24.0 — Le fondu de limbe : la silhouette redevient un cercle
+
+Dernier défaut visuel consigné des captures v0.19.1 : au-delà de ~1 500 km
+en mode sol, la silhouette de la planète était dessinée par les bords
+droits de tuiles de niveau 3-4 — un limbe polygonal, avec sa « tuile
+flottante » vue par la tranche.
+
+Le correctif est un FONDU DE LIMBE, pas la grande bascule de moteur des
+registres d'échelle (2.7) : chaque sommet de tuile compare l'angle de son
+rayon de visée au nadir avec l'angle analytique de l'horizon, et se
+dissout dans le disque du ciel sur les derniers 15 % du rayon angulaire.
+Trois choix rendent le correctif petit :
+
+- il emprunte le canal vFog de la brume de distance, SANS varying
+  nouveau : la brume meurt à 120 km d'altitude, le fondu naît à 600 —
+  les deux régimes s'excluent, le canal est libre ;
+- la couleur cible est la formule EXACTE du disque du ciel (drawSky),
+  recopiée : les tuiles se dissolvent dans le fond qui les remplace,
+  sans couture de teinte, de jour comme de nuit ;
+- montée en puissance de 600 à 1 500 km : rien ne change en dessous, où
+  brume et halo font déjà le travail.
+
+Correctif purement Android (shader + uniforms), sans test JVM possible ;
+à juger sur les captures des mêmes points de vue que la v0.19.1.
+
 ## v0.23.2 — Test recalibré : le rembourrage des plantes n'est pas une normale
 
 Un seul test rouge sur 292, et pas un vrai bug : SmoothShadingTest balaie

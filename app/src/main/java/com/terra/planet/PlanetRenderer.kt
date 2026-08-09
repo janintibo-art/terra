@@ -172,6 +172,10 @@ class PlanetRenderer(
     private var tUSun = -1
     private var tUHaze = -1
     private var tUHazeDensity = -1
+    private var tUCenterRel = -1
+    private var tUCosHorizon = -1
+    private var tULimbBand = -1
+    private var tULimbStrength = -1
     private var tURimStrength = -1
     private var tULevelTint = -1
     private var tUWaveTime = -1
@@ -263,6 +267,10 @@ class PlanetRenderer(
             tUSun = GLES20.glGetUniformLocation(tileProgram, "uSun")
             tUHaze = GLES20.glGetUniformLocation(tileProgram, "uHaze")
             tUHazeDensity = GLES20.glGetUniformLocation(tileProgram, "uHazeDensity")
+            tUCenterRel = GLES20.glGetUniformLocation(tileProgram, "uCenterRel")
+            tUCosHorizon = GLES20.glGetUniformLocation(tileProgram, "uCosHorizon")
+            tULimbBand = GLES20.glGetUniformLocation(tileProgram, "uLimbBand")
+            tULimbStrength = GLES20.glGetUniformLocation(tileProgram, "uLimbStrength")
             tURimStrength = GLES20.glGetUniformLocation(tileProgram, "uRimStrength")
             tULevelTint = GLES20.glGetUniformLocation(tileProgram, "uLevelTint")
             tUWaveTime = GLES20.glGetUniformLocation(tileProgram, "uWaveTime")
@@ -497,8 +505,55 @@ class PlanetRenderer(
             .coerceIn(0.0, 1.0)
         val hazeDensity = (0.5 / max(20_000.0, horizonM) * atmosphere).toFloat()
         GLES20.glUniform1f(tUHazeDensity, hazeDensity)
+
+        // --- Fondu de limbe (v0.24.0, correctif du limbe polygonal) ---
+        //
+        // Au-delà de ~1 500 km, la silhouette de la planète était dessinée
+        // par les bords droits de tuiles de niveau 3-4 : le point ouvert des
+        // captures v0.19.1. Les tuiles se dissolvent désormais dans le
+        // disque analytique du ciel à l'approche de la silhouette — le même
+        // canal vFog que la brume, les deux régimes s'excluant par
+        // l'altitude (la brume meurt à 120 km, le fondu naît à 600).
+        val eyeLen = kotlin.math.sqrt(
+            snapshot.eyeXM * snapshot.eyeXM + snapshot.eyeYM * snapshot.eyeYM +
+                snapshot.eyeZM * snapshot.eyeZM
+        ).coerceAtLeast(1.0)
+        // cos de l'angle nadir→horizon : sqrt(1 − (R/d)²).
+        val cosHorizon = kotlin.math.sqrt(
+            (1.0 - (radius / eyeLen) * (radius / eyeLen)).coerceIn(0.0, 1.0)
+        ).toFloat()
+        // Largeur du fondu : 15 % du rayon angulaire du disque — assez pour
+        // avaler l'arête d'une tuile de niveau 3, trop peu pour manger le
+        // terrain intérieur.
+        val limbBand = ((1f - cosHorizon) * 0.15f).coerceAtLeast(1e-4f)
+        val limbStrength = (((snapshot.altitudeM - 600_000.0) / 900_000.0)
+            .coerceIn(0.0, 1.0)).toFloat()
+        GLES20.glUniform3f(
+            tUCenterRel,
+            (-snapshot.eyeXM).toFloat(), (-snapshot.eyeYM).toFloat(),
+            (-snapshot.eyeZM).toFloat()
+        )
+        GLES20.glUniform1f(tUCosHorizon, cosHorizon)
+        GLES20.glUniform1f(tULimbBand, limbBand)
+        GLES20.glUniform1f(tULimbStrength, limbStrength)
+
+        // Cible du fondu : la couleur EXACTE du disque du ciel (formule de
+        // drawSky), pour que les tuiles s'y dissolvent sans couture. La
+        // brume de distance étant morte à ces altitudes, uHaze est libre.
         val dayF = dayFactorAtEye(snapshot, sunLx, sunLz)
-        GLES20.glUniform3f(tUHaze, 0.62f * dayF + 0.01f, 0.72f * dayF + 0.012f, 0.85f * dayF + 0.02f)
+        val presence = ((90_000.0 - snapshot.altitudeM) / 78_000.0).coerceIn(0.0, 1.0).toFloat()
+        val groundFade = (0.25f + 0.75f * presence)
+        val night = 1f - dayF
+        val gR = (0.50f * dayF + 0.020f * night + 0.008f) * groundFade
+        val gG = (0.58f * dayF + 0.024f * night + 0.010f) * groundFade
+        val gB = (0.72f * dayF + 0.040f * night + 0.020f) * groundFade
+        val limbOn = limbStrength
+        GLES20.glUniform3f(
+            tUHaze,
+            (0.62f * dayF + 0.01f) * (1f - limbOn) + gR * limbOn,
+            (0.72f * dayF + 0.012f) * (1f - limbOn) + gG * limbOn,
+            (0.85f * dayF + 0.02f) * (1f - limbOn) + gB * limbOn
+        )
 
         // Halo atmosphérique du limbe : plein en orbite, nul au sol — en vue
         // rasante, la direction de visée est presque tangente partout et le
@@ -988,6 +1043,10 @@ class PlanetRenderer(
             uniform float uHazeDensity;
             uniform float uRimStrength;
             uniform vec3 uLevelTint;   // composantes < 0 : teinte desactivee
+            uniform vec3 uCenterRel;   // centre planetaire en repere camera
+            uniform float uCosHorizon; // cos(angle nadir -> horizon)
+            uniform float uLimbBand;   // largeur angulaire du fondu de limbe
+            uniform float uLimbStrength; // 0 sous 600 km, 1 au-dela de 1500
             uniform float uWaveTime;   // phase de la houle, radians
             uniform float uWaveScale;  // 0 sur tuile grossiere, 1 de pres
 
@@ -1068,7 +1127,15 @@ class PlanetRenderer(
                 vRim = rim * uRimStrength * vDay;
 
                 float dist = length(rel);
-                vFog = 1.0 - exp(-dist * uHazeDensity);
+                float fogDist = 1.0 - exp(-dist * uHazeDensity);
+                // Fondu de limbe : angle du rayon de visee au nadir compare
+                // a l'angle de l'horizon. Actif en altitude seulement — la
+                // brume de distance y est morte, le canal vFog est libre.
+                vec3 ray = normalize(rel);
+                vec3 nadir = normalize(uCenterRel);
+                float cosToNadir = dot(ray, nadir);
+                float limb = 1.0 - smoothstep(uCosHorizon, uCosHorizon + uLimbBand, cosToNadir);
+                vFog = max(fogDist, limb * uLimbStrength);
                 vColor = uLevelTint.r < 0.0 ? aColor
                        : mix(aColor, clamp(uLevelTint, 0.0, 1.0), 0.75);
             }
