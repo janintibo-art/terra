@@ -1,5 +1,23 @@
 # Journal des versions
 
+## v0.38.1 — Calque « Ressources »
+
+Neuvième calque : la ressource dominante en teinte, sur un fond de relief
+grisé. Une cellule peut en porter plusieurs — du bois pousse sur du sol
+arable — et n'en montrer qu'une est un choix assumé : superposer six masques
+donnerait une bouillie illisible. Les métaux ont les teintes les plus
+saturées, parce que ce sont les rares et que ce sont eux qu'on cherche.
+
+Le fond garde une trace du relief plutôt qu'un gris uniforme : sans lui on
+ne saurait pas si un gisement est sur une côte ou une crête, et c'est
+exactement la question qu'on se pose devant cette carte.
+
+Le test générique des palettes couvre déjà le nouveau calque (bornes de
+couleur sur tous les sommets) et, ce faisant, exerce la génération des
+ressources sur deux mondes de plus. Un test dédié vérifie que les gisements
+se distinguent franchement du fond — une carte où le cuivre se lirait comme
+la roche nue ne servirait à rien.
+
 ## v0.38.0 — Lot 1.17 : carte de ressources (la Phase 1 est close)
 
 Six ressources par cellule d'icosphère : sol arable, bois, pierre, cuivre,

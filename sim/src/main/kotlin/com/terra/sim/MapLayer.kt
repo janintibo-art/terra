@@ -23,7 +23,8 @@ enum class MapLayer(val label: String, val shortLabel: String) {
     CLIMATE_ZONES("Zones climatiques", "Zones"),
     PLATES("Plaques tectoniques", "Plaques"),
     RIVERS("Écoulement et érosion", "Eaux"),
-    WINDS("Vents de surface", "Vents");
+    WINDS("Vents de surface", "Vents"),
+    RESOURCES("Ressources exploitables", "Ressourc.");
 
     companion object {
         fun next(current: MapLayer): MapLayer {
@@ -50,6 +51,52 @@ object LayerPalette {
             MapLayer.PLATES -> plate(data, index, out)
             MapLayer.RIVERS -> rivers(data, index, out)
             MapLayer.WINDS -> winds(data, index, out)
+            MapLayer.RESOURCES -> resources(data, index, out)
+        }
+    }
+
+    /**
+     * Ressources : la ressource DOMINANTE en teinte, sur un fond de relief
+     * grisé — lot 1.17.
+     *
+     * Une cellule peut en porter plusieurs (du bois pousse sur du sol
+     * arable) ; en montrer une seule est un choix assumé : superposer six
+     * masques donnerait une bouillie où l'on ne lirait plus rien. La plus
+     * abondante l'emporte, et les métaux sont volontairement les teintes les
+     * plus saturées — ce sont les rares, ce sont eux qu'on cherche.
+     *
+     * Le fond garde une trace du relief plutôt qu'un gris uniforme : sans
+     * lui, on ne saurait plus si un gisement est sur une côte ou une crête,
+     * et c'est justement la question qu'on se pose devant cette carte.
+     */
+    private fun resources(data: PlanetData, i: Int, out: FloatArray) {
+        if (data.altitudeM[i] <= 0f) {
+            // Mer : bleu très sombre et désaturé, pour que la terre saute aux
+            // yeux. Aucune ressource n'y vit encore (la pêche viendra avec la
+            // Phase 6 si elle vient).
+            out[0] = 0.04f; out[1] = 0.07f; out[2] = 0.13f
+            return
+        }
+        val dominant = data.resources.dominantAt(i)
+        if (dominant == null) {
+            // Terre sans ressource : gris de relief. C'est l'immense
+            // majorité de la surface, et c'est voulu.
+            val t = clamp01(data.altitudeM[i] / 3_000f)
+            val g = lerp(0.22f, 0.46f, t)
+            out[0] = g; out[1] = g; out[2] = g * 0.96f
+            return
+        }
+        val a = data.resources.abundanceAt(dominant, i)
+        // Abondance en luminosité, jamais jusqu'au noir : une cellule qui
+        // porte la ressource doit rester visible même à faible teneur.
+        val k = 0.55f + 0.45f * clamp01(a)
+        when (dominant) {
+            Resource.FARMLAND -> { out[0] = 0.55f * k; out[1] = 0.78f * k; out[2] = 0.26f * k }
+            Resource.WOOD -> { out[0] = 0.13f * k; out[1] = 0.45f * k; out[2] = 0.20f * k }
+            Resource.STONE -> { out[0] = 0.62f * k; out[1] = 0.60f * k; out[2] = 0.58f * k }
+            Resource.COPPER -> { out[0] = 0.95f * k; out[1] = 0.48f * k; out[2] = 0.14f * k }
+            Resource.IRON -> { out[0] = 0.72f * k; out[1] = 0.20f * k; out[2] = 0.16f * k }
+            Resource.TIN -> { out[0] = 0.72f * k; out[1] = 0.42f * k; out[2] = 0.90f * k }
         }
     }
 

@@ -192,6 +192,35 @@ class ResourceFieldTest {
     }
 
     @Test
+    fun `le calque distingue les gisements du fond`() {
+        // Une carte où le cuivre se lit comme la roche nue ne sert à rien.
+        // On mesure l'écart chromatique entre les cellules qui portent une
+        // ressource et le gris de relief du fond : il doit être franc.
+        val out = FloatArray(3)
+        val fond = FloatArray(3)
+        var compares = 0
+        var lisibles = 0
+        for (i in 0 until world.vertexCount) {
+            if (world.altitudeM[i] <= 0f) continue
+            val dominant = world.resources.dominantAt(i) ?: continue
+            LayerPalette.color(MapLayer.RESOURCES, world, i, out)
+            // Gris de relief que la même cellule aurait sans ressource.
+            val t = (world.altitudeM[i] / 3_000f).coerceIn(0f, 1f)
+            val g = 0.22f + (0.46f - 0.22f) * t
+            fond[0] = g; fond[1] = g; fond[2] = g * 0.96f
+            val ecart = kotlin.math.abs(out[0] - fond[0]) +
+                kotlin.math.abs(out[1] - fond[1]) + kotlin.math.abs(out[2] - fond[2])
+            compares++
+            if (ecart > 0.15f) lisibles++
+        }
+        assertTrue(compares > 100, "trop peu de gisements pour juger le calque")
+        assertTrue(
+            lisibles > compares * 9 / 10,
+            "seulement $lisibles gisements sur $compares se distinguent du fond"
+        )
+    }
+
+    @Test
     fun `les abondances restent dans les bornes`() {
         for (r in Resource.ALL) {
             for (i in 0 until world.vertexCount) {
