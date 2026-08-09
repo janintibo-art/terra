@@ -328,7 +328,7 @@ class TileMesh(
         profile: TerrainProfile,
         sampler: CoarseSampler,
         planetRadiusM: Double,
-        alt: FloatArray, verts: Int, off: Int
+        alt: FloatArray, verts: Int, gridOff: Int
     ) {
         var o = startOffset
         if (tile.level < PLANT_MIN_LEVEL) return
@@ -354,7 +354,7 @@ class TileMesh(
             while (cx < cxEnd && emitted < PLANT_SLOTS) {
                 if ((cx % stride == 0L) && (cy % stride == 0L)) {
                     val next = emitOnePlant(o, tile, cx, cy, x0, x1, y0, y1,
-                        profile, sampler, hint, planetRadiusM, alt, verts, off)
+                        profile, sampler, hint, planetRadiusM, alt, verts, gridOff)
                     if (next != o) emitted++
                     o = next
                 }
@@ -373,7 +373,7 @@ class TileMesh(
         sampler: CoarseSampler,
         hint: IntArray,
         planetRadiusM: Double,
-        alt: FloatArray, verts: Int, off: Int
+        alt: FloatArray, verts: Int, gridOff: Int
     ): Int {
         val o = startOffset
         // Les sels de hachage viennent de la CASE canonique : la même
@@ -406,7 +406,7 @@ class TileMesh(
         val j0 = gv.toInt().coerceAtMost(n - 1)
         val fu = gu - i0
         val fv = gv - j0
-        val c00 = (j0 + off) * verts + (i0 + off)
+        val c00 = (j0 + gridOff) * verts + (i0 + gridOff)
         val a = (alt[c00] * (1f - fu) + alt[c00 + 1] * fu) * (1f - fv) +
             (alt[c00 + verts] * (1f - fu) + alt[c00 + verts + 1] * fu) * fv
         if (a <= 0f || profile.lakeDepthAt(d) > 0f) return o

@@ -115,12 +115,18 @@ class VegetationTest {
         for (p in parentPlants) {
             val pl = sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2])
             val found = childPlants.any { c ->
-                val dot = (c[0] * p[0] + c[1] * p[1] + c[2] * p[2])
                 val cl = sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2])
                 val radialGap = abs(cl - pl)
-                // Écart tangentiel : distance entre directions × rayon.
-                val cosA = (dot / (cl * pl)).coerceIn(-1.0, 1.0)
-                val tangential = kotlin.math.acos(cosA) * pl
+                // Écart tangentiel par la DISTANCE ENTRE DIRECTIONS
+                // unitaires, jamais par acos : près de zéro, acos amplifie
+                // l'erreur d'arrondi en sqrt(2ε), soit 13 à 38 cm de bruit
+                // au rayon terrestre — dix fois le seuil de 1 cm, et c'est
+                // ce bruit qui a fait rougir la CI en v0.26.2, pas la
+                // végétation. La corde donne le même angle au micromètre.
+                val dx = c[0] / cl - p[0] / pl
+                val dy = c[1] / cl - p[1] / pl
+                val dz = c[2] / cl - p[2] / pl
+                val tangential = sqrt(dx * dx + dy * dy + dz * dz) * pl
                 tangential < 0.01 && radialGap < 60.0
             }
             assertTrue(found, "une plante de la mère manque dans les filles")

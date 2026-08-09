@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.26.3 — Test recalibré : acos n'est pas une façon de mesurer un angle nul
+
+Le test mère/filles rougissait sur SON PROPRE bruit numérique. Il mesurait
+l'écart tangentiel par acos(cos)×R — or près de zéro, acos amplifie
+l'erreur d'arrondi en sqrt(2ε) : 13 à 38 cm au rayon terrestre, pour un
+seuil de 1 cm. La végétation était saine ; la formule ne l'était pas.
+
+Correctif : distance entre directions UNITAIRES × rayon — même angle, sans
+acos, bruit de l'ordre du micromètre, six ordres de grandeur sous le
+seuil. Le contrat reste identique et le seuil du centimètre est conservé,
+donc rien n'est assoupli. La borne radiale de 60 m est revérifiée par le
+calcul : la maille du niveau 15 fait 19 m, l'écart entre surfaces de
+niveaux voisins vaut la variation du terrain sur cette distance.
+
+Nouvelle entrée au catalogue des leçons — quatrième test mal calibré du
+projet, mais le premier dont la faute est l'ARITHMÉTIQUE de la mesure :
+un seuil au centimètre exige de vérifier la précision de la méthode qui
+mesure, pas seulement la valeur du seuil. L'avertissement « Name shadowed:
+off » est levé au passage (paramètre renommé gridOff).
+
 ## v0.26.2 — Correctif : les plantes flottaient au-dessus des tuiles lointaines
 
 Constaté sur appareil : des plantes suspendues en l'air à moyenne distance.
