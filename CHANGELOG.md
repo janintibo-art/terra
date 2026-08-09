@@ -1,5 +1,35 @@
 # Journal des versions
 
+## v0.31.0 — Les ombres de nuages : le ciel touche enfin le sol
+
+Meilleure idée du compte rendu graphique, absente de la feuille de route.
+Jusqu'ici, nuages et terrain s'ignoraient : une couche flottait, un sol
+brillait dessous, sans lien.
+
+Le point délicat est la COHÉRENCE : une ombre doit tomber exactement sous
+le nuage qui la porte. Dupliquer la formule de densité dans les deux
+shaders l'aurait garantie le jour de l'écriture et jamais ensuite — un
+réglage d'un côté aurait décalé les ombres sans prévenir. Le champ de
+nuages devient donc une source GLSL unique, insérée dans les deux
+programmes : une seule formule, vérifiée présente une seule fois dans le
+fichier.
+
+Géométrie : le point du sol est projeté sur la coquille nuageuse LE LONG
+DU RAYON SOLAIRE — la direction obtenue porte le nuage responsable. Le
+facteur 1/cos allonge l'ombre quand le soleil rase l'horizon, comme un
+soir d'été. Calcul au SOMMET et non au fragment : les masses nuageuses
+sont bien plus larges qu'une maille de tuile, l'interpolation ne se voit
+pas, et le fragment terrain était déjà chargé — coût quasi nul.
+
+L'ombre n'atténue que la lumière DIRECTE, à 55 % au maximum : l'ambiante
+vient du ciel entier, qu'un nuage ne masque pas, et une ombre totale
+ferait tache d'encre. Le shader de coquille s'allège au passage — son
+octave large repasse du sommet au champ partagé.
+
+Prochain lot annoncé : les nuages pilotés par l'HUMIDITÉ simulée, dette du
+lot 2.14. Il demande une texture — première du moteur — donc un lot à lui
+seul.
+
 ## v0.30.2 — Jupes visibles et traits blancs : une seule cause
 
 Les deux derniers défauts visuels de l'audit ont la même origine, et ce

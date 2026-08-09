@@ -201,6 +201,8 @@ class PlanetRenderer(
     private var tUCosHorizon = -1
     private var tULimbBand = -1
     private var tULimbStrength = -1
+    private var tUCloudDrift = -1
+    private var tUCloudShadow = -1
     private var tURimStrength = -1
     private var tULevelTint = -1
     private var tUWaveTime = -1
@@ -327,6 +329,8 @@ class PlanetRenderer(
             tUCosHorizon = GLES20.glGetUniformLocation(tileProgram, "uCosHorizon")
             tULimbBand = GLES20.glGetUniformLocation(tileProgram, "uLimbBand")
             tULimbStrength = GLES20.glGetUniformLocation(tileProgram, "uLimbStrength")
+            tUCloudDrift = GLES20.glGetUniformLocation(tileProgram, "uCloudDrift")
+            tUCloudShadow = GLES20.glGetUniformLocation(tileProgram, "uCloudShadow")
             tURimStrength = GLES20.glGetUniformLocation(tileProgram, "uRimStrength")
             tULevelTint = GLES20.glGetUniformLocation(tileProgram, "uLevelTint")
             tUWaveTime = GLES20.glGetUniformLocation(tileProgram, "uWaveTime")
@@ -602,6 +606,16 @@ class PlanetRenderer(
         GLES20.glUniform1f(tUCosHorizon, cosHorizon)
         GLES20.glUniform1f(tULimbBand, limbBand)
         GLES20.glUniform1f(tULimbStrength, limbStrength)
+
+        // Ombres de nuages : altitude de la coquille en RAYONS planétaires,
+        // l'unité dans laquelle le shader travaille (sph est unitaire). Au
+        // sol comme en orbite, la même valeur : c'est une propriété de la
+        // planète, pas du point de vue.
+        GLES20.glUniform1f(tUCloudDrift, cloudDrift)
+        GLES20.glUniform1f(
+            tUCloudShadow,
+            (CLOUD_ALTITUDE_M / max(1.0, radius)).toFloat()
+        )
 
         // Cible du fondu : la couleur EXACTE du disque du ciel (formule de
         // drawSky), pour que les tuiles s'y dissolvent sans couture. La
@@ -1284,6 +1298,48 @@ class PlanetRenderer(
             }
         """
 
+
+        /**
+         * Champ de nuages en GLSL, PARTAGÉ entre le shader de la coquille et
+         * celui du terrain (lot 2.14 b).
+         *
+         * L'ombre doit tomber exactement sous le nuage qui la porte : la
+         * seule façon d'en être sûr est que les deux étages évaluent la même
+         * fonction, au bit près. Dupliquer la formule dans deux shaders
+         * l'aurait garantie le jour de l'écriture et jamais ensuite — un
+         * réglage d'un côté aurait décalé les ombres sans prévenir.
+         */
+        private const val CLOUD_FIELD_GLSL = """
+            float cloudHash(vec3 p) {
+                return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+            }
+            float cloudNoise(vec3 p) {
+                vec3 i = floor(p); vec3 f = fract(p);
+                vec3 u = f * f * (3.0 - 2.0 * f);
+                float a = mix(cloudHash(i), cloudHash(i + vec3(1.0, 0.0, 0.0)), u.x);
+                float b = mix(cloudHash(i + vec3(0.0, 1.0, 0.0)), cloudHash(i + vec3(1.0, 1.0, 0.0)), u.x);
+                float c = mix(cloudHash(i + vec3(0.0, 0.0, 1.0)), cloudHash(i + vec3(1.0, 0.0, 1.0)), u.x);
+                float d = mix(cloudHash(i + vec3(0.0, 1.0, 1.0)), cloudHash(i + vec3(1.0, 1.0, 1.0)), u.x);
+                return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
+            }
+            // Structure continentale des masses nuageuses : l'octave large,
+            // calculee au sommet dans le shader de coquille, refaite ici pour
+            // que terrain et coquille partagent EXACTEMENT la meme fonction.
+            float cloudBase(vec3 dir, float drift) {
+                vec3 q = dir * 2.6 + vec3(drift * 0.11, 0.0, drift * 0.07);
+                return sin(q.x * 3.1 + sin(q.z * 2.3)) * sin(q.z * 2.7 + sin(q.y * 3.7))
+                     + sin(q.y * 2.9 + sin(q.x * 1.9)) * 0.6;
+            }
+            // Opacite du nuage dans une direction donnee, dans [0, 1].
+            float cloudOpacity(vec3 dir, float drift) {
+                vec3 p = dir * 9.0 + vec3(drift * 0.23, 0.0, drift * 0.15);
+                float n = cloudNoise(p) * 0.62 + cloudNoise(p * 2.7) * 0.38;
+                float density = cloudBase(dir, drift) * 0.35 + n * 1.3 - 0.92;
+                float a = clamp(density, 0.0, 1.0);
+                return a * a * (3.0 - 2.0 * a);
+            }
+        """
+
         /** Altitude de la couche nuageuse, en mètres. */
         const val CLOUD_ALTITUDE_M = 9_000.0
 
@@ -1294,26 +1350,14 @@ class PlanetRenderer(
             uniform float uShellR;
             uniform float uDrift;
             varying vec3 vDir;
-            varying float vBase;
             void main() {
                 gl_Position = uMvp * vec4(aDir * uShellR + uCenterRel, 1.0);
                 vDir = aDir;
-                // Octave large au sommet : la structure continentale des
-                // nuages, le fragment n'ajoute que le detail.
-                vec3 q = aDir * 2.6 + vec3(uDrift * 0.11, 0.0, uDrift * 0.07);
-                vBase = sin(q.x * 3.1 + sin(q.z * 2.3)) * sin(q.z * 2.7 + sin(q.y * 3.7))
-                      + sin(q.y * 2.9 + sin(q.x * 1.9)) * 0.6;
             }
         """
 
         private const val CLOUD_FRAGMENT = """
             precision mediump float;
-            // GLES2 ne GARANTIT pas highp dans les fragment shaders : c'est
-            // une capacite optionnelle, annoncee par cette macro. Le Mali-G77
-            // l'a, un GPU plus ancien refuserait de compiler le shader — et
-            // l'application serait sans nuages ni pluie sur ces appareils.
-            // Le repli mediump degrade la derive (pas visibles au bout de
-            // quelques heures de temps monde) mais compile partout.
             #ifdef GL_FRAGMENT_PRECISION_HIGH
             #define TIME_PRECISION highp
             #else
@@ -1321,35 +1365,15 @@ class PlanetRenderer(
             #endif
             uniform vec3 uSunL;
             uniform float uDayF;
-            // highp EXPLICITE : le sommet declare uDrift en highp par
-            // defaut, et Mali exige la concordance de precision entre les
-            // deux etages, sous peine d'echec d'edition de liens (constate
-            // sur appareil, v0.26.0). mediump aurait fait trembler la
-            // derive : ~0,35 unite de resolution a ces magnitudes, 4 % de
-            // la longueur d'onde du bruit.
+            // Precision accordee avec l'etage sommet : Mali refuse de lier
+            // deux declarations divergentes (constate en v0.26.0).
             uniform TIME_PRECISION float uDrift;
             varying vec3 vDir;
-            varying float vBase;
-            float h3(vec3 p) {
-                return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
-            }
-            float vnoise(vec3 p) {
-                vec3 i = floor(p); vec3 f = fract(p);
-                vec3 u = f * f * (3.0 - 2.0 * f);
-                float a = mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), u.x);
-                float b = mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), u.x);
-                float c = mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), u.x);
-                float d = mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), u.x);
-                return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
-            }
+""" + CLOUD_FIELD_GLSL + """
             void main() {
-                vec3 p = vDir * 9.0 + vec3(uDrift * 0.23, 0.0, uDrift * 0.15);
-                float n = vnoise(p) * 0.62 + vnoise(p * 2.7) * 0.38;
-                float density = vBase * 0.35 + n * 1.3 - 0.92;
-                float alpha = clamp(density, 0.0, 1.0);
-                alpha = alpha * alpha * (3.0 - 2.0 * alpha) * 0.62;
+                float alpha = cloudOpacity(normalize(vDir), uDrift) * 0.62;
                 // Eclairage : jour plein cote soleil, gris bleute de nuit.
-                float light = max(dot(vDir, uSunL), 0.0) * 0.85 + 0.10;
+                float light = max(dot(normalize(vDir), uSunL), 0.0) * 0.85 + 0.10;
                 vec3 col = vec3(0.97, 0.97, 0.99) * light * (0.25 + 0.75 * uDayF)
                          + vec3(0.06, 0.07, 0.10) * (1.0 - uDayF);
                 gl_FragColor = vec4(col, alpha);
@@ -1554,6 +1578,8 @@ class PlanetRenderer(
             uniform float uLimbStrength; // 0 sous 600 km, 1 au-dela de 1500
             uniform float uWaveTime;   // phase de la houle, radians
             uniform float uWaveScale;  // 0 sur tuile grossiere, 1 de pres
+            uniform float uCloudDrift;   // meme derive que la coquille
+            uniform float uCloudShadow;  // altitude relative des nuages ; 0 = desactive
 
             uniform float uMorph;      // 0 geometrie fine, 1 geometrie parente
 
@@ -1569,7 +1595,8 @@ class PlanetRenderer(
             varying float vSpec;
             varying float vFog;
             varying float vRim;
-
+            varying float vCloudShade;
+""" + CLOUD_FIELD_GLSL + """
             void main() {
                 vec3 world = uCenterWorld + aPosition;
                 vec3 sph = normalize(world);
@@ -1614,6 +1641,26 @@ class PlanetRenderer(
                 vDay = clamp(dot(sph, sun) * 2.2 + 0.22, 0.0, 1.0);
                 vDiffuse = max(dot(nrm, sun), 0.0);
 
+                // --- Ombres de nuages (lot 2.14 b) ---
+                //
+                // Le point du sol est projete sur la coquille nuageuse LE LONG
+                // DU RAYON SOLAIRE : la direction obtenue porte le nuage
+                // responsable de l'ombre. Le facteur 1/cos allonge l'ombre
+                // quand le soleil rase l'horizon — un nuage projette alors son
+                // ombre tres loin, comme un soir d'ete.
+                //
+                // Calcule au SOMMET et non au fragment : les masses nuageuses
+                // sont bien plus larges qu'une maille, l'interpolation ne se
+                // voit pas, et le fragment terrain est deja charge.
+                vCloudShade = 1.0;
+                if (uCloudShadow > 0.0) {
+                    float cosSun = max(dot(sph, sun), 0.12);
+                    vec3 shadowDir = normalize(sph + sun * (uCloudShadow / cosSun));
+                    // 0,55 : un nuage laisse passer une part notable de la
+                    // lumiere du ciel ; une ombre totale ferait tache d'encre.
+                    vCloudShade = 1.0 - cloudOpacity(shadowDir, uCloudDrift) * 0.55;
+                }
+
                 vec3 view = normalize(-rel);
 
                 // Le materiau est desormais CONTINU (0 terre, 1 eau, fondu au
@@ -1657,9 +1704,12 @@ class PlanetRenderer(
             varying float vSpec;
             varying float vFog;
             varying float vRim;
+            varying float vCloudShade;
 
             void main() {
-                vec3 color = vColor * (0.12 + 0.88 * vDiffuse) * vDay;
+                // L'ombre du nuage attenue la lumiere DIRECTE seulement :
+                // l'ambiante vient du ciel entier, qu'un nuage ne masque pas.
+                vec3 color = vColor * (0.12 + 0.88 * vDiffuse * vCloudShade) * vDay;
                 color += vec3(0.90, 0.94, 1.0) * vSpec * vDay;
                 color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
                 // Lueur nocturne plus franche qu'en orbite : au sol, un noir
