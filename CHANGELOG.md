@@ -1,5 +1,51 @@
 # Journal des versions
 
+## v0.29.1 — Test d'occlusion réécrit : il mesurait l'océan
+
+Le test de la v0.28.0 échouait avec une dispersion de 7,3·10⁻⁴ — celle
+d'une surface parfaitement uniforme. Cause : ses quatre tuiles témoins
+avaient des coordonnées arbitraires, et sur un globe couvert à 66 % d'eau
+elles sont tombées en mer, où l'occlusion est neutre par construction et
+la couleur plate. Le test ne mesurait rien. Cinquième test mal calibré du
+projet, deuxième dont la faute est la POPULATION observée et non le seuil.
+
+Réécriture qui teste la propriété elle-même au lieu d'un effet de bord :
+à biome égal, un sommet concave doit être plus sombre qu'un sommet
+convexe. Trois garanties nouvelles — les tuiles sont CHERCHÉES sur terre
+émergée (comme le fait déjà VegetationTest) ; la concavité est recalculée
+indépendamment depuis le terrain continu, si bien que le test contrôle
+l'implémentation au lieu de la reproduire ; et les populations sont
+stratifiées par biome puis cumulées, jamais comparées en moyenne brute —
+la leçon des courants (v0.15.3).
+
+## v0.29.0 — Le mode piéton : être quelqu'un sur la planète
+
+Un bouton « Piéton » en mode sol, et l'on cesse de piloter une caméra qui
+plane : l'œil se place à 1,70 m du sol et y reste, quel que soit le
+relief. Deux règles suffisent, et elles se déduisent du modèle de caméra
+existant sans le modifier.
+
+La caméra vise un point du SOL à distance `rangeM` sous un angle `tilt` ;
+la hauteur de l'œil vaut donc `rangeM · cos(tilt)`, et l'on inverse :
+`rangeM = 1,70 / cos(tilt)`. À l'inclinaison maximale (82°), la portée
+tombe à 12 m — le regard porte douze mètres devant les pieds, exactement
+la vue d'un promeneur. En se penchant (50°), on regarde le sol à deux
+mètres. La plage entière est naturelle, sans constante arbitraire.
+
+Vitesse ABSOLUE, et le calcul l'a imposée : la règle du glissement
+(proportionnelle à l'altitude) aurait poussé le piéton à 35 km/h à douze
+mètres de portée. Marche à 2,2 m/s manche à mi-course, course à 6 m/s
+manche à fond. À cette allure, un tour de planète demande sept mois de
+marche continue — c'est ce genre de chiffre qui donne son échelle au monde.
+
+Quatre tests vérifient la géométrie contre elle-même : l'œil à 1,70 m à
+toute inclinaison du domaine, les bornes qui empêchent la portée
+d'exploser (cos → 0), et des vitesses humaines.
+
+Point ouvert assumé : le regard ne monte pas au-dessus de l'horizontale —
+on ne contemple pas les étoiles debout. Il faudrait un second modèle de
+caméra (visée libre, sans point au sol) ; noté pour le lot 7.1.
+
 ## v0.28.0 — Lot 2.13 : occlusion ambiante, le terrain gagne son volume
 
 La prairie était un aplat vert : ombrage purement diffus, aucun modelé, et

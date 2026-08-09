@@ -397,6 +397,42 @@ class PlanetCamera(
         /** Distance à partir de laquelle l'inclinaison commence à s'ouvrir. */
         const val TILT_OPEN_RANGE_M = 2_000_000.0
 
+        // ------------------------------------------------- mode piéton
+        //
+        // On ne pilote plus une caméra qui plane : on EST quelqu'un debout
+        // sur la planète. Deux règles suffisent, et elles se déduisent du
+        // modèle orbital existant sans le modifier.
+
+        /** Hauteur des yeux au-dessus du sol, en mètres. */
+        const val EYE_HEIGHT_M = 1.70
+
+        /** Vitesse de marche et de course, en mètres par seconde. */
+        const val WALK_SPEED_MS = 2.2
+        const val RUN_SPEED_MS = 6.0
+
+        /** Inclinaison minimale en piéton : sous 50°, on fixe ses pieds. */
+        const val PEDESTRIAN_MIN_TILT_RAD = 0.873
+
+        /**
+         * Portée de visée qui place l'œil à [EYE_HEIGHT_M] du sol pour une
+         * inclinaison donnée.
+         *
+         * La caméra vise un point du SOL à distance `rangeM` sous un angle
+         * `tilt` ; la hauteur de l'œil vaut donc `rangeM · cos(tilt)`, et
+         * l'on inverse. À l'inclinaison maximale (82°), la portée est de
+         * 12 m : le regard tombe douze mètres devant les pieds, exactement
+         * la vue d'un promeneur. À 50°, on regarde le sol à deux mètres.
+         *
+         * Conséquence assumée : le regard ne monte pas au-dessus de
+         * l'horizontale — on ne peut pas contempler les étoiles debout. Y
+         * remédier demanderait un second modèle de caméra (visée libre,
+         * sans point au sol) ; noté pour le lot 7.1.
+         */
+        fun pedestrianRangeM(tiltRad: Double): Double {
+            val t = tiltRad.coerceIn(PEDESTRIAN_MIN_TILT_RAD, MAX_TILT_RAD)
+            return (EYE_HEIGHT_M / cos(t)).coerceIn(MIN_RANGE_M, 100.0)
+        }
+
         /**
          * Plancher de la dilatation temporelle : 1/2880 fait durer le jour
          * planétaire 38,4 heures réelles à ×1 — un soleil immobile à l'œil.

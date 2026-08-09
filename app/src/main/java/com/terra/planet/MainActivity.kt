@@ -91,6 +91,10 @@ class MainActivity : Activity() {
     private var descentActive = false
     private var worldEpoch = 0
     private lateinit var modeButton: TextView
+
+    /** Mode piéton (v0.29.0) : l'œil à hauteur d'homme, la marche à pied. */
+    private var pedestrianMode = false
+    private lateinit var pedestrianButton: TextView
     private var lastPinchFocusY = 0f
 
     private val clock = SimClock(stepSeconds = 1f / 30f, maxStepsPerFrame = 240)
@@ -206,6 +210,9 @@ class MainActivity : Activity() {
         timeBar.addView(makeButton("Monde") { showSeedDialog() }, column())
         modeButton = makeButton("Sol") { toggleDescent() }
         timeBar.addView(modeButton, column())
+        pedestrianButton = makeButton("Piéton") { togglePedestrian() }
+        pedestrianButton.visibility = View.GONE
+        timeBar.addView(pedestrianButton, column())
 
         // Poignées : toujours visibles au coin, elles font coulisser le
         // panneau. Le chevron pointe vers l'endroit où le tiroir ira.
@@ -500,6 +507,22 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Bascule du mode piéton. À l'entrée, la caméra se pose debout : œil à
+     * 1,70 m, regard à l'horizontale. À la sortie, rien à défaire — le
+     * mode ne fait que contraindre la portée à chaque image.
+     */
+    private fun togglePedestrian() {
+        pedestrianMode = !pedestrianMode
+        pedestrianButton.text = if (pedestrianMode) "Voler" else "Piéton"
+        val cam = camera ?: return
+        if (pedestrianMode) {
+            cam.tiltRad = PlanetCamera.MAX_TILT_RAD
+            cam.rangeM = PlanetCamera.pedestrianRangeM(cam.tiltRad)
+            settleCamera(cam)
+        }
+    }
+
     // ------------------------------------------------- éditeur (lot 1.18)
 
     /**
@@ -589,6 +612,8 @@ class MainActivity : Activity() {
             descentActive = false
             renderer.descentMode = false
             joystick.visibility = View.GONE
+            pedestrianButton.visibility = View.GONE
+            pedestrianMode = false
             modeButton.text = "Sol"
             refreshButtonStates()
             return
@@ -606,6 +631,7 @@ class MainActivity : Activity() {
         }
         descentActive = true
         joystick.visibility = View.VISIBLE
+        pedestrianButton.visibility = View.VISIBLE
         modeButton.text = "Globe"
         camera?.let { settleCamera(it) }
         renderer.descentMode = true
@@ -659,10 +685,24 @@ class MainActivity : Activity() {
                     // Même échelle de vitesse que le doigt : mètres par
                     // pixel à la distance courante, sans la compensation
                     // d'inclinaison de pan() — la projection la remplace.
-                    val metresPerPixel = 2.0 * cam.rangeM *
-                        kotlin.math.tan(PlanetCamera.DEFAULT_FOV_RAD * 0.5) /
-                        glView.height.toDouble().coerceAtLeast(1.0)
-                    val dM = joystickSpeedPxPerS * 0.016 * metresPerPixel
+                    // En piéton, la vitesse est ABSOLUE : la règle du
+                    // glissement (proportionnelle à l'altitude) donnerait
+                    // 35 km/h à 12 m de portée — un promeneur supersonique.
+                    // Manche à fond = course, manche à mi-course = marche.
+                    val dM = if (pedestrianMode) {
+                        val push = kotlin.math.hypot(
+                            joystick.vx.toDouble(), joystick.vy.toDouble()
+                        ).coerceIn(0.0, 1.0)
+                        val speed = PlanetCamera.WALK_SPEED_MS +
+                            (PlanetCamera.RUN_SPEED_MS - PlanetCamera.WALK_SPEED_MS) *
+                            ((push - 0.5) / 0.5).coerceIn(0.0, 1.0)
+                        speed * 0.016
+                    } else {
+                        val metresPerPixel = 2.0 * cam.rangeM *
+                            kotlin.math.tan(PlanetCamera.DEFAULT_FOV_RAD * 0.5) /
+                            glView.height.toDouble().coerceAtLeast(1.0)
+                        joystickSpeedPxPerS * 0.016 * metresPerPixel
+                    }
                     val move = f * (joystick.vy * dM) + r * (joystick.vx * dM)
                     cam.moveFocusMetres(
                         move dot com.terra.core.Geodesy.northAt(radial),
@@ -681,6 +721,16 @@ class MainActivity : Activity() {
      * entre la caméra mutable du fil d'interface et le fil OpenGL.
      */
     private fun settleCamera(cam: PlanetCamera) {
+        // En piéton, la portée découle de l'inclinaison — et l'inclinaison
+        // reste au-dessus du seuil où l'on ne verrait plus que ses pieds.
+        // Appliqué AVANT l'ancrage : snapToTerrain peut encore repousser
+        // l'œil si une paroi se dresse devant, et c'est souhaitable.
+        if (pedestrianMode) {
+            if (cam.tiltRad < PlanetCamera.PEDESTRIAN_MIN_TILT_RAD) {
+                cam.tiltRad = PlanetCamera.PEDESTRIAN_MIN_TILT_RAD
+            }
+            cam.rangeM = PlanetCamera.pedestrianRangeM(cam.tiltRad)
+        }
         raycaster?.let { cam.snapToTerrain(it) }
         val eye = cam.eyePositionM()
         // Hauteur réelle au-dessus du relief, mesurée par le lancer de rayon
@@ -1091,6 +1141,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.28.0"
+        const val VERSION = "0.29.1"
     }
 }
