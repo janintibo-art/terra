@@ -142,6 +142,75 @@ class AmbientOcclusionTest {
     }
 
     @Test
+    fun `deux tuiles voisines s ombrent pareil sur leur bord commun`() {
+        // LE test qui manquait : la v0.29.3 normalisait par la rugosité
+        // moyenne de chaque tuile, si bien que deux voisines assombrissaient
+        // différemment le MÊME relief à leur frontière — coutures diagonales
+        // visibles sur appareil, qu'aucun test ne voyait.
+        //
+        // On compare les sommets du bord partagé, appariés par leur position
+        // dans l'espace : à moins d'un centimètre, ce sont les mêmes points
+        // du terrain, donc leur couleur doit coïncider.
+        val sampler = CoarseSampler(world)
+        val r = world.params.radiusM.toDouble()
+        val base = landTiles.firstOrNull() ?: return
+        val left = TileMesh(base, world.terrain, sampler, r)
+        val right = TileMesh(
+            TileId(base.face, base.level, base.x + 1, base.y),
+            world.terrain, sampler, r
+        )
+
+        fun points(m: TileMesh): List<Triple<Double, Double, DoubleArray>> {
+            val out = ArrayList<Triple<Double, Double, DoubleArray>>()
+            val terrainFloats = TileMesh.MESH_N * TileMesh.MESH_N * 6 *
+                TileMesh.FLOATS_PER_VERTEX
+            var v = 0
+            while (v < terrainFloats) {
+                out.add(
+                    Triple(
+                        m.vertexData[v] + m.centerXM,
+                        m.vertexData[v + 1] + m.centerYM,
+                        doubleArrayOf(
+                            m.vertexData[v + 2] + m.centerZM,
+                            m.vertexData[v + TileMesh.OFFSET_COLOR].toDouble(),
+                            m.vertexData[v + TileMesh.OFFSET_COLOR + 1].toDouble(),
+                            m.vertexData[v + TileMesh.OFFSET_COLOR + 2].toDouble()
+                        )
+                    )
+                )
+                v += TileMesh.FLOATS_PER_VERTEX
+            }
+            return out
+        }
+
+        val a = points(left)
+        val b = points(right)
+        var compared = 0
+        var maxGap = 0.0
+        for (pa in a) {
+            for (pb in b) {
+                if (kotlin.math.abs(pa.first - pb.first) > 0.01) continue
+                if (kotlin.math.abs(pa.second - pb.second) > 0.01) continue
+                if (kotlin.math.abs(pa.third[0] - pb.third[0]) > 0.01) continue
+                compared++
+                for (k in 1..3) {
+                    val gap = kotlin.math.abs(pa.third[k] - pb.third[k])
+                    if (gap > maxGap) maxGap = gap
+                }
+                break
+            }
+        }
+        assertTrue(compared >= 5, "trop peu de sommets partagés trouvés ($compared)")
+        // Tolérance : le bruit de teinte du sol est identique aux deux bords
+        // (même position, même hachage), donc l'écart attendu est nul ; on
+        // laisse 1 % pour l'arrondi du flottant.
+        assertTrue(
+            maxGap < 0.01,
+            "couture entre tuiles voisines : écart de couleur de $maxGap sur le bord commun"
+        )
+    }
+
+    @Test
     fun `l occlusion ne sort jamais des bornes de couleur`() {
         val sampler = CoarseSampler(world)
         val r = world.params.radiusM.toDouble()

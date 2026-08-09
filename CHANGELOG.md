@@ -1,5 +1,30 @@
 # Journal des versions
 
+## v0.29.4 — Coutures d'ombrage : la normalisation ne doit rien à la tuile
+
+L'occlusion de la v0.29.3 est enfin visible — les dunes se sculptent — mais
+elle a introduit des coutures diagonales franches entre tuiles voisines.
+Cause directe de son propre correctif : la normalisation utilisait la
+rugosité MOYENNE DE LA TUILE. Une tuile de dunes et sa voisine de plaine
+assombrissaient donc différemment le même relief à leur frontière commune.
+Juste en amplitude, faux en continuité.
+
+Remplacement : la concavité est divisée par le PAS DE GRILLE, ce qui en
+fait une COURBURE — sans dimension. Elle ne dépend plus que du terrain et
+de l'échelle d'échantillonnage, jamais du contenu de la tuile : deux
+voisines de même niveau la calculent identique sur leur bord partagé, et
+la continuité devient structurelle au lieu d'être réglée. Bonus, un relief
+autosimilaire donne la même courbure à tous les niveaux : l'effet ne varie
+plus avec le zoom. Gain 12 : plaine lisse 1 %, dunes 38 %.
+
+Et surtout, LE TEST QUI MANQUAIT : deux tuiles voisines, sommets du bord
+commun appariés par leur position dans l'espace, couleurs qui doivent
+coïncider à 1 % près. Aucun test ne regardait les frontières — c'est
+pourquoi la couture est passée jusqu'à l'écran.
+
+Deux défauts restants, notés pour une capture ciblée : des jupes visibles
+au premier plan et de fins traits blancs sur le sable.
+
 ## v0.29.3 — L'occlusion était inopérante : le test avait raison
 
 Troisième échec du test d'occlusion, et cette fois il ne s'agissait plus

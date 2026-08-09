@@ -273,35 +273,36 @@ class TileMesh(
         // du test — aucune constante métrique, donc aucune à se tromper, et
         // l'effet garde la même force à tous les niveaux du quadtree comme
         // sur tous les reliefs.
-        val conc = FloatArray(verts * verts)
-        var concSum = 0.0
-        var concCount = 0
-        for (j in 0..n) {
-            for (i in 0..n) {
-                val c = (j + off) * verts + (i + off)
-                if (mat[c] > 0.4f) continue
-                val cw = alt[c - 1]
-                val ce = alt[c + 1]
-                val cs = alt[c - verts]
-                val cn = alt[c + verts]
-                val k = (cw + ce + cs + cn) * 0.25f - alt[c]
-                conc[c] = k
-                concSum += kotlin.math.abs(k.toDouble())
-                concCount++
-            }
-        }
-        // Plancher de 5 cm : une tuile parfaitement plate ne doit pas voir
-        // son bruit d'arrondi amplifié en marbrures.
-        val roughness = if (concCount > 0)
-            max(0.05f, (concSum / concCount).toFloat() * 2.2f) else 1f
+        // Pas de grille en mètres : le dénominateur qui rend la mesure
+        // adimensionnée. La v0.29.3 normalisait par la rugosité MOYENNE DE
+        // LA TUILE — juste en amplitude, mais discontinue : une tuile de
+        // dunes et sa voisine de plaine assombrissaient différemment le
+        // même relief à leur frontière commune, d'où des coutures
+        // diagonales franches (constatées sur appareil).
+        //
+        // concavité / pas est une COURBURE : sans dimension, elle ne dépend
+        // que du terrain et de l'échelle d'échantillonnage, jamais du
+        // contenu de la tuile. Deux tuiles voisines de même niveau la
+        // calculent donc identique sur leur bord partagé — la continuité
+        // est structurelle, pas obtenue par réglage. Et un relief
+        // autosimilaire donne la même courbure à tous les niveaux : l'effet
+        // ne varie pas avec le zoom.
+        val stepM = ((tile.s1 - tile.s0).toDouble() * planetRadiusM / n).toFloat()
+            .coerceAtLeast(0.01f)
         for (j in 0..n) {
             for (i in 0..n) {
                 val c = (j + off) * verts + (i + off)
                 if (mat[c] > 0.4f) { ao[c] = 1f; continue }
-                // Un creux net garde 62 % de la lumière du ciel (l'horizon
-                // reste largement ouvert au fond d'un vallon), une crête en
-                // gagne 8 %.
-                ao[c] = (1f - (conc[c] / roughness).coerceIn(-0.08f, 0.38f))
+                val cw = alt[c - 1]
+                val ce = alt[c + 1]
+                val cs = alt[c - verts]
+                val cn = alt[c + verts]
+                val curvature = ((cw + ce + cs + cn) * 0.25f - alt[c]) / stepM
+                // Gain 12 : une plaine lisse s'assombrit de 1 %, des dunes
+                // de 38 % — la borne haute, atteinte quand la courbure vaut
+                // 3 % (validation Python). Un creux garde 62 % de la
+                // lumière du ciel, une crête en gagne 8 %.
+                ao[c] = (1f - (curvature * AO_GAIN).coerceIn(-0.08f, 0.38f))
                     .coerceIn(0.62f, 1.08f)
             }
         }
@@ -805,6 +806,15 @@ class TileMesh(
             Biome.SEMI_DESERT -> 0.08f
             else -> 0f
         }
+
+        /**
+         * Gain de l'occlusion ambiante, appliqué à la COURBURE (concavité
+         * divisée par le pas de grille — sans dimension). Voir le bloc
+         * d'occlusion : cette adimensionnalité est ce qui rend l'ombrage
+         * continu d'une tuile à l'autre et invariant par changement de
+         * niveau.
+         */
+        const val AO_GAIN = 12f
 
         /** Couleur de roche des pentes — gris-brun neutre, éclairé par la
          *  normale comme le reste du terrain. */
