@@ -819,6 +819,11 @@ class MainActivity : Activity() {
             val md = com.terra.sim.CelestialSky.moonDirection(w.seed, worldTime, clock.tick)
             renderer.moonDirX = md.x; renderer.moonDirY = md.y; renderer.moonDirZ = md.z
         }
+        // Dérive des nuages : liée aux minutes du monde — à ×200, le ciel
+        // court. Le modulo évite la perte de précision du flottant sur les
+        // vieux mondes sans créer de saut visible (période >> longueur de
+        // corrélation du bruit).
+        renderer.cloudDrift = ((clock.tick % 2_000_000L).toFloat()) / 1_440f
 
         // Inertie : la planète continue de tourner après un glissement, et
         // ralentit progressivement.
@@ -1056,6 +1061,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.25.1"
+        const val VERSION = "0.26.0"
     }
 }

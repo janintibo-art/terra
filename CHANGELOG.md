@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.26.0 — Lot 2.14 : la couche nuageuse
+
+Une coquille sphérique à 9 km d'altitude, dont l'alpha est un bruit de
+valeur calculé au fragment — pas de texture dans ce moteur, le bruit EST
+la texture. Deux octaves au fragment posées sur une octave large au
+sommet : la structure continentale des nuages vient du sommet, le détail
+du pixel. Éclairée par le soleil : terminateur sur les nuages depuis
+l'orbite, gris bleuté la nuit.
+
+Un seul shader sert les deux modes : en descente, coquille en mètres
+relatifs caméra après le terrain (le test de profondeur élimine la face
+lointaine au-delà de la planète) ; au globe, coquille au rayon relatif
+1 + 9 km/R, la matrice portant déjà la rotation propre. Vu de dehors on
+regarde la face externe, vu de dessous la face interne : l'élagage bascule
+avec l'altitude — sans quoi l'une des deux vues serait vide.
+
+La dérive suit l'horloge du monde : à ×200, le ciel court. Budget dit
+d'avance : chaque octave de fragment coûte huit sinus par pixel — si les
+i/s plient sur le Mali, on retirera une octave, la constante est isolée.
+
+Rendu pur, sans test JVM possible ; génération et empreintes intactes.
+
 ## v0.25.1 — Correctif de compilation : trois imports manquants
 
 Une seule vraie faute : `Rng` non importé dans CelestialSky — sa signature

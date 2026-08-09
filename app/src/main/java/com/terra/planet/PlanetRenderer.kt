@@ -192,6 +192,10 @@ class PlanetRenderer(
     private var moonVbo = 0
     private var moonVertexCount = 0
     @Volatile var pendingStars: FloatArray? = null
+    private var cloudProgram = 0
+    private var cloudVbo = 0
+    private var cloudVertexCount = 0
+    @Volatile var cloudDrift = 0f
     @Volatile var moonDirX = 1f
     @Volatile var moonDirY = 0f
     @Volatile var moonDirZ = 0f
@@ -243,6 +247,7 @@ class PlanetRenderer(
         skyVbo = 0
         starProgram = 0; starVbo = 0
         moonProgram = 0; moonVbo = 0
+        cloudProgram = 0; cloudVbo = 0
         gpuPool.forgetAll()
         stream.forgetGpu()
         tilePool.cancelAll()
@@ -647,6 +652,16 @@ class PlanetRenderer(
         disableAttribute(tAMorph)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
         drawnTriangles = triangles
+
+        // --- Nuages, APRÈS le terrain : ils se mélangent par-dessus. ---
+        drawClouds(
+            mvp,
+            (-snapshot.eyeXM).toFloat(), (-snapshot.eyeYM).toFloat(),
+            (-snapshot.eyeZM).toFloat(),
+            (radius + CLOUD_ALTITUDE_M).toFloat(),
+            sunLx, sunY, sunLz, dayFEye,
+            inside = snapshot.altitudeM < CLOUD_ALTITUDE_M
+        )
     }
 
     /**
@@ -918,6 +933,9 @@ class PlanetRenderer(
         Matrix.multiplyMM(temp, 0, view, 0, model, 0)
         Matrix.multiplyMM(mvp, 0, projection, 0, temp, 0)
 
+        // Nuages du globe : dessinés APRÈS la planète (voir fin de fonction),
+        // la matrice mvp porte déjà la rotation propre — le soleil est donc
+        // contre-tourné comme pour les tuiles.
         GLES20.glUseProgram(program)
         GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0)
         GLES20.glUniformMatrix4fv(uModel, 1, false, model, 0)
@@ -939,6 +957,89 @@ class PlanetRenderer(
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
 
         drawnTriangles = uploadedVertexCount / 3
+
+        // Nuages contemplatifs : coquille au rayon relatif (1 + 9 km/R),
+        // centre à l'origine, soleil contre-tourné de la rotation propre.
+        val spinRad = spinDeg * DEG
+        val sc = cos(spinRad); val ss = sin(spinRad)
+        drawClouds(
+            mvp, 0f, 0f, 0f,
+            1f + (CLOUD_ALTITUDE_M / 6_371_000.0).toFloat(),
+            sunX * sc - sunZ * ss, sunY, sunX * ss + sunZ * sc,
+            1f, inside = false
+        )
+    }
+
+    /**
+     * Couche nuageuse — lot 2.14. Une coquille sphérique à ~9 km, dont
+     * l'alpha est un bruit de valeur calculé dans le fragment : pas de
+     * texture dans ce moteur, le bruit est la texture. Deux octaves au
+     * fragment (le budget du Mali : chaque octave coûte huit sinus par
+     * pixel) posées sur une octave large au sommet.
+     *
+     * Vue de DEHORS on regarde la face externe, de DESSOUS la face
+     * interne : l'élagage bascule avec l'altitude, sinon l'une des deux
+     * vues serait vide — et de l'intérieur, la face lointaine, au-delà de
+     * la planète, est éliminée par le test de profondeur contre le terrain
+     * déjà dessiné.
+     */
+    private fun drawClouds(
+        mvpM: FloatArray,
+        centerRelX: Float, centerRelY: Float, centerRelZ: Float,
+        shellRadius: Float,
+        sunLx: Float, sunLy: Float, sunLz: Float,
+        dayF: Float,
+        inside: Boolean
+    ) {
+        if (cloudProgram == 0) cloudProgram = buildProgram(CLOUD_VERTEX, CLOUD_FRAGMENT)
+        if (cloudVbo == 0) {
+            val sphere = Icosphere(4)
+            val data = FloatArray(sphere.faceCount * 9)
+            var o = 0
+            for (f in 0 until sphere.faceCount) {
+                for (k in 0..2) {
+                    val v = sphere.vertices[sphere.faces[f * 3 + k]]
+                    data[o] = v.x; data[o + 1] = v.y; data[o + 2] = v.z
+                    o += 3
+                }
+            }
+            cloudVertexCount = sphere.faceCount * 3
+            val ids = IntArray(1); GLES20.glGenBuffers(1, ids, 0)
+            cloudVbo = ids[0]
+            val buf = java.nio.ByteBuffer.allocateDirect(data.size * 4)
+                .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().put(data)
+            buf.position(0)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, cloudVbo)
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.size * 4, buf,
+                GLES20.GL_STATIC_DRAW)
+        }
+        if (cloudProgram == 0) return
+
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        GLES20.glDepthMask(false)
+        GLES20.glCullFace(if (inside) GLES20.GL_FRONT else GLES20.GL_BACK)
+
+        GLES20.glUseProgram(cloudProgram)
+        GLES20.glUniformMatrix4fv(
+            GLES20.glGetUniformLocation(cloudProgram, "uMvp"), 1, false, mvpM, 0)
+        GLES20.glUniform3f(GLES20.glGetUniformLocation(cloudProgram, "uCenterRel"),
+            centerRelX, centerRelY, centerRelZ)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(cloudProgram, "uShellR"), shellRadius)
+        GLES20.glUniform3f(GLES20.glGetUniformLocation(cloudProgram, "uSunL"),
+            sunLx, sunLy, sunLz)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(cloudProgram, "uDayF"), dayF)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(cloudProgram, "uDrift"), cloudDrift)
+        val aDir = GLES20.glGetAttribLocation(cloudProgram, "aDir")
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, cloudVbo)
+        GLES20.glEnableVertexAttribArray(aDir)
+        GLES20.glVertexAttribPointer(aDir, 3, GLES20.GL_FLOAT, false, 12, 0)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, cloudVertexCount)
+        GLES20.glDisableVertexAttribArray(aDir)
+
+        GLES20.glCullFace(GLES20.GL_BACK)
+        GLES20.glDepthMask(true)
+        GLES20.glDisable(GLES20.GL_BLEND)
     }
 
     private fun bindAttribute(location: Int, size: Int, offsetFloats: Int) {
@@ -1024,6 +1125,61 @@ class PlanetRenderer(
     }
 
     companion object {
+        /** Altitude de la couche nuageuse, en mètres. */
+        const val CLOUD_ALTITUDE_M = 9_000.0
+
+        private const val CLOUD_VERTEX = """
+            attribute vec3 aDir;
+            uniform mat4 uMvp;
+            uniform vec3 uCenterRel;
+            uniform float uShellR;
+            uniform float uDrift;
+            varying vec3 vDir;
+            varying float vBase;
+            void main() {
+                gl_Position = uMvp * vec4(aDir * uShellR + uCenterRel, 1.0);
+                vDir = aDir;
+                // Octave large au sommet : la structure continentale des
+                // nuages, le fragment n'ajoute que le detail.
+                vec3 q = aDir * 2.6 + vec3(uDrift * 0.11, 0.0, uDrift * 0.07);
+                vBase = sin(q.x * 3.1 + sin(q.z * 2.3)) * sin(q.z * 2.7 + sin(q.y * 3.7))
+                      + sin(q.y * 2.9 + sin(q.x * 1.9)) * 0.6;
+            }
+        """
+
+        private const val CLOUD_FRAGMENT = """
+            precision mediump float;
+            uniform vec3 uSunL;
+            uniform float uDayF;
+            uniform float uDrift;
+            varying vec3 vDir;
+            varying float vBase;
+            float h3(vec3 p) {
+                return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+            }
+            float vnoise(vec3 p) {
+                vec3 i = floor(p); vec3 f = fract(p);
+                vec3 u = f * f * (3.0 - 2.0 * f);
+                float a = mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), u.x);
+                float b = mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), u.x);
+                float c = mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), u.x);
+                float d = mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), u.x);
+                return mix(mix(a, b, u.y), mix(c, d, u.y), u.z);
+            }
+            void main() {
+                vec3 p = vDir * 9.0 + vec3(uDrift * 0.23, 0.0, uDrift * 0.15);
+                float n = vnoise(p) * 0.62 + vnoise(p * 2.7) * 0.38;
+                float density = vBase * 0.35 + n * 1.3 - 0.92;
+                float alpha = clamp(density, 0.0, 1.0);
+                alpha = alpha * alpha * (3.0 - 2.0 * alpha) * 0.62;
+                // Eclairage : jour plein cote soleil, gris bleute de nuit.
+                float light = max(dot(vDir, uSunL), 0.0) * 0.85 + 0.10;
+                vec3 col = vec3(0.97, 0.97, 0.99) * light * (0.25 + 0.75 * uDayF)
+                         + vec3(0.06, 0.07, 0.10) * (1.0 - uDayF);
+                gl_FragColor = vec4(col, alpha);
+            }
+        """
+
 
         private const val STAR_VERTEX = """
             attribute vec4 aStar;
