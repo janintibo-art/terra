@@ -107,10 +107,21 @@ class VegetationTest {
             parentPlants.size, childPlants.size,
             "la descente crée ou perd des plantes"
         )
+        // Depuis la v0.26.2, le pied suit la SURFACE DE LA TUILE : la
+        // composante radiale diffère légitimement entre niveaux (grilles
+        // d'échantillonnage différentes). La canonicité se vérifie donc en
+        // TANGENTIEL au centimètre ; le radial est borné par la variation
+        // du terrain entre deux pas de grille — 60 m est large.
         for (p in parentPlants) {
+            val pl = sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2])
             val found = childPlants.any { c ->
-                abs(c[0] - p[0]) < 0.01 && abs(c[1] - p[1]) < 0.01 &&
-                    abs(c[2] - p[2]) < 0.01
+                val dot = (c[0] * p[0] + c[1] * p[1] + c[2] * p[2])
+                val cl = sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2])
+                val radialGap = abs(cl - pl)
+                // Écart tangentiel : distance entre directions × rayon.
+                val cosA = (dot / (cl * pl)).coerceIn(-1.0, 1.0)
+                val tangential = kotlin.math.acos(cosA) * pl
+                tangential < 0.01 && radialGap < 60.0
             }
             assertTrue(found, "une plante de la mère manque dans les filles")
         }

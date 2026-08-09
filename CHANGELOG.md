@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.26.2 — Correctif : les plantes flottaient au-dessus des tuiles lointaines
+
+Constaté sur appareil : des plantes suspendues en l'air à moyenne distance.
+Cause structurelle — le pied était posé sur le terrain continu EXACT, mais
+le sol visible à distance est une tuile grossière dont la surface s'écarte
+de l'exact de plusieurs mètres entre ses nœuds. Près de la caméra les deux
+coïncident ; au loin, la plante lévitait au-dessus du visible.
+
+Principe du correctif : la plante appartient à sa tuile, son pied se pose
+sur la SURFACE DE LA TUILE — interpolation bilinéaire de sa propre grille
+d'altitudes, au niveau de détail où elle vit. Quand la tuile change de
+niveau, le pied suit la surface : le même saut que le sol sous la plante,
+donc invisible. La mesure de pente reste sur le terrain fin (c'est la
+pente réelle qui décide si un arbre tient).
+
+Le test mère/filles est recalibré en conséquence : la canonicité se
+vérifie au centimètre en TANGENTIEL — la position sur le treillis ne bouge
+pas d'un poil — tandis que la composante radiale diffère légitimement
+entre niveaux, bornée à 60 m. Reste transitoire assumé : pendant le
+morphing d'une tuile, le sol glisse et la plante non — un flottement bref,
+borné par l'écart mère/fille, à traiter si l'œil l'attrape.
+
 ## v0.26.1 — Correctif : le programme nuages ne liait pas sur Mali
 
 La remontée d'erreurs du lot 0.6 a fait son travail : « L0001, uDrift du

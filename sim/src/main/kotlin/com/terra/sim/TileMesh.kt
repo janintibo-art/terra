@@ -319,7 +319,7 @@ class TileMesh(
         // houppier du biome assombri) font l'arbre. Le pied est posé par
         // renderedAltitudeAt : la plante touche EXACTEMENT le terrain rendu,
         // par l'invariant n°3. Voir PLANT_LATTICE_LEVEL pour le treillis.
-        emitPlants(o, tile, profile, sampler, planetRadiusM)
+        emitPlants(o, tile, profile, sampler, planetRadiusM, alt, verts, off)
     }
 
     private fun emitPlants(
@@ -327,7 +327,8 @@ class TileMesh(
         tile: TileId,
         profile: TerrainProfile,
         sampler: CoarseSampler,
-        planetRadiusM: Double
+        planetRadiusM: Double,
+        alt: FloatArray, verts: Int, off: Int
     ) {
         var o = startOffset
         if (tile.level < PLANT_MIN_LEVEL) return
@@ -353,7 +354,7 @@ class TileMesh(
             while (cx < cxEnd && emitted < PLANT_SLOTS) {
                 if ((cx % stride == 0L) && (cy % stride == 0L)) {
                     val next = emitOnePlant(o, tile, cx, cy, x0, x1, y0, y1,
-                        profile, sampler, hint, planetRadiusM)
+                        profile, sampler, hint, planetRadiusM, alt, verts, off)
                     if (next != o) emitted++
                     o = next
                 }
@@ -371,7 +372,8 @@ class TileMesh(
         profile: TerrainProfile,
         sampler: CoarseSampler,
         hint: IntArray,
-        planetRadiusM: Double
+        planetRadiusM: Double,
+        alt: FloatArray, verts: Int, off: Int
     ): Int {
         val o = startOffset
         // Les sels de hachage viennent de la CASE canonique : la même
@@ -389,7 +391,24 @@ class TileMesh(
         val d = CubeSphere.gridDirectionF(
             tile.face, PLANT_LATTICE_LEVEL, px.toFloat(), py.toFloat(), PLANT_LATTICE_N
         )
-        val a = profile.renderedAltitudeAt(d)
+        // Le pied se pose sur la SURFACE DE LA TUILE — interpolation
+        // bilinéaire de sa propre grille d'altitudes — et non sur le
+        // terrain continu exact : à distance, le sol dessiné est une tuile
+        // grossière qui s'écarte du terrain exact de plusieurs mètres entre
+        // ses nœuds, et une plante posée sur l'exact FLOTTE au-dessus du
+        // visible (constaté sur appareil, v0.26.1). La plante appartient à
+        // sa tuile ; quand la tuile change de niveau, son pied suit la
+        // surface — le même saut que le sol sous elle, donc invisible.
+        val n = MESH_N
+        val gu = (((px - x0) / (x1 - x0)) * n).toFloat().coerceIn(0f, n.toFloat())
+        val gv = (((py - y0) / (y1 - y0)) * n).toFloat().coerceIn(0f, n.toFloat())
+        val i0 = gu.toInt().coerceAtMost(n - 1)
+        val j0 = gv.toInt().coerceAtMost(n - 1)
+        val fu = gu - i0
+        val fv = gv - j0
+        val c00 = (j0 + off) * verts + (i0 + off)
+        val a = (alt[c00] * (1f - fu) + alt[c00 + 1] * fu) * (1f - fv) +
+            (alt[c00 + verts] * (1f - fu) + alt[c00 + verts + 1] * fu) * fv
         if (a <= 0f || profile.lakeDepthAt(d) > 0f) return o
 
         val near = sampler.nearestVertex(d, hint[0]); hint[0] = near
@@ -403,11 +422,12 @@ class TileMesh(
         val stepRad = (2.0 / planetRadiusM).toFloat()
         val east = eastOf(d)
         val north = northOf(d, east)
+        val aFine = profile.renderedAltitudeAt(d)
         val aE = profile.renderedAltitudeAt(com.terra.core.Vec3(
             d.x + east.x * stepRad, d.y + east.y * stepRad, d.z + east.z * stepRad))
         val aN = profile.renderedAltitudeAt(com.terra.core.Vec3(
             d.x + north.x * stepRad, d.y + north.y * stepRad, d.z + north.z * stepRad))
-        val gx2 = (aE - a) / 2f; val gy2 = (aN - a) / 2f
+        val gx2 = (aE - aFine) / 2f; val gy2 = (aN - aFine) / 2f
         if (gx2 * gx2 + gy2 * gy2 > 0.27f * 0.27f) return o
 
         val tree = biome == Biome.RAINFOREST || biome == Biome.TEMPERATE_FOREST ||
