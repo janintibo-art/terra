@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.31.3 — uSnow, et le damier de l'occlusion
+
+**1. Échec d'édition de liens sur uSnow.** Exactement le piège de la
+v0.26.1 : le sommet le déclare en highp par défaut, le fragment le fait
+tomber sous son precision mediump, et Mali refuse de lier — la météo était
+donc muette. J'avais corrigé uDrift sans auditer les autres uniformes
+partagés ; c'est fait cette fois, exhaustivement, sur les quatre couples de
+shaders : uSnow était le dernier. Il passe en mediump EXPLICITE des deux
+côtés — un drapeau 0/1 n'a aucun besoin de précision, et aligner par le bas
+est plus sûr qu'exiger highp d'un fragment.
+
+**2. Quadrillage régulier sur le terrain.** Pas du relief : un repliement
+de spectre. Le laplacien à quatre voisins qui mesure la courbure amplifie
+d'un facteur 2 le motif alterné d'une maille sur deux — précisément la
+fréquence où vit le grain du micro-relief (9 m de longueur d'onde sur des
+mailles de 9 m au niveau 16). Le champ d'occlusion est désormais lissé par
+une moyenne 3×3 avant application : le damier s'annule (gain ~1/9) tandis
+qu'une vraie vallée, large de plusieurs mailles, est préservée (gain ~1).
+La séparation d'échelles est structurelle, pas réglée.
+
+Leçon consignée : un filtre différentiel sur une grille amplifie toujours
+la fréquence de Nyquist. Toute mesure de courbure sur données bruitées
+doit être lissée — ou calculée sur un support plus large que le bruit.
+
 ## v0.31.2 — Un garde-fou calibré sur un chiffre faux
 
 Le test de fidélité de la carte d'humidité échouait — mais pas sur la

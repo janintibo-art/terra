@@ -330,6 +330,36 @@ class TileMesh(
             }
         }
 
+        // Lissage 3×3 du champ d'occlusion, AVANT application.
+        //
+        // Le laplacien à quatre voisins amplifie d'un facteur 2 le motif
+        // alterné d'une maille sur deux — précisément la fréquence où vit
+        // le grain du micro-relief. Il en résultait un QUADRILLAGE régulier
+        // sur le terrain, aligné sur la grille (constaté sur appareil,
+        // v0.31.2) : un repliement de spectre, pas du relief.
+        //
+        // La moyenne 3×3 annule ce damier (gain ~1/9) tout en préservant
+        // une vraie vallée, large de plusieurs mailles (gain ~1) : c'est
+        // exactement la séparation d'échelles recherchée. Un tampon séparé
+        // évite de propager les valeurs déjà lissées.
+        val aoSmooth = FloatArray(verts * verts) { 1f }
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                var sum = 0f
+                var count = 0
+                for (dj in -1..1) {
+                    for (di in -1..1) {
+                        val k = c + dj * verts + di
+                        if (k < 0 || k >= ao.size) continue
+                        sum += ao[k]
+                        count++
+                    }
+                }
+                aoSmooth[c] = if (count > 0) sum / count else ao[c]
+            }
+        }
+
         // Application aux couleurs : pas d'attribut nouveau, donc format de
         // sommet, taille de tampon et pool GPU inchangés — l'ombrage est
         // cuit dans l'albédo, ce qui convient à une lumière AMBIANTE (elle
@@ -337,7 +367,7 @@ class TileMesh(
         for (j in 0..n) {
             for (i in 0..n) {
                 val c = (j + off) * verts + (i + off)
-                val k = ao[c]
+                val k = aoSmooth[c]
                 if (k == 1f) continue
                 colR[c] = clamp01(colR[c] * k)
                 colG[c] = clamp01(colG[c] * k)

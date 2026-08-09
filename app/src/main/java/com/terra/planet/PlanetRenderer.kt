@@ -1332,7 +1332,14 @@ class PlanetRenderer(
             uniform mat4 uProj;
             uniform highp float uTime;
             uniform float uFall;
-            uniform float uSnow;
+            // mediump EXPLICITE des deux cotes : un drapeau 0/1 n'a aucun
+            // besoin de precision, et le defaut du sommet (highp) contre
+            // celui du fragment (mediump) faisait echouer l'edition de
+            // liens sur Mali — meme piege que uDrift en v0.26.1, que je
+            // n'avais corrige que pour uDrift au lieu d'auditer TOUS les
+            // uniformes partages. L'audit exhaustif est fait : c'etait le
+            // dernier.
+            uniform mediump float uSnow;
             varying float vAlpha;
             // Dispersion pseudo-aleatoire deterministe a partir de l'indice.
             float h(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
