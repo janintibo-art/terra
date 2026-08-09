@@ -184,6 +184,15 @@ class PlanetRenderer(
     private var tUMorph = -1
 
     private var skyProgram = 0
+    private var starProgram = 0
+    private var starVbo = 0
+    private var moonProgram = 0
+    private var moonVbo = 0
+    private var moonVertexCount = 0
+    @Volatile var pendingStars: FloatArray? = null
+    @Volatile var moonDirX = 1f
+    @Volatile var moonDirY = 0f
+    @Volatile var moonDirZ = 0f
     private var skyVbo = 0
     private var sAPos = -1
     private var sUTop = -1
@@ -230,6 +239,8 @@ class PlanetRenderer(
         tileProgram = 0
         skyProgram = 0
         skyVbo = 0
+        starProgram = 0; starVbo = 0
+        moonProgram = 0; moonVbo = 0
         gpuPool.forgetAll()
         stream.forgetGpu()
         tilePool.cancelAll()
@@ -485,7 +496,9 @@ class PlanetRenderer(
         val sunLz = sunX * s + sunZ * c
 
         // --- Ciel, avant le terrain, une fois l'éclairement connu ---
-        drawSky(snapshot, radius, dayFactorAtEye(snapshot, sunLx, sunLz))
+        val dayFEye = dayFactorAtEye(snapshot, sunLx, sunLz)
+        drawSky(snapshot, radius, dayFEye)
+        drawCelestial(mvp, c, s, snapshot, dayFEye, far)
 
         GLES20.glUseProgram(tileProgram)
         GLES20.glUniformMatrix4fv(tUViewProj, 1, false, mvp, 0)
@@ -679,6 +692,111 @@ class PlanetRenderer(
      * tuiles pas encore maillées — un manque se voit en brume cohérente, plus
      * jamais en trou noir. La vraie diffusion atmosphérique reste au lot 2.10.
      */
+    /**
+     * Étoiles et lune — lot 2.12. Dessinées ENTRE le ciel et le terrain :
+     * le fond bleu-nuit est déjà posé, le relief recouvrira. Le champ est
+     * fixe dans le repère monde ; comme le soleil, il est ramené dans le
+     * repère local par la rotation propre inverse — le ciel défile parce
+     * que la planète tourne, pas l'inverse.
+     *
+     * Étoiles en points additifs (visibles quand le ciel s'éteint : nuit,
+     * ou espace où l'atmosphère disparaît), lune en vraie sphère éclairée
+     * par le soleil — les phases sortent de la géométrie, gratuitement.
+     */
+    private fun drawCelestial(
+        mvp: FloatArray, spinC: Float, spinS: Float,
+        snapshot: CameraSnapshot, dayF: Float, farPlane: Float
+    ) {
+        pendingStars?.let {
+            if (starVbo == 0) {
+                val ids = IntArray(1); GLES20.glGenBuffers(1, ids, 0)
+                starVbo = ids[0]
+            }
+            val buf = java.nio.ByteBuffer.allocateDirect(it.size * 4)
+                .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().put(it)
+            buf.position(0)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, starVbo)
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, it.size * 4, buf,
+                GLES20.GL_STATIC_DRAW)
+            pendingStars = null
+        }
+        if (starProgram == 0) {
+            starProgram = buildProgram(STAR_VERTEX, STAR_FRAGMENT)
+            moonProgram = buildProgram(MOON_VERTEX, MOON_FRAGMENT)
+        }
+        if (moonVbo == 0) {
+            val sphere = Icosphere(2)
+            val data = FloatArray(sphere.faceCount * 9)
+            var o = 0
+            for (f in 0 until sphere.faceCount) {
+                for (k in 0..2) {
+                    val v = sphere.vertices[sphere.faces[f * 3 + k]]
+                    data[o] = v.x; data[o + 1] = v.y; data[o + 2] = v.z
+                    o += 3
+                }
+            }
+            moonVertexCount = sphere.faceCount * 3
+            val ids = IntArray(1); GLES20.glGenBuffers(1, ids, 0)
+            moonVbo = ids[0]
+            val buf = java.nio.ByteBuffer.allocateDirect(data.size * 4)
+                .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().put(data)
+            buf.position(0)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, moonVbo)
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.size * 4, buf,
+                GLES20.GL_STATIC_DRAW)
+        }
+        if (starVbo == 0 || starProgram == 0) return
+
+        // Visibilité : le ciel éteint révèle les étoiles — nuit au sol,
+        // ou altitude où l'atmosphère n'existe plus (même rampe que le ciel).
+        val presence = ((90_000.0 - snapshot.altitudeM) / 78_000.0)
+            .coerceIn(0.0, 1.0).toFloat()
+        val starAlpha = (1f - dayF * presence).coerceIn(0f, 1f)
+        val dist = farPlane * 0.90f
+
+        GLES20.glDepthMask(false)
+        if (starAlpha > 0.01f) {
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE)
+            GLES20.glUseProgram(starProgram)
+            GLES20.glUniformMatrix4fv(
+                GLES20.glGetUniformLocation(starProgram, "uMvp"), 1, false, mvp, 0)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(starProgram, "uDist"), dist)
+            GLES20.glUniform1f(GLES20.glGetUniformLocation(starProgram, "uAlpha"), starAlpha)
+            GLES20.glUniform2f(GLES20.glGetUniformLocation(starProgram, "uSpin"), spinC, spinS)
+            val aStar = GLES20.glGetAttribLocation(starProgram, "aStar")
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, starVbo)
+            GLES20.glEnableVertexAttribArray(aStar)
+            GLES20.glVertexAttribPointer(aStar, 4, GLES20.GL_FLOAT, false, 16, 0)
+            GLES20.glDrawArrays(GLES20.GL_POINTS, 0, CelestialSky.STAR_COUNT)
+            GLES20.glDisableVertexAttribArray(aStar)
+            GLES20.glDisable(GLES20.GL_BLEND)
+        }
+
+        // Lune : locale = rotation propre inverse, comme le soleil.
+        val mlx = moonDirX * spinC - moonDirZ * spinS
+        val mlz = moonDirX * spinS + moonDirZ * spinC
+        GLES20.glDisable(GLES20.GL_CULL_FACE)
+        GLES20.glUseProgram(moonProgram)
+        GLES20.glUniformMatrix4fv(
+            GLES20.glGetUniformLocation(moonProgram, "uMvp"), 1, false, mvp, 0)
+        GLES20.glUniform3f(GLES20.glGetUniformLocation(moonProgram, "uCenter"),
+            mlx * dist, moonDirY * dist, mlz * dist)
+        // Rayon angulaire ~0,55° : 0,0096 rad × distance.
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(moonProgram, "uRadius"),
+            dist * 0.0096f)
+        GLES20.glUniform3f(GLES20.glGetUniformLocation(moonProgram, "uSunL"),
+            sunX * spinC - sunZ * spinS, sunY, sunX * spinS + sunZ * spinC)
+        val aPos = GLES20.glGetAttribLocation(moonProgram, "aPos")
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, moonVbo)
+        GLES20.glEnableVertexAttribArray(aPos)
+        GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 12, 0)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, moonVertexCount)
+        GLES20.glDisableVertexAttribArray(aPos)
+        GLES20.glEnable(GLES20.GL_CULL_FACE)
+        GLES20.glDepthMask(true)
+    }
+
     private fun drawSky(snapshot: CameraSnapshot, radiusM: Double, dayF: Float) {
         if (skyProgram == 0 || skyVbo == 0) return
 
@@ -904,6 +1022,59 @@ class PlanetRenderer(
     }
 
     companion object {
+
+        private const val STAR_VERTEX = """
+            attribute vec4 aStar;
+            uniform mat4 uMvp;
+            uniform float uDist;
+            uniform vec2 uSpin;      // (cos, sin) de la rotation propre inverse
+            varying float vMag;
+            void main() {
+                vec3 d = aStar.xyz;
+                vec3 local = vec3(d.x * uSpin.x - d.z * uSpin.y, d.y,
+                                  d.x * uSpin.y + d.z * uSpin.x);
+                gl_Position = uMvp * vec4(local * uDist, 1.0);
+                gl_PointSize = 1.5 + 3.5 * aStar.w;
+                vMag = aStar.w;
+            }
+        """
+
+        private const val STAR_FRAGMENT = """
+            precision mediump float;
+            uniform float uAlpha;
+            varying float vMag;
+            void main() {
+                vec2 pc = gl_PointCoord * 2.0 - 1.0;
+                float r = dot(pc, pc);
+                float a = max(0.0, 1.0 - r);
+                float glow = a * a * uAlpha * (0.30 + 0.70 * vMag);
+                gl_FragColor = vec4(vec3(0.90, 0.93, 1.0) * glow, 1.0);
+            }
+        """
+
+        private const val MOON_VERTEX = """
+            attribute vec3 aPos;
+            uniform mat4 uMvp;
+            uniform vec3 uCenter;
+            uniform float uRadius;
+            uniform vec3 uSunL;
+            varying float vLight;
+            void main() {
+                gl_Position = uMvp * vec4(uCenter + aPos * uRadius, 1.0);
+                // La sphere unitaire est sa propre normale : le terminateur
+                // lunaire — la phase — sort du produit scalaire, gratuitement.
+                vLight = max(dot(aPos, uSunL), 0.0) * 0.88 + 0.03;
+            }
+        """
+
+        private const val MOON_FRAGMENT = """
+            precision mediump float;
+            varying float vLight;
+            void main() {
+                gl_FragColor = vec4(vec3(0.86, 0.85, 0.81) * vLight, 1.0);
+            }
+        """
+
         private const val TAG = "TerraRenderer"
 
         /**

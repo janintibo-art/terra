@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.25.0 — Lot 2.12 : le ciel nocturne
+
+Chaque monde a désormais son ciel : onze cents étoiles semées par la
+graine (`ciel/etoiles` — magnitudes en u², beaucoup de poussière, peu de
+phares) et une lune en orbite inclinée propre au monde (`ciel/lune`,
+lunaison de 22 à 34 jours planétaires). Le champ est fixe dans le repère
+monde et ramené en local par la rotation propre inverse, comme le soleil :
+le ciel défile parce que la planète tourne.
+
+La lune est une vraie sphère (icosphère niveau 2) éclairée par la
+direction du soleil : LES PHASES SORTENT DE LA GÉOMÉTRIE, gratuitement —
+croissant, quartier, pleine lune au fil de la lunaison, sans une ligne de
+code de phase. Les étoiles sont des points additifs qui n'apparaissent que
+quand le ciel s'éteint : la nuit au sol, ou en altitude quand l'atmosphère
+disparaît — même rampe que le ciel lui-même.
+
+Dessiné entre le ciel et le terrain dans la passe descente (le relief
+recouvre, l'écriture de profondeur est suspendue). Mode globe : à suivre,
+noté en point ouvert. Deux tests JVM sur la partie :sim — ciel unitaire,
+borné, déterministe et propre au monde ; orbite unitaire, périodique à la
+lunaison près, inclinaison dans les bornes.
+
 ## v0.24.0 — Le fondu de limbe : la silhouette redevient un cercle
 
 Dernier défaut visuel consigné des captures v0.19.1 : au-delà de ~1 500 km

@@ -371,6 +371,8 @@ class MainActivity : Activity() {
                 // du terrain continu, une seule fois par monde.
                 val detail = com.terra.sim.GlobeRefinement(data)
                 globeDetail = detail
+                // Le ciel du monde : les étoiles naissent avec lui (lot 2.12).
+                renderer.pendingStars = com.terra.sim.CelestialSky.generateStars(data.seed)
                 val mesh = PlanetMesh(data, currentLayer, detail)
                 meshBuildMs = (System.nanoTime() - meshStart) / 1_000_000L
 
@@ -811,6 +813,12 @@ class MainActivity : Activity() {
         renderer.spinDeg = worldTime.spinDegrees(clock.tick)
         val sun = worldTime.sunDirection(clock.tick)
         renderer.sunX = sun[0]; renderer.sunY = sun[1]; renderer.sunZ = sun[2]
+        // Lune : direction monde du moment, ramenée en local par le renderer
+        // avec la même rotation propre que le soleil (lot 2.12).
+        world?.let { w ->
+            val md = com.terra.sim.CelestialSky.moonDirection(w.seed, worldTime, clock.tick)
+            renderer.moonDirX = md.x; renderer.moonDirY = md.y; renderer.moonDirZ = md.z
+        }
 
         // Inertie : la planète continue de tourner après un glissement, et
         // ralentit progressivement.
@@ -1048,6 +1056,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.24.0"
+        const val VERSION = "0.25.0"
     }
 }
