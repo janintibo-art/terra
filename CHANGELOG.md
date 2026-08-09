@@ -1,5 +1,40 @@
 # Journal des versions
 
+## v0.35.0 — Lot 2.9-b : l'eau devient transparente
+
+Le relief sous-marin se voit à travers la surface, avec parallaxe : c'est la
+promesse « transparence en eau peu profonde » de la feuille de route.
+
+**Le problème que la note d'architecture n'avait pas vu.** Au 2.9-a, le
+fragment d'eau calculait la couleur complète, fond compris. Rendre la couche
+translucide en gardant cette formule compterait le fond DEUX fois — et on ne
+peut pas simplement confier l'absorption au mélange matériel : GLES2 mélange
+par un alpha SCALAIRE alors que l'absorption est par canal (le rouge meurt
+neuf fois plus vite que le bleu), et GLES2 n'offre ni lecture du framebuffer
+ni blending par canal.
+
+**La décomposition retenue**, validée par `validation/eau_transparence_b.py` :
+chaque surface porte ce qui lui appartient physiquement. Le terrain peint
+l'absorption du trajet fond → œil (ce que le fond ÉMET), pré-divisée par la
+transmittance du bleu ; la couche d'eau porte sa diffusion propre et un alpha
+scalaire égal à `1 − exp(−2d/32)` (ce que l'eau AJOUTE). La pré-division
+annule exactement la seconde atténuation du blending. Écart mesuré à la
+couleur opaque validée : **nul sur le bleu** (même λ), **0,033 au pire sur le
+vert**, à 10,3 m de profondeur — sous le seuil de perception pour une couleur
+de cette luminosité. Un test rejoue la composition du matériel sur toute la
+plage 0–300 m et exige moins de 0,045.
+
+Détails du rendu : source **prémultipliée** (`ONE / ONE_MINUS_SRC_ALPHA`),
+ce qui laisse le spéculaire s'ajouter au lieu d'être éteint par un alpha
+faible — un éclat de soleil sur trente centimètres d'eau claire reste un
+éclat. Reflet du ciel et écume poussent l'opacité en même temps qu'ils
+teintent : ils couvrent, ils ne traversent pas. Au loin, l'alpha rejoint la
+brume, sinon le fond marin sombre transparaîtrait à travers un horizon
+laiteux. Profondeur testée mais non écrite pendant la passe, état rendu tel
+quel ensuite.
+
+Génération intouchée : `GENERATION_VERSION` reste à 13.
+
 ## v0.34.2 — Correctifs du premier essai sur appareil (lot 2.9-a)
 
 **Le HUD affichait « v0.32.2 » depuis trois livraisons** : la version vivait

@@ -993,13 +993,11 @@ class TileMesh(
         const val WATER_DEEP_B = 0.24f
 
         /**
-         * Couleur de l'eau par absorption — RÉFÉRENCE du shader d'eau.
-         *
-         * Le fragment GLSL porte exactement cette expression ; comme GLES2
-         * n'offre aucun filet de test, la formule vit aussi ici, testée en
-         * CI contre les bornes calculées du script de validation. Toute
-         * retouche se fait DES DEUX CÔTÉS, l'audit shader (passe 8) et le
-         * commentaire du fragment le rappellent.
+         * Couleur d'eau opaque de référence — la formule du lot 2.9-a, que
+         * la décomposition du 2.9-b doit reproduire. Elle ne sert plus au
+         * rendu : elle reste la CIBLE que le test de recomposition compare
+         * à `seafloorColor` + `waterLayerAlpha`, pour qu'aucune retouche de
+         * l'un des deux ne dérive de la couleur validée.
          */
         fun waterAbsorptionColor(depthM: Float, out: FloatArray) {
             val tr = exp(-2f * depthM / WATER_LAMBDA_R)
@@ -1008,6 +1006,43 @@ class TileMesh(
             out[0] = SEAFLOOR_R * tr + WATER_DEEP_R * (1f - tr)
             out[1] = SEAFLOOR_G * tg + WATER_DEEP_G * (1f - tg)
             out[2] = SEAFLOOR_B * tb + WATER_DEEP_B * (1f - tb)
+        }
+
+        /**
+         * Couleur du FOND marin, telle que le terrain la peint (lot 2.9-b).
+         *
+         * Elle porte l'absorption du trajet fond → œil, qui appartient
+         * physiquement à ce que le fond émet. Chaque canal est PRÉ-DIVISÉ
+         * par la transmittance du bleu : le mélange alpha de la couche
+         * d'eau, scalaire, multipliera ensuite tout le fond par ce même
+         * `T_b` — sans la pré-division, le fond serait atténué deux fois.
+         *
+         * Le quotient reste dans [0,1] par construction (λ_bleu est la plus
+         * grande des trois), donc la couleur est toujours affichable : elle
+         * vire au bleu en profondeur, ce qui est correct — c'est la seule
+         * lumière qui en revienne.
+         */
+        fun seafloorColor(depthM: Float, out: FloatArray) {
+            val d = if (depthM < 0f) 0f else depthM
+            val tb = exp(-2f * d / WATER_LAMBDA_B)
+            out[0] = SEAFLOOR_R * exp(-2f * d / WATER_LAMBDA_R) / tb
+            out[1] = SEAFLOOR_G * exp(-2f * d / WATER_LAMBDA_G) / tb
+            out[2] = SEAFLOOR_B
+        }
+
+        /**
+         * Opacité de la COUCHE d'eau — RÉFÉRENCE du shader d'eau.
+         *
+         * GLES2 ne mélange que par un alpha scalaire, alors que l'absorption
+         * est par canal : impossible d'éteindre le rouge du fond en gardant
+         * son bleu par le seul blending. On confie donc au matériel le canal
+         * qui porte le plus loin (le bleu) et au fond, côté CPU, l'écart
+         * entre canaux. L'écart résiduel à la formule opaque est nul sur le
+         * bleu et vaut au pire 0,033 sur le vert (validation).
+         */
+        fun waterLayerAlpha(depthM: Float): Float {
+            val d = if (depthM < 0f) 0f else depthM
+            return 1f - exp(-2f * d / WATER_LAMBDA_B)
         }
 
         /**
@@ -1288,10 +1323,9 @@ class TileMesh(
             // les λ d'absorption du shader d'eau (plus rien ne remonte
             // au-delà de ~120 m de toute façon).
             if (altitudeM <= 0f) {
-                val k = 0.06f + 0.94f * exp(altitudeM / 600f)
-                outR[idx] = SEAFLOOR_R * k
-                outG[idx] = SEAFLOOR_G * k
-                outB[idx] = SEAFLOOR_B * k
+                val sea = seaScratchTl.get()
+                seafloorColor(-altitudeM, sea)
+                outR[idx] = sea[0]; outG[idx] = sea[1]; outB[idx] = sea[2]
                 return
             }
 

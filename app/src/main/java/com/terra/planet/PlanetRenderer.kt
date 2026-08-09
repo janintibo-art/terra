@@ -804,6 +804,14 @@ class PlanetRenderer(
         // reprennent LES MÊMES valeurs locales que le terrain : la mer
         // baigne dans le même air, sinon elle se découperait au loin.
         if (waterProgram != 0) {
+            // Lot 2.9-b : la couche devient translucide. Profondeur TESTEE
+            // mais non ECRITE — une tuile d'eau ne doit pas masquer sa
+            // voisine, et l'eau glissee sous les terres (emission par tuile,
+            // v0.34.2) reste eliminee par le terrain, deja ecrit. Source
+            // premultipliee : ONE / ONE_MINUS_SRC_ALPHA.
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+            GLES20.glDepthMask(false)
             GLES20.glUseProgram(waterProgram)
             GLES20.glUniformMatrix4fv(wUViewProj, 1, false, mvp, 0)
             GLES20.glUniform3f(wUSun, sunLx, sunY, sunLz)
@@ -866,6 +874,11 @@ class PlanetRenderer(
             disableAttribute(wADepth)
             disableAttribute(wAMorph)
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+            // Etat rendu tel qu'il etait : la passe des nuages qui suit pose
+            // son propre melange, mais l'ecriture de profondeur, elle, est
+            // attendue active par tout ce qui vient ensuite.
+            GLES20.glDepthMask(true)
+            GLES20.glDisable(GLES20.GL_BLEND)
         }
         drawnTriangles = triangles
 
@@ -2259,30 +2272,46 @@ class PlanetRenderer(
                 // Profondeur bornee AVANT l'exponentielle : en mediump,
                 // exp(-6000) sur une fosse oceanique est hors du domaine du
                 // flottant 16 bits (les lecons uDrift/uSnow : ne jamais
-                // supposer mieux que la norme GLES2). A 200 m tous les
-                // canaux ont converge depuis longtemps (le bleu a 120 m).
+                // supposer mieux que la norme GLES2). A 200 m le bleu a
+                // converge depuis longtemps (120 m).
                 float d = min(vDepth, 200.0);
 
-                // Couleur par absorption — MIROIR EXACT de
-                // TileMesh.waterAbsorptionColor (lambda 3,5 / 14 / 32 m,
-                // aller-retour 2d, fond sable, eau profonde), testee en CI.
-                // Toute retouche se fait DES DEUX COTES.
-                vec3 t = exp(vec3(-2.0 * d / 3.5, -2.0 * d / 14.0, -2.0 * d / 32.0));
-                vec3 base = vec3(0.55, 0.50, 0.38) * t
-                          + vec3(0.015, 0.11, 0.24) * (1.0 - t);
+                // --- Lot 2.9-b : la couche ne porte PLUS le fond. ---------
+                // L'absorption du trajet fond -> oeil est peinte par le
+                // TERRAIN (TileMesh.seafloorColor, pre-divisee par T_bleu) ;
+                // ici on ne calcule que ce que l'eau AJOUTE : sa diffusion
+                // propre, et l'opacite scalaire qui la fait gagner sur le
+                // fond. Alpha = 1 - exp(-2d/32) : MIROIR EXACT de
+                // TileMesh.waterLayerAlpha, testee en CI. Toute retouche se
+                // fait DES DEUX COTES.
+                float alpha = 1.0 - exp(-2.0 * d / 32.0);
+                vec3 base = vec3(0.015, 0.11, 0.24);
 
                 // Eclairage : structure du fragment de tuile, bit a bit.
                 vec3 sunColor = mix(vec3(1.0, 1.0, 1.0), vec3(1.32, 0.72, 0.42), vDusk);
                 vec3 color = base * 0.12 * vDay
                            + base * (0.88 * vDiffuse * vCloudShade) * vDay * sunColor;
-                color += vec3(0.90, 0.94, 1.0) * vSpec * vDay * sunColor;
-                color = mix(color, uHaze * (0.55 + 0.45 * vDay), vFresnel * 0.85);
-                color = mix(color, vec3(0.92, 0.95, 0.97) * vDay, vFoam * 0.65);
+
+                // Reflet du ciel, ecume, halo de limbe : ils ne traversent
+                // PAS, ils couvrent — ils poussent donc l'opacite en meme
+                // temps qu'ils teintent. Sans cela, un reflet rasant sur un
+                // haut-fond laisserait voir le sable au travers du miroir.
+                float cover = clamp(vFresnel * 0.85 + vFoam * 0.65, 0.0, 1.0);
+                vec3 coverColor = mix(uHaze * (0.55 + 0.45 * vDay),
+                                      vec3(0.92, 0.95, 0.97) * vDay,
+                                      clamp(vFoam * 0.65 / max(cover, 0.001), 0.0, 1.0));
+                color = mix(color, coverColor, cover);
                 color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
+                alpha = clamp(alpha + cover * (1.0 - alpha), 0.0, 1.0);
+
+                // Au loin, la brume mange tout : l'eau doit y devenir aussi
+                // opaque que l'air qu'elle imite, sinon le fond marin
+                // sombre transparaitrait a travers un horizon laiteux.
+                color = mix(color, uHaze, vFog);
+                alpha = max(alpha, vFog);
 
                 // PAS de lueur nocturne : l'eau REFLECHIT, elle ne
-                // retrodiffuse pas (lecon v0.32.2) — de nuit, la mer est le
-                // point le plus sombre du paysage, structurellement.
+                // retrodiffuse pas (lecon v0.32.2).
 
                 float peak = max(color.r, max(color.g, color.b));
                 float knee = 0.82;
@@ -2290,8 +2319,14 @@ class PlanetRenderer(
                     float over = peak - knee;
                     color *= (knee + over / (1.0 + over * 1.7)) / peak;
                 }
-                color = mix(color, uHaze, vFog);
-                gl_FragColor = vec4(color, 1.0);
+
+                // Source PREMULTIPLIEE (blend ONE / ONE_MINUS_SRC_ALPHA) :
+                // c'est ce qui permet au speculaire de s'AJOUTER au lieu
+                // d'etre attenue par un alpha faible — un eclat de soleil
+                // sur trente centimetres d'eau claire reste un eclat.
+                vec3 premult = color * alpha
+                             + vec3(0.90, 0.94, 1.0) * vSpec * vDay * sunColor;
+                gl_FragColor = vec4(premult, alpha);
             }
         """
 

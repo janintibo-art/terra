@@ -233,6 +233,52 @@ class TileWaterTest {
     }
 
     @Test
+    fun `la decomposition fond couche reproduit la couleur opaque validee`() {
+        // LE test du lot 2.9-b. La couleur validée au 2.9-a (formule opaque)
+        // est désormais produite par DEUX surfaces : le fond que peint le
+        // terrain et la couche d'eau que mélange le GPU. On recompose ici
+        // exactement ce que fait le matériel — source prémultipliée,
+        // ONE / ONE_MINUS_SRC_ALPHA — et on exige de retrouver la référence.
+        // Borne 0,045 calculée dans validation/eau_transparence_b.py : elle
+        // majore l'écart théorique DEEP·(T_c − T_b), maximal à 10,3 m sur le
+        // vert (0,0325), nul sur le bleu par construction.
+        val ref = FloatArray(3)
+        val floor = FloatArray(3)
+        val deep = floatArrayOf(
+            TileMesh.WATER_DEEP_R, TileMesh.WATER_DEEP_G, TileMesh.WATER_DEEP_B
+        )
+        var worst = 0f
+        var d = 0f
+        while (d <= 300f) {
+            TileMesh.waterAbsorptionColor(d, ref)
+            TileMesh.seafloorColor(d, floor)
+            val a = TileMesh.waterLayerAlpha(d)
+            for (k in 0 until 3) {
+                assertTrue(floor[k] in 0f..1f,
+                    "le fond pré-divisé doit rester affichable (canal $k à $d m)")
+                worst = max(worst, abs(deep[k] * a + floor[k] * (1f - a) - ref[k]))
+            }
+            d += 0.05f
+        }
+        assertTrue(worst < 0.045f,
+            "la décomposition s'écarte de $worst de la couleur opaque validée")
+    }
+
+    @Test
+    fun `l opacite de la couche laisse voir le fond en eau peu profonde`() {
+        // La promesse du lot : le relief sous-marin doit transparaître près
+        // du bord et disparaître au large. Bornes du script de validation.
+        assertTrue(1f - TileMesh.waterLayerAlpha(0.5f) > 0.95f,
+            "sous un mètre, le fond doit dominer")
+        assertTrue(1f - TileMesh.waterLayerAlpha(12f) > 0.4f,
+            "à 12 m le fond doit rester lisible")
+        assertTrue(1f - TileMesh.waterLayerAlpha(60f) < 0.05f,
+            "au-delà de 60 m le fond doit avoir disparu")
+        assertEquals(0f, TileMesh.waterLayerAlpha(0f), 0f,
+            "au trait de côte l'eau est parfaitement claire : pas de saut de teinte")
+    }
+
+    @Test
     fun `l absorption respecte les bornes calculees du script de validation`() {
         // Bornes reprises de validation/eau_transparence.py — calculées,
         // pas devinées : la convergence du bleu s'exige à 120 m, pas à 30 m
