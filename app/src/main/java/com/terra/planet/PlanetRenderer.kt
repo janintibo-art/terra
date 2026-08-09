@@ -195,6 +195,13 @@ class PlanetRenderer(
     private var cloudProgram = 0
     private var cloudVbo = 0
     private var cloudVertexCount = 0
+    /** Origine de temps du rendu, pour les animations sans état (météo). */
+    private val startNanos = System.nanoTime()
+    private var weatherProgram = 0
+    private var weatherVbo = 0
+    /** État météo décidé par :sim, publié par la boucle UI. */
+    @Volatile var weatherForm = 0        // 0 rien, 1 pluie, 2 neige
+    @Volatile var weatherIntensity = 0f
     @Volatile var cloudDrift = 0f
     @Volatile var moonDirX = 1f
     @Volatile var moonDirY = 0f
@@ -248,6 +255,7 @@ class PlanetRenderer(
         starProgram = 0; starVbo = 0
         moonProgram = 0; moonVbo = 0
         cloudProgram = 0; cloudVbo = 0
+        weatherProgram = 0; weatherVbo = 0
         gpuPool.forgetAll()
         stream.forgetGpu()
         tilePool.cancelAll()
@@ -662,6 +670,70 @@ class PlanetRenderer(
             sunLx, sunY, sunLz, dayFEye,
             inside = snapshot.altitudeM < CLOUD_ALTITUDE_M
         )
+
+        // --- Météo locale, en dernier : des particules devant tout. ---
+        drawWeather(snapshot, dayFEye)
+    }
+
+    /**
+     * Météo locale — lot 2.15. Une colonne de particules autour de la
+     * caméra, en coordonnées CAMÉRA pures : la pluie accompagne l'œil,
+     * comme dans la réalité où l'averse est partout autour de soi.
+     *
+     * Aucun état persistant : la position de chaque particule se déduit du
+     * temps et de son indice, par un repli modulo sur la hauteur de la
+     * colonne. Le déterminisme est structurel et il n'y a rien à mettre à
+     * jour entre deux images.
+     *
+     * Ne s'affiche qu'au SOL (sous 3 km) : au-delà, on est au-dessus de
+     * l'averse, et les nuages font le travail.
+     */
+    private fun drawWeather(snapshot: CameraSnapshot, dayF: Float) {
+        if (weatherForm == 0 || weatherIntensity <= 0.01f) return
+        if (snapshot.heightAboveGroundM > 3_000.0) return
+        if (weatherProgram == 0) {
+            weatherProgram = buildProgram(WEATHER_VERTEX, WEATHER_FRAGMENT)
+            // Indices des particules : le shader en déduit tout.
+            val data = FloatArray(WEATHER_BUDGET) { it.toFloat() }
+            val ids = IntArray(1); GLES20.glGenBuffers(1, ids, 0)
+            weatherVbo = ids[0]
+            val buf = java.nio.ByteBuffer.allocateDirect(data.size * 4)
+                .order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer().put(data)
+            buf.position(0)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, weatherVbo)
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.size * 4, buf,
+                GLES20.GL_STATIC_DRAW)
+        }
+        if (weatherProgram == 0) return
+
+        val snow = weatherForm == 2
+        val count = (WEATHER_BUDGET * weatherIntensity *
+            (if (snow) 0.55f else 1f)).toInt().coerceIn(0, WEATHER_BUDGET)
+        if (count == 0) return
+        val t = ((System.nanoTime() - startNanos) / 1_000_000_000.0).toFloat()
+
+        // Projection SEULE : les particules vivent en repère caméra, sans
+        // la vue — elles suivent l'œil et ne tournent pas avec le monde.
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        GLES20.glDepthMask(false)
+        GLES20.glUseProgram(weatherProgram)
+        GLES20.glUniformMatrix4fv(
+            GLES20.glGetUniformLocation(weatherProgram, "uProj"), 1, false, projection, 0)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(weatherProgram, "uTime"), t)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(weatherProgram, "uFall"),
+            if (snow) 1.1f else 9f)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(weatherProgram, "uSnow"),
+            if (snow) 1f else 0f)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(weatherProgram, "uDayF"), dayF)
+        val aIndex = GLES20.glGetAttribLocation(weatherProgram, "aIndex")
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, weatherVbo)
+        GLES20.glEnableVertexAttribArray(aIndex)
+        GLES20.glVertexAttribPointer(aIndex, 1, GLES20.GL_FLOAT, false, 4, 0)
+        GLES20.glDrawArrays(GLES20.GL_POINTS, 0, count)
+        GLES20.glDisableVertexAttribArray(aIndex)
+        GLES20.glDepthMask(true)
+        GLES20.glDisable(GLES20.GL_BLEND)
     }
 
     /**
@@ -1125,6 +1197,54 @@ class PlanetRenderer(
     }
 
     companion object {
+        /** Budget de particules de météo : plafond du tampon d'indices. */
+        const val WEATHER_BUDGET = 1400
+
+        private const val WEATHER_VERTEX = """
+            attribute float aIndex;
+            uniform mat4 uProj;
+            uniform highp float uTime;
+            uniform float uFall;
+            uniform float uSnow;
+            varying float vAlpha;
+            // Dispersion pseudo-aleatoire deterministe a partir de l'indice.
+            float h(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+            void main() {
+                float i = aIndex;
+                float bx = (h(i) - 0.5) * 22.0;
+                float bz = (h(i + 37.0) - 0.5) * 22.0 - 4.0;
+                float span = 14.0;
+                // Chute : repli modulo, aucun etat a conserver entre images.
+                float phase = h(i + 91.0) * span;
+                float y = span - mod(uTime * uFall + phase, span);
+                // Derive laterale des flocons : la neige tourbillonne.
+                float sway = uSnow * (sin(uTime * 0.9 + i) * 0.7);
+                vec4 pos = vec4(bx + sway, y - 6.0, bz, 1.0);
+                gl_Position = uProj * pos;
+                float dist = length(pos.xyz);
+                gl_PointSize = mix(2.5, 5.0, uSnow) * (14.0 / max(3.0, dist));
+                // Les particules proches sont franches, les lointaines pales.
+                vAlpha = clamp(1.4 - dist / 16.0, 0.0, 1.0);
+            }
+        """
+
+        private const val WEATHER_FRAGMENT = """
+            precision mediump float;
+            uniform float uSnow;
+            uniform float uDayF;
+            varying float vAlpha;
+            void main() {
+                vec2 pc = gl_PointCoord * 2.0 - 1.0;
+                float r = dot(pc, pc);
+                if (r > 1.0) discard;
+                float soft = 1.0 - r;
+                // Pluie : trainee bleutee translucide. Neige : flocon blanc.
+                vec3 col = mix(vec3(0.62, 0.70, 0.85), vec3(0.97, 0.98, 1.0), uSnow);
+                float a = vAlpha * soft * mix(0.42, 0.85, uSnow) * (0.35 + 0.65 * uDayF);
+                gl_FragColor = vec4(col * (0.30 + 0.70 * uDayF), a);
+            }
+        """
+
         /** Altitude de la couche nuageuse, en mètres. */
         const val CLOUD_ALTITUDE_M = 9_000.0
 

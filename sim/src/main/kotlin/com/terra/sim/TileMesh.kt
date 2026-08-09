@@ -107,6 +107,7 @@ class TileMesh(
         val dirX = FloatArray(verts * verts)
         val dirY = FloatArray(verts * verts)
         val dirZ = FloatArray(verts * verts)
+        val ao = FloatArray(verts * verts) { 1f }
         val colR = FloatArray(verts * verts)
         val colG = FloatArray(verts * verts)
         val colB = FloatArray(verts * verts)
@@ -275,6 +276,21 @@ class TileMesh(
             }
         }
 
+        // Application aux couleurs : pas d'attribut nouveau, donc format de
+        // sommet, taille de tampon et pool GPU inchangés — l'ombrage est
+        // cuit dans l'albédo, ce qui convient à une lumière AMBIANTE (elle
+        // ne dépend pas de la position du soleil, seulement du relief).
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                val k = ao[c]
+                if (k == 1f) continue
+                colR[c] = clamp01(colR[c] * k)
+                colG[c] = clamp01(colG[c] * k)
+                colB[c] = clamp01(colB[c] * k)
+            }
+        }
+
         // --- 2. Tampon de sommets ------------------------------------------
         val terrainVerts = n * n * 2 * 3
         val skirtVerts = 4 * n * 2 * 3
@@ -440,7 +456,12 @@ class TileMesh(
         val shade = 0.62f + 0.25f * profile.micro01(sx * 31 + 5)
         val topR = clamp01(biome.r * shade); val topG = clamp01(biome.g * shade)
         val topB = clamp01(biome.b * shade)
-        val baseR = 0.30f; val baseG = 0.23f; val baseB = 0.15f
+        // Pied nettement plus sombre que la cime : le bas d'un arbre est
+        // occlus par son propre feuillage, et ce dégradé vertical est ce
+        // qui donne du volume à une silhouette sans épaisseur (lot 2.13).
+        val baseR = clamp01(topR * 0.42f + 0.06f)
+        val baseG = clamp01(topG * 0.42f + 0.05f)
+        val baseB = clamp01(topB * 0.42f + 0.04f)
 
         val r = planetRadiusM + a.toDouble()
         val fx = (d.x * r - centerXM).toFloat()

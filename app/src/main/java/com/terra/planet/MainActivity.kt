@@ -145,6 +145,7 @@ class MainActivity : Activity() {
     // Extrêmes thermiques du JOUR courant (lot 1.12). Recalculés seulement
     // quand le jour planétaire change : un parcours des 10 000 cellules à
     // chaque rafraîchissement du HUD serait du gaspillage pur.
+    private var weatherHint = 0
     private var seasonCacheDay = -1
     private var seasonCacheYear = -1L
     private var seasonLoC = 0f
@@ -825,6 +826,35 @@ class MainActivity : Activity() {
         // corrélation du bruit).
         renderer.cloudDrift = ((clock.tick % 2_000_000L).toFloat()) / 1_440f
 
+        // Météo du point visé (lot 2.15) : décidée dans :sim à partir des
+        // précipitations de la cellule et de la température DU MOMENT,
+        // saison comprise — la même plaine reçoit pluie en été, neige en
+        // hiver. Évaluée seulement en mode sol, une fois par rafraîchissement.
+        if (descentActive) {
+            val w = world
+            val cam = camera
+            if (w != null && cam != null) {
+                val d = cam.focusDirection().toVec3()
+                val cell = com.terra.sim.CoarseSampler(w).nearestVertex(d, weatherHint)
+                weatherHint = cell
+                val t = w.temperatureC[cell] + com.terra.sim.SeasonalClimate.deltaC(
+                    w.position(cell).y, w.continentality[cell],
+                    w.altitudeM[cell] < 0f, worldTime, clock.tick
+                )
+                val st = com.terra.sim.LocalWeather.stateAt(
+                    w.precipMm[cell], t, w.altitudeM[cell] < 0f
+                )
+                renderer.weatherForm = when (st.form) {
+                    com.terra.sim.LocalWeather.Form.RAIN -> 1
+                    com.terra.sim.LocalWeather.Form.SNOW -> 2
+                    else -> 0
+                }
+                renderer.weatherIntensity = st.intensity
+            }
+        } else {
+            renderer.weatherForm = 0
+        }
+
         // Inertie : la planète continue de tourner après un glissement, et
         // ralentit progressivement.
         if (!dragging) {
@@ -1061,6 +1091,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.26.3"
+        const val VERSION = "0.28.0"
     }
 }

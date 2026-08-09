@@ -1,5 +1,59 @@
 # Journal des versions
 
+## v0.28.0 — Lot 2.13 : occlusion ambiante, le terrain gagne son volume
+
+La prairie était un aplat vert : ombrage purement diffus, aucun modelé, et
+des arbres en silhouettes plates plus sombres que le sol. Ce lot donne du
+volume, sans shadow mapping — trop risqué à écrire en aveugle pour ce
+qu'il apporterait de plus.
+
+Occlusion ambiante par CONCAVITÉ : la lumière du ciel arrive de tout
+l'hémisphère, un fond de vallon en reçoit moins qu'une crête. Mesure
+locale sans lancer de rayon — altitude du sommet contre la moyenne de ses
+quatre voisins de grille — avec l'échelle de référence prise sur le PAS DE
+LA GRILLE et non sur une constante métrique : un vallon de 20 m sur une
+maille de 20 m occlut autant qu'un cirque de 20 km sur une maille de
+20 km, et l'effet ne disparaît ni de près ni de loin. Bornes : 62 % de la
+lumière au fond d'un creux, +8 % sur une crête.
+
+L'occlusion est cuite dans l'albédo des sommets : aucun attribut nouveau,
+donc format de sommet, taille de tampon et pool GPU inchangés. C'est
+légitime pour une lumière AMBIANTE — elle ne dépend pas de la position du
+soleil, seulement du relief.
+
+Les plantes gagnent un dégradé vertical franc : pied à 42 % de la cime,
+occlus par son propre feuillage. C'est ce qui donne du volume à une
+silhouette sans épaisseur. Deux tests : dispersion de luminance (un aplat
+n'en aurait aucune) et bornes de couleur tenues.
+
+Rendu pur : génération et empreintes intactes.
+
+## v0.27.0 — Lot 2.15 : la météo locale devient visible
+
+La simulation savait où il pleut, quelle température il fait et quelle
+saison court ; au sol, tous les climats se ressemblaient. Ce lot rend la
+météo visible : pluie ou neige en particules, choisies par les données de
+la cellule visée.
+
+Toute la DÉCISION vit dans :sim et se teste — seuil sec à 250 mm/an (les
+déserts restent secs), saturation à 2 200, bascule pluie/neige à 1,5 °C
+sur la température DU MOMENT, saison comprise. C'est le point qui fait la
+différence : la même plaine tempérée reçoit de la pluie en été et de la
+neige en hiver. Le cycle des saisons devient enfin visible au sol.
+
+Le rendu n'obéit qu'à cet état : une colonne de particules en repère
+CAMÉRA — l'averse accompagne l'œil, comme dans la réalité — et SANS AUCUN
+état persistant : la position de chaque particule se déduit du temps et de
+son indice par un repli modulo. Rien à mettre à jour entre deux images, le
+déterminisme est structurel. La neige tombe huit fois plus lentement que
+la pluie et tourbillonne ; elle est plus clairsemée, des flocons rares se
+voient quand une averse doit strier l'écran. Affichage sous 3 km
+seulement : plus haut, on est au-dessus de l'averse et les nuages jouent
+leur rôle.
+
+Quatre tests sur la décision. Rendu pur : génération et empreintes
+intactes.
+
 ## v0.26.3 — Test recalibré : acos n'est pas une façon de mesurer un angle nul
 
 Le test mère/filles rougissait sur SON PROPRE bruit numérique. Il mesurait
