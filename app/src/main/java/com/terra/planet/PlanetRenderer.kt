@@ -203,6 +203,7 @@ class PlanetRenderer(
     private var tULimbStrength = -1
     private var tUCloudDrift = -1
     private var tUCloudShadow = -1
+    private var tUTileCover = -1
     private var tURimStrength = -1
     private var tULevelTint = -1
     private var tUWaveTime = -1
@@ -234,6 +235,15 @@ class PlanetRenderer(
     /** État météo décidé par :sim, publié par la boucle UI. */
     @Volatile var weatherForm = 0        // 0 rien, 1 pluie, 2 neige
     @Volatile var weatherIntensity = 0f
+    /**
+     * Carte d'humidité du monde (256×128, un octet par cellule), publiée par
+     * le fil de travail. CONSERVÉE après téléversement, comme le maillage et
+     * les étoiles : une perte de contexte doit pouvoir la reverser.
+     */
+    @Volatile var pendingHumidity: ByteArray? = null
+        set(value) { field = value; humidityUploaded = false }
+    @Volatile private var humidityUploaded = false
+    private var humidityTex = 0
     @Volatile var cloudDrift = 0f
     @Volatile var moonDirX = 1f
     @Volatile var moonDirY = 0f
@@ -288,6 +298,7 @@ class PlanetRenderer(
         moonProgram = 0; moonVbo = 0
         cloudProgram = 0; cloudVbo = 0
         weatherProgram = 0; weatherVbo = 0
+        humidityTex = 0; humidityUploaded = false
         gpuPool.forgetAll()
         stream.forgetGpu()
         tilePool.cancelAll()
@@ -331,6 +342,7 @@ class PlanetRenderer(
             tULimbStrength = GLES20.glGetUniformLocation(tileProgram, "uLimbStrength")
             tUCloudDrift = GLES20.glGetUniformLocation(tileProgram, "uCloudDrift")
             tUCloudShadow = GLES20.glGetUniformLocation(tileProgram, "uCloudShadow")
+            tUTileCover = GLES20.glGetUniformLocation(tileProgram, "uTileCover")
             tURimStrength = GLES20.glGetUniformLocation(tileProgram, "uRimStrength")
             tULevelTint = GLES20.glGetUniformLocation(tileProgram, "uLevelTint")
             tUWaveTime = GLES20.glGetUniformLocation(tileProgram, "uWaveTime")
@@ -678,6 +690,28 @@ class PlanetRenderer(
                 tUWaveScale, ((lvl - 16) / 3f).coerceIn(0f, 1f)
             )
 
+            // Humidité de la tuile, pour l'ombre des nuages qui la survolent.
+            // Lue sur le PROCESSEUR au centre de la tuile : la cellule
+            // d'humidité fait 155 km, une tuile au-delà du niveau 8 tient
+            // dedans — l'approximation par tuile est excellente, et elle
+            // évite d'échantillonner une texture dans le shader de sommet,
+            // ce que GLES2 ne garantit pas.
+            val cover = pendingHumidity?.let { map ->
+                val len = kotlin.math.sqrt(
+                    tile.centerXM * tile.centerXM + tile.centerYM * tile.centerYM +
+                        tile.centerZM * tile.centerZM
+                ).coerceAtLeast(1.0)
+                com.terra.sim.HumidityMap.coverAt(
+                    map,
+                    com.terra.core.Vec3(
+                        (tile.centerXM / len).toFloat(),
+                        (tile.centerYM / len).toFloat(),
+                        (tile.centerZM / len).toFloat()
+                    )
+                )
+            } ?: 0.5f
+            GLES20.glUniform1f(tUTileCover, cover)
+
             // --- Morphing entre niveaux (lot 2.4) ---
             //
             // Le sélecteur bascule au niveau supérieur quand la distance
@@ -939,6 +973,41 @@ class PlanetRenderer(
         GLES20.glDepthMask(true)
     }
 
+    /**
+     * Téléverse la carte d'humidité — première et seule texture du moteur.
+     *
+     * Format GL_LUMINANCE en octets : un seul canal, 32 Ko, disponible
+     * partout en OpenGL ES 2 sans extension. Dimensions en puissances de
+     * deux, condition du filtrage linéaire et de la répétition sur GLES2.
+     *
+     * Répétition en X (la longitude boucle) et bornage en Y (aux pôles il
+     * n'y a rien au-delà) : un GL_REPEAT vertical replierait l'Arctique sur
+     * l'Antarctique.
+     */
+    private fun ensureHumidityTexture() {
+        if (humidityUploaded && humidityTex != 0) return
+        val data = pendingHumidity ?: return
+        if (humidityTex == 0) {
+            val ids = IntArray(1)
+            GLES20.glGenTextures(1, ids, 0)
+            humidityTex = ids[0]
+        }
+        val buf = java.nio.ByteBuffer.allocateDirect(data.size).put(data)
+        buf.position(0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, humidityTex)
+        GLES20.glTexImage2D(
+            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_LUMINANCE,
+            com.terra.sim.HumidityMap.WIDTH, com.terra.sim.HumidityMap.HEIGHT, 0,
+            GLES20.GL_LUMINANCE, GLES20.GL_UNSIGNED_BYTE, buf
+        )
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        humidityUploaded = true
+    }
+
     private fun drawSky(snapshot: CameraSnapshot, radiusM: Double, dayF: Float) {
         if (skyProgram == 0 || skyVbo == 0) return
 
@@ -1145,7 +1214,12 @@ class PlanetRenderer(
         GLES20.glDepthMask(false)
         GLES20.glCullFace(if (inside) GLES20.GL_FRONT else GLES20.GL_BACK)
 
+        ensureHumidityTexture()
         GLES20.glUseProgram(cloudProgram)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, humidityTex)
+        GLES20.glUniform1i(
+            GLES20.glGetUniformLocation(cloudProgram, "uHumidity"), 0)
         GLES20.glUniformMatrix4fv(
             GLES20.glGetUniformLocation(cloudProgram, "uMvp"), 1, false, mvpM, 0)
         GLES20.glUniform3f(GLES20.glGetUniformLocation(cloudProgram, "uCenterRel"),
@@ -1330,11 +1404,37 @@ class PlanetRenderer(
                 return sin(q.x * 3.1 + sin(q.z * 2.3)) * sin(q.z * 2.7 + sin(q.y * 3.7))
                      + sin(q.y * 2.9 + sin(q.x * 1.9)) * 0.6;
             }
+            // Couverture issue de la SIMULATION : la carte d'humidite est
+            // lue en projection equirectangulaire, avec la convention figee
+            // du projet (axe polaire Y, longitude atan2(z, x)). Sans cette
+            // convention exacte, les nuages seraient decales en longitude
+            // par rapport au sol qu'ils sont censes arroser.
+            // La couverture est FOURNIE par l'appelant, jamais lue ici :
+            // le shader de terrain l'evalue au sommet, ou GLES2 ne garantit
+            // AUCUNE unite de texture (GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS
+            // peut valoir zero). Une lecture au sommet aurait echoue a lier
+            // sur une partie du parc — exactement le piege de precision de
+            // la v0.26.1, sous une autre forme.
+            vec2 humidityUv(vec3 dir) {
+                float lat = asin(clamp(dir.y, -1.0, 1.0));
+                float lon = atan(dir.z, dir.x);
+                return vec2((lon + 3.14159265) / 6.28318531,
+                            0.5 - lat / 3.14159265);
+            }
             // Opacite du nuage dans une direction donnee, dans [0, 1].
-            float cloudOpacity(vec3 dir, float drift) {
+            //
+            // Le bruit donne la FORME, l'humidite simulee donne la
+            // PRESENCE : au-dessus d'un desert le seuil monte et presque
+            // rien ne perce, au-dessus d'une foret tropicale il descend et
+            // le ciel se couvre. C'est ce qui solde la dette du lot 2.14 —
+            // jusqu'ici, l'apparence contredisait la simulation.
+            float cloudOpacity(vec3 dir, float drift, float cover) {
                 vec3 p = dir * 9.0 + vec3(drift * 0.23, 0.0, drift * 0.15);
                 float n = cloudNoise(p) * 0.62 + cloudNoise(p * 2.7) * 0.38;
-                float density = cloudBase(dir, drift) * 0.35 + n * 1.3 - 0.92;
+                // Seuil variable : 1,28 sur un ciel sec, 0,72 sur un ciel
+                // sature — l'ecart couvre toute la plage utile du bruit.
+                float threshold = 1.28 - 0.56 * cover;
+                float density = cloudBase(dir, drift) * 0.35 + n * 1.3 - threshold;
                 float a = clamp(density, 0.0, 1.0);
                 return a * a * (3.0 - 2.0 * a);
             }
@@ -1368,12 +1468,15 @@ class PlanetRenderer(
             // Precision accordee avec l'etage sommet : Mali refuse de lier
             // deux declarations divergentes (constate en v0.26.0).
             uniform TIME_PRECISION float uDrift;
+            uniform sampler2D uHumidity;
             varying vec3 vDir;
 """ + CLOUD_FIELD_GLSL + """
             void main() {
-                float alpha = cloudOpacity(normalize(vDir), uDrift) * 0.62;
+                vec3 d = normalize(vDir);
+                float cover = texture2D(uHumidity, humidityUv(d)).r;
+                float alpha = cloudOpacity(d, uDrift, cover) * 0.62;
                 // Eclairage : jour plein cote soleil, gris bleute de nuit.
-                float light = max(dot(normalize(vDir), uSunL), 0.0) * 0.85 + 0.10;
+                float light = max(dot(d, uSunL), 0.0) * 0.85 + 0.10;
                 vec3 col = vec3(0.97, 0.97, 0.99) * light * (0.25 + 0.75 * uDayF)
                          + vec3(0.06, 0.07, 0.10) * (1.0 - uDayF);
                 gl_FragColor = vec4(col, alpha);
@@ -1580,6 +1683,7 @@ class PlanetRenderer(
             uniform float uWaveScale;  // 0 sur tuile grossiere, 1 de pres
             uniform float uCloudDrift;   // meme derive que la coquille
             uniform float uCloudShadow;  // altitude relative des nuages ; 0 = desactive
+            uniform float uTileCover;    // humidite moyenne de la tuile, [0,1]
 
             uniform float uMorph;      // 0 geometrie fine, 1 geometrie parente
 
@@ -1658,7 +1762,7 @@ class PlanetRenderer(
                     vec3 shadowDir = normalize(sph + sun * (uCloudShadow / cosSun));
                     // 0,55 : un nuage laisse passer une part notable de la
                     // lumiere du ciel ; une ombre totale ferait tache d'encre.
-                    vCloudShade = 1.0 - cloudOpacity(shadowDir, uCloudDrift) * 0.55;
+                    vCloudShade = 1.0 - cloudOpacity(shadowDir, uCloudDrift, uTileCover) * 0.55;
                 }
 
                 vec3 view = normalize(-rel);

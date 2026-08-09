@@ -392,6 +392,12 @@ class MainActivity : Activity() {
                 globeDetail = detail
                 // Le ciel du monde : les étoiles naissent avec lui (lot 2.12).
                 renderer.pendingStars = com.terra.sim.CelestialSky.generateStars(data.seed)
+                // Carte d'humidité : les nuages du monde suivront ses pluies
+                // (lot 2.14 b). Projetée ici, sur le fil de travail, une fois
+                // par monde — 32 Ko que le GPU échantillonnera en temps
+                // constant, là où la recherche du plus proche voisin serait
+                // impensable des centaines de milliers de fois par image.
+                renderer.pendingHumidity = com.terra.sim.HumidityMap.build(data)
                 val mesh = PlanetMesh(data, currentLayer, detail)
                 meshBuildMs = (System.nanoTime() - meshStart) / 1_000_000L
 
@@ -1181,6 +1187,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.31.0"
+        const val VERSION = "0.31.1"
     }
 }

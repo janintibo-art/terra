@@ -1,5 +1,39 @@
 # Journal des versions
 
+## v0.31.1 — Les nuages suivent enfin les pluies (dette du lot 2.14 soldée)
+
+Le lot 2.14 prescrivait une couche « pilotée par l'humidité SIMULÉE en
+Phase 1 » ; la v0.26.0 a livré un bruit pur. Les déserts avaient donc
+autant de nuages que les forêts tropicales, alors que le transport
+d'humidité sait exactement où il pleut depuis la v0.21.0. C'était le seul
+endroit du moteur où l'apparence contredisait la simulation.
+
+Le bruit donne désormais la FORME, l'humidité donne la PRÉSENCE : le seuil
+de condensation varie de 1,28 sur un ciel sec à 0,72 sur un ciel saturé.
+Au-dessus d'un désert presque rien ne perce ; au-dessus d'une forêt
+tropicale le ciel se couvre. Un plancher de 20 % subsiste partout — un
+ciel rigoureusement vide sur un tiers de la planète paraîtrait cassé
+plutôt que sec, et même le Sahara voit passer des cirrus.
+
+Première texture du moteur : carte équirectangulaire 256×128 en
+GL_LUMINANCE, 32 Ko, construite une fois par monde sur le fil de travail.
+Puissances de deux et bornage vertical — GLES2 ne garantit le filtrage
+linéaire que dans ce cas, et un GL_REPEAT vertical replierait l'Arctique
+sur l'Antarctique. Conservée après téléversement, comme le maillage et les
+étoiles, pour survivre à une perte de contexte.
+
+**Piège évité en chemin, de la même famille que celui de la v0.26.1 :** ma
+première écriture lisait la texture dans le shader de SOMMET, pour l'ombre
+des nuages. Or GLES2 autorise GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS à valoir
+ZÉRO : sur une partie du parc, le lien aurait échoué. L'ombre utilise
+désormais une valeur d'humidité PAR TUILE, calculée sur le processeur —
+une cellule d'humidité fait 155 km, une tuile au-delà du niveau 8 tient
+dedans : l'approximation est excellente et le risque disparaît.
+
+Trois tests sur la carte : bornes et contraste, fidélité de la projection
+aux précipitations de chaque cellule, et contraste désert/forêt vérifié
+par quartiles.
+
 ## v0.31.0 — Les ombres de nuages : le ciel touche enfin le sol
 
 Meilleure idée du compte rendu graphique, absente de la feuille de route.
