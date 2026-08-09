@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.33.0 — La concurrence entre dans le filet de la CI
+
+`TileWorkerPool` était la seule classe d'`:app` sans rien d'Android — hormis
+un appel à `android.util.Log`. Cette ligne unique laissait toute la logique
+de concurrence du pool (déduplication par clé, annulation, retrait
+conditionnel du registre) hors de portée des tests, alors que deux courses
+y ont déjà été trouvées à l'œil sur appareil.
+
+Le pool vit désormais dans `:sim`, et parle à une interface `TerraLogger`
+(`:core`) dont `:app` fournit l'adaptateur logcat. Comportement inchangé au
+bit près : mêmes fils, mêmes priorités, même registre — seule la ligne de
+journalisation passe par l'interface. Aucun changement de génération,
+`GENERATION_VERSION` reste à 13, les empreintes ne bougent pas.
+
+Sept tests nouveaux, déterministes par construction : un fil unique, un
+travail « bouchon » qui l'occupe, et des verrous à compte à rebours à chaque
+frontière entre fils — jamais d'attente aveugle. Le test le plus important
+rejoue la course du retrait conditionnel : une tuile annulée pendant son
+exécution, resoumise sous la même clé avant de finir, ne doit pas voir son
+successeur effacé du registre par son propre `finally`.
+
+
 ## v0.32.2 — Les filaments blancs nocturnes : l'eau ne rétrodiffuse pas
 
 Des fils blancs sinueux couvraient le paysage, y compris en pleine nuit.

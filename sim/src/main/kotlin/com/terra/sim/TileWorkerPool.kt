@@ -1,6 +1,6 @@
-package com.terra.planet
+package com.terra.sim
 
-import android.util.Log
+import com.terra.core.TerraLogger
 import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -8,6 +8,15 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Pool de fils d'exécution pour la génération des tuiles de terrain.
+ *
+ * ## Pourquoi dans `:sim` et pas dans `:app`
+ *
+ * Rien ici n'est Android : exécuteur, file à priorité et registre sont du
+ * JVM pur. La classe n'était retenue dans `:app` que par `android.util.Log`,
+ * remplacé par [TerraLogger]. Le gain n'est pas cosmétique : la
+ * déduplication, l'annulation et le retrait conditionnel sont exactement le
+ * genre de logique dont les bugs (deux courses déjà trouvées à l'œil)
+ * ne se reproduisent que sur appareil — désormais la CI les tient.
  *
  * ## Pourquoi un pool, et pourquoi maintenant
  *
@@ -33,7 +42,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * vérifié au démarrage ne coûte rien.
  */
 class TileWorkerPool(
-    threadCount: Int = defaultThreadCount()
+    threadCount: Int = defaultThreadCount(),
+    /**
+     * Injecté plutôt qu'appelé en dur : c'est CE paramètre qui a fait sortir
+     * la classe d'`:app` et entrer la concurrence dans le filet de la CI.
+     * `:app` passe l'adaptateur logcat ; les tests passent un capteur.
+     */
+    private val logger: TerraLogger = TerraLogger.STDERR
 ) {
 
     private class Job(
@@ -102,7 +117,7 @@ class TileWorkerPool(
                 try {
                     body()
                 } catch (t: Throwable) {
-                    Log.e(TAG, "Génération de tuile échouée", t)
+                    logger.error(TAG, "Génération de tuile échouée", t)
                 } finally {
                     // Retrait CONDITIONNEL : entre l'annulation de ce job et
                     // sa fin, une nouvelle soumission a pu réenregistrer la

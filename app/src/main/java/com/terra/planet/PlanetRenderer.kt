@@ -13,6 +13,7 @@ import com.terra.sim.TerrainProfile
 import com.terra.sim.TileId
 import com.terra.sim.TileMesh
 import com.terra.sim.TileSelector
+import com.terra.sim.TileWorkerPool
 import com.terra.sim.ViewCone
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

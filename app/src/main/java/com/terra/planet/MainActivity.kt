@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -22,12 +23,14 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import com.terra.core.SimClock
+import com.terra.core.TerraLogger
 import com.terra.core.clamp
 import com.terra.sim.Biome
 import com.terra.sim.CoarseSampler
 import com.terra.sim.ConsoleCommand
 import com.terra.sim.PlanetCamera
 import com.terra.sim.TerrainRaycaster
+import com.terra.sim.TileWorkerPool
 import com.terra.sim.MapLayer
 import com.terra.sim.ParamEditor
 import com.terra.sim.PlanetData
@@ -78,7 +81,12 @@ class MainActivity : Activity() {
      * Pool de maillage des tuiles. Créé ici et non dans le renderer : il doit
      * survivre aux pertes de contexte OpenGL et mourir avec l'activité.
      */
-    private val tilePool = TileWorkerPool()
+    private val tilePool = TileWorkerPool(
+        // Adaptateur logcat : la simulation ne connaît qu'une interface,
+        // seul :app sait qu'Android existe. C'est ce qui a permis de rendre
+        // le pool testable en CI (v0.33.0).
+        logger = TerraLogger { tag, message, cause -> Log.e(tag, message, cause) }
+    )
 
     /** Caméra de descente, en double précision. Fil d'interface uniquement. */
     private var camera: PlanetCamera? = null

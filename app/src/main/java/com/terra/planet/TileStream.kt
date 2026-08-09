@@ -86,7 +86,7 @@ class TileStream(private val gpu: GpuBufferPool) {
     /**
      * Vrai si la tuile est déjà sur le GPU.
      *
-     * Le suivi des demandes en cours, lui, appartient au [TileWorkerPool] :
+     * Le suivi des demandes en cours, lui, appartient au [com.terra.sim.TileWorkerPool] :
      * `submit` y déduplique par clé. Tenir un second registre ici créerait le
      * bug classique du double suivi — une annulation côté pool laisserait la
      * clé orpheline ici, et la tuile ne serait plus jamais redemandée.
