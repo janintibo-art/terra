@@ -1,5 +1,30 @@
 # Journal des versions
 
+## v0.34.2 — Correctifs du premier essai sur appareil (lot 2.9-a)
+
+**Le HUD affichait « v0.32.2 » depuis trois livraisons** : la version vivait
+en double, dans le gradle (mise à jour) et dans une constante de
+`MainActivity` (jamais). Le HUD lit désormais `BuildConfig.VERSION_NAME` —
+une version qui vit à deux endroits finit toujours par mentir à l'un des
+deux. `buildFeatures.buildConfig` activé (AGP 8 ne le génère plus par
+défaut).
+
+**Mers intérieures en fosses noires depuis l'orbite** (vu sur Virsken) :
+l'émission d'eau « par cellule dont un coin est en eau » laissait des trous
+aux niveaux grossiers — au niveau 2 une cellule couvre ~156 km et une mer
+entière peut y tenir avec ses quatre coins à terre ; le fond marin, peint
+sombre, s'exposait alors sans eau dessus. L'émission se décide désormais
+par TUILE : un sommet de grille en eau et toutes les cellules sont émises,
+l'eau sous les terres restant éliminée par le test de profondeur. Une tuile
+continentale ne paie toujours rien. Tests de comptage mis à jour avec la
+règle.
+
+Reste ouvert, noté pour le 2.9-b : le dégradé littoral vu d'altitude est
+plus dentelé qu'avec l'ancienne frange (la profondeur s'interpole sur UNE
+maille là où la frange s'élargissait avec le niveau) ; un élargissement
+perceptuel de la profondeur aux niveaux grossiers est le candidat. Le
+« saut » de l'image près du sol est en cours de diagnostic — voir message.
+
 ## v0.34.1 — Correctif : la surface d'eau se construit en double
 
 Test rouge sur un VRAI bug, attrapé au premier passage de CI par le test de

@@ -476,17 +476,31 @@ class TileMesh(
         // position, à rayon constant, n'a rien à morpher, mais la couleur
         // (fonction de la profondeur) doit basculer aussi continûment que
         // le terrain qu'elle recouvre.
-        var waterCells = 0
-        for (j in 0 until n) {
-            for (i in 0 until n) {
-                val c = (j + off) * verts + (i + off)
-                if (wDepth[c] > 0f || wDepth[c + 1] > 0f ||
-                    wDepth[c + verts] > 0f || wDepth[c + verts + 1] > 0f) waterCells++
+        // Correctif v0.34.2 : l'émission se décide par TUILE, plus par
+        // cellule. Le critère « au moins un coin en eau » laissait des trous
+        // aux niveaux grossiers : au niveau 2, une cellule couvre ~156 km,
+        // et une mer intérieure entière peut tenir dedans avec ses quatre
+        // coins à terre — sur Virsken, les mers apparaissaient en fosses
+        // noires depuis l'orbite (fond marin exposé, sans eau dessus). Dès
+        // qu'un sommet de la grille est en eau, la tuile émet TOUTES ses
+        // cellules : l'eau sous les terres reste invisible (test de
+        // profondeur, elle est 5 cm au-dessus du rayon de la mer, sous tout
+        // relief émergé), et une tuile continentale ne paie toujours rien.
+        // Une mer plus petite que la maille reste possible entre deux
+        // sommets secs — sous le pixel à ce niveau-là, et rattrapée par les
+        // niveaux fins dès qu'on descend.
+        var hasWater = false
+        outer@ for (j in 0..n) {
+            for (i in 0..n) {
+                if (wDepth[(j + off) * verts + (i + off)] > 0f) {
+                    hasWater = true
+                    break@outer
+                }
             }
         }
-        waterVertexCount = waterCells * 6
+        waterVertexCount = if (hasWater) n * n * 6 else 0
         waterData = FloatArray(waterVertexCount * WATER_FLOATS_PER_VERTEX)
-        if (waterCells > 0) {
+        if (hasWater) {
             // Profondeur au niveau parent : même règle d'interpolation que
             // l'altitude — sommets pairs inchangés, impairs au milieu.
             val depthMorph = FloatArray(verts * verts)
@@ -513,8 +527,6 @@ class TileMesh(
                     val v10 = v00 + 1
                     val v01 = v00 + verts
                     val v11 = v01 + 1
-                    if (wDepth[v00] <= 0f && wDepth[v10] <= 0f &&
-                        wDepth[v01] <= 0f && wDepth[v11] <= 0f) continue
                     // Même ordre de parcours que les facettes du terrain :
                     // même orientation, même élagage arrière.
                     wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)

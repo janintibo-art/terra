@@ -50,15 +50,14 @@ class TileWaterTest {
             return max(0f, -world.terrain.renderedAltitudeAt(df))
         }
 
-        /** Cellules en eau de la tuile, comptées naïvement. */
-        private fun naiveWaterCells(tile: TileId): Int {
-            val d = Array(N + 1) { j -> FloatArray(N + 1) { i -> depthAt(tile, i, j) } }
-            var cells = 0
-            for (j in 0 until N) for (i in 0 until N) {
-                if (d[j][i] > 0f || d[j][i + 1] > 0f ||
-                    d[j + 1][i] > 0f || d[j + 1][i + 1] > 0f) cells++
+        /** La tuile contient-elle de l'eau ? Règle du mailleur (v0.34.2) :
+         *  un seul sommet de grille en eau suffit, la tuile émet alors
+         *  toutes ses cellules. */
+        private fun naiveHasWater(tile: TileId): Boolean {
+            for (j in 0..N) for (i in 0..N) {
+                if (depthAt(tile, i, j) > 0f) return true
             }
-            return cells
+            return false
         }
 
         /** Latitude du centre de la tuile, en degrés (axe polaire Y). */
@@ -77,7 +76,7 @@ class TileWaterTest {
 
         /** Première tuile équatoriale qui n'émet aucune eau. */
         private val dryTile: TileId by lazy {
-            findTile { tile, centerAlt -> centerAlt > 300f && naiveWaterCells(tile) == 0 }
+            findTile { tile, centerAlt -> centerAlt > 300f && !naiveHasWater(tile) }
                 ?: fail("aucune tuile équatoriale entièrement sèche trouvée")
         }
 
@@ -107,10 +106,12 @@ class TileWaterTest {
     @Test
     fun `la couche d eau compte exactement ses cellules`() {
         val mesh = TileMesh(oceanTile, world.terrain, sampler, world.params.radiusM.toDouble())
-        val cells = naiveWaterCells(oceanTile)
-        assertTrue(cells > 0, "la tuile océanique doit contenir de l'eau")
-        assertEquals(cells * 6, mesh.waterVertexCount,
-            "chaque cellule en eau émet deux triangles, aucune autre")
+        assertTrue(naiveHasWater(oceanTile), "la tuile océanique doit contenir de l'eau")
+        // Règle v0.34.2 : une tuile qui contient de l'eau émet TOUTES ses
+        // cellules — le tri par cellule laissait des mers intérieures sans
+        // eau aux niveaux grossiers (quatre coins secs autour d'une mer).
+        assertEquals(N * N * 6, mesh.waterVertexCount,
+            "une tuile en eau émet deux triangles par cellule, sans trou")
         assertEquals(mesh.waterVertexCount * TileMesh.WATER_FLOATS_PER_VERTEX,
             mesh.waterData.size)
         assertEquals((mesh.vertexData.size + mesh.waterData.size) * 4, mesh.sizeBytes,
@@ -148,8 +149,6 @@ class TileWaterTest {
         var o = 0
         val f = TileMesh.WATER_FLOATS_PER_VERTEX
         for (j in 0 until N) for (i in 0 until N) {
-            if (d[j][i] <= 0f && d[j][i + 1] <= 0f &&
-                d[j + 1][i] <= 0f && d[j + 1][i + 1] <= 0f) continue
             val order = arrayOf(
                 intArrayOf(i, j), intArrayOf(i + 1, j), intArrayOf(i + 1, j + 1),
                 intArrayOf(i, j), intArrayOf(i + 1, j + 1), intArrayOf(i, j + 1)

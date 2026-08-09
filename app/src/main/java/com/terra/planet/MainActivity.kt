@@ -1195,6 +1195,10 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.32.2"
+        // Lue depuis le gradle : trois livraisons (v0.33.0 → v0.34.1) ont
+        // tourné avec un HUD qui affichait « v0.32.2 » parce que cette
+        // chaîne était codée en dur ici et jamais mise à jour. Une version
+        // qui vit à DEUX endroits finit toujours par mentir à l'un des deux.
+        val VERSION: String = BuildConfig.VERSION_NAME
     }
 }

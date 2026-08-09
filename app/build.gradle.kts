@@ -11,8 +11,8 @@ android {
         applicationId = "com.terra.planet"
         minSdk = 24
         targetSdk = 34
-        versionCode = 100
-        versionName = "0.34.1"
+        versionCode = 101
+        versionName = "0.34.2"
     }
 
     buildTypes {
@@ -22,6 +22,12 @@ android {
         release {
             isMinifyEnabled = false
         }
+    }
+
+    buildFeatures {
+        // Nécessaire pour lire VERSION_NAME dans le HUD : sous AGP 8,
+        // BuildConfig n'est plus généré par défaut.
+        buildConfig = true
     }
 
     compileOptions {
