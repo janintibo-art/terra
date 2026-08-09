@@ -180,6 +180,7 @@ class MainActivity : Activity() {
         store = WorldStore(this)
 
         renderer = PlanetRenderer(tilePool)
+        applyScreenDensity()
         configChooser = BestConfigChooser()
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
@@ -464,6 +465,11 @@ class MainActivity : Activity() {
             meshBuildMs = (System.nanoTime() - started) / 1_000_000L
             renderer.pendingMesh = mesh
         }
+    }
+
+    /** Densité d'écran transmise au renderer (taille des points d'étoile). */
+    private fun applyScreenDensity() {
+        renderer.pointScale = resources.displayMetrics.density.coerceIn(1f, 4f)
     }
 
     private fun setSpeed(index: Int) {
@@ -986,6 +992,27 @@ class MainActivity : Activity() {
 
         sb.append(worldTime.format(clock.tick))
             .append(" · δ").append(fmt(worldTime.sunDeclinationDeg(clock.tick))).append("°\n")
+
+        // Vitesse RÉELLE du temps. Le bouton annonce un multiplicateur, mais
+        // la descente le divise par la dilatation d'altitude — jusqu'à 2 880
+        // au ras du sol. Sans cette ligne, le même « ×200 » fait passer un
+        // jour en 0,2 s depuis l'orbite et en 12 min à pied, et rien ne
+        // l'explique. On affiche donc ce que le monde fait, pas ce qu'on lui
+        // a demandé.
+        val dilation = if (descentActive) (camera?.timeDilationFactor() ?: 1.0) else 1.0
+        val effective = com.terra.sim.TimeReadout.effectiveScale(clock.timeScale, dilation)
+        sb.append("temps ").append(com.terra.sim.TimeReadout.formatScale(effective))
+        if (dilation < 0.999) {
+            sb.append(" (bouton ×").append(clock.timeScale.toInt())
+                .append(", descente ÷").append(Math.round(1.0 / dilation)).append(")")
+        }
+        sb.append(" · jour ").append(
+            com.terra.sim.TimeReadout.formatDuration(
+                com.terra.sim.TimeReadout.dayRealSeconds(
+                    worldTime, clock.timeScale, dilation, clock.stepSeconds
+                )
+            )
+        ).append('\n')
 
         sb.append(fmt(renderer.fps)).append(" i/s · ").append(fmt(renderer.frameMs))
             .append(" ms · ").append(configChooser.chosenSamples).append("×AA · ")

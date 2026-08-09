@@ -236,6 +236,13 @@ class PlanetRenderer(
     private var tUMorph = -1
 
     private var skyProgram = 0
+    /**
+     * Densité d'écran (pixels par unité d'écran), posée par l'activité.
+     * Sert à dimensionner les points d'étoile : gl_PointSize est en pixels
+     * physiques, qui ne veulent rien dire d'un appareil à l'autre.
+     */
+    @Volatile var pointScale = 1f
+
     private var starProgram = 0
     private var starVbo = 0
     private var moonProgram = 0
@@ -281,6 +288,9 @@ class PlanetRenderer(
     private var sURight = -1
     private var sUUpCam = -1
     private var sUPlanetUp = -1
+    private var sUSunDir = -1
+    private var sUSunColor = -1
+    private var sUSunGlow = -1
     private var sUHorizonSin = -1
     private var sUTanHalf = -1
     private var sUAspect = -1
@@ -410,6 +420,9 @@ class PlanetRenderer(
             sURight = GLES20.glGetUniformLocation(skyProgram, "uRight")
             sUUpCam = GLES20.glGetUniformLocation(skyProgram, "uUpCam")
             sUPlanetUp = GLES20.glGetUniformLocation(skyProgram, "uPlanetUp")
+            sUSunDir = GLES20.glGetUniformLocation(skyProgram, "uSunDir")
+            sUSunColor = GLES20.glGetUniformLocation(skyProgram, "uSunColor")
+            sUSunGlow = GLES20.glGetUniformLocation(skyProgram, "uSunGlow")
             sUHorizonSin = GLES20.glGetUniformLocation(skyProgram, "uHorizonSin")
             sUTanHalf = GLES20.glGetUniformLocation(skyProgram, "uTanHalf")
             sUAspect = GLES20.glGetUniformLocation(skyProgram, "uAspect")
@@ -1075,6 +1088,9 @@ class PlanetRenderer(
             GLES20.glUniform1f(GLES20.glGetUniformLocation(starProgram, "uDist"), dist)
             GLES20.glUniform1f(GLES20.glGetUniformLocation(starProgram, "uAlpha"), starAlpha)
             GLES20.glUniform2f(GLES20.glGetUniformLocation(starProgram, "uSpin"), spinC, spinS)
+            GLES20.glUniform1f(
+                GLES20.glGetUniformLocation(starProgram, "uPointScale"), pointScale
+            )
             val aStar = GLES20.glGetAttribLocation(starProgram, "aStar")
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, starVbo)
             GLES20.glEnableVertexAttribArray(aStar)
@@ -1224,6 +1240,24 @@ class PlanetRenderer(
             (snapshot.eyeYM / eyeLen).toFloat(),
             (snapshot.eyeZM / eyeLen).toFloat()
         )
+        // Direction du soleil dans le repere du ciel — le MEME que celui de
+        // sunElev ci-dessus (repere monde, non tourne), surtout pas le
+        // repere local des tuiles : le disque se poserait ailleurs que la
+        // lumiere qui eclaire le sol.
+        val sunLen = kotlin.math.sqrt(sunX * sunX + sunY * sunY + sunZ * sunZ)
+            .coerceAtLeast(1e-6f)
+        GLES20.glUniform3f(sUSunDir, sunX / sunLen, sunY / sunLen, sunZ / sunLen)
+        // Couleur du disque : blanche haut dans le ciel, orangee au ras de
+        // l'horizon — meme mesure de crepuscule que le sol et les tuiles,
+        // pour que tout vire ENSEMBLE.
+        GLES20.glUniform3f(
+            sUSunColor,
+            1.0f, 0.97f - 0.30f * dusk, 0.92f - 0.62f * dusk
+        )
+        // Le halo est atmospherique : il s'eteint avec l'air (presence) et
+        // se renforce au couchant, quand les rayons traversent le plus
+        // d'atmosphere. Le disque, lui, reste visible depuis l'orbite.
+        GLES20.glUniform1f(sUSunGlow, presence * dayF * (0.30f + 0.70f * dusk))
         GLES20.glUniform1f(sUHorizonSin, horizonSin)
         GLES20.glUniform1f(sUTanHalf, kotlin.math.tan(snapshot.fovRad * 0.5f))
         GLES20.glUniform1f(sUAspect, aspect)
@@ -1683,13 +1717,19 @@ class PlanetRenderer(
             uniform mat4 uMvp;
             uniform float uDist;
             uniform vec2 uSpin;      // (cos, sin) de la rotation propre inverse
+            uniform float uPointScale; // densite d'ecran (px par unite d'ecran)
             varying float vMag;
             void main() {
                 vec3 d = aStar.xyz;
                 vec3 local = vec3(d.x * uSpin.x - d.z * uSpin.y, d.y,
                                   d.x * uSpin.y + d.z * uSpin.x);
                 gl_Position = uMvp * vec4(local * uDist, 1.0);
-                gl_PointSize = 1.5 + 3.5 * aStar.w;
+                // Taille mise a l'echelle de la DENSITE d'ecran. En pixels
+                // bruts, 1,5 px sur un ecran a 440 dpi fait un dixieme de
+                // millimetre : les etoiles existaient, mais sous le seuil de
+                // visibilite. Le meme chiffre en unites d'ecran donne 5,5 px
+                // sur cet appareil et reste correct sur un ecran mdpi.
+                gl_PointSize = (2.0 + 4.0 * aStar.w) * uPointScale;
                 vMag = aStar.w;
             }
         """
@@ -1702,7 +1742,12 @@ class PlanetRenderer(
                 vec2 pc = gl_PointCoord * 2.0 - 1.0;
                 float r = dot(pc, pc);
                 float a = max(0.0, 1.0 - r);
-                float glow = a * a * uAlpha * (0.30 + 0.70 * vMag);
+                // a*a concentrait tout au centre : le disque PERCU faisait
+                // 60 % du point demande. Un noyau net double d'un halo
+                // large rend l'etoile lisible sans la transformer en tache.
+                float core = a * a;
+                float halo = a * 0.45;
+                float glow = min(1.0, core + halo) * uAlpha * (0.30 + 0.70 * vMag);
                 gl_FragColor = vec4(vec3(0.90, 0.93, 1.0) * glow, 1.0);
             }
         """
@@ -2359,6 +2404,9 @@ class PlanetRenderer(
             uniform vec3 uGround;
             uniform vec3 uPlanetUp;
             uniform float uHorizonSin;
+            uniform vec3 uSunDir;    // direction du soleil, repere monde
+            uniform vec3 uSunColor;  // couleur du disque, chaude au couchant
+            uniform float uSunGlow;  // intensite du halo atmospherique
 
             varying vec3 vDir;
 
@@ -2371,7 +2419,28 @@ class PlanetRenderer(
 
                 if (elev >= horizon) {
                     float t = clamp((elev - horizon) / (1.0 - horizon), 0.0, 1.0);
-                    gl_FragColor = vec4(mix(uBottom, uTop, pow(t, 0.6)), 1.0);
+                    vec3 sky = mix(uBottom, uTop, pow(t, 0.6));
+
+                    // --- Le ciel doit SAVOIR ou est le soleil (lot 2.10 b).
+                    // Jusqu'ici il n'etait qu'un degrade vertical : au
+                    // couchant, tout l'horizon rougeoyait de la meme facon,
+                    // y compris dos au soleil. Deux lobes de diffusion
+                    // avant, largeurs CALCULEES : k=64 donne un halo serre
+                    // de 8 deg autour de l'astre, k=4 une nappe de 33 deg
+                    // qui couche la couleur sur un quart du ciel.
+                    float cosSun = max(dot(d, uSunDir), 0.0);
+                    float tight = pow(cosSun, 64.0);
+                    float broad = pow(cosSun, 4.0);
+                    sky += uSunColor * uSunGlow * (tight * 0.55 + broad * 0.22);
+
+                    // --- Le disque. Rayon 0,40 deg, soit un peu plus que le
+                    // vrai Soleil (0,265) : a 60 deg de champ sur 1080 px il
+                    // couvre 29 px, lisible sans etre une tache. Le bord se
+                    // fond sur 0,1 deg — sans cet adoucissement il crenele.
+                    float disc = smoothstep(0.99996954, 0.99997563, cosSun);
+                    sky = mix(sky, uSunColor * 1.35, disc);
+
+                    gl_FragColor = vec4(sky, 1.0);
                 } else {
                     // Sous l'horizon : brume. C'est aussi le fond de secours
                     // des tuiles pas encore pretes — un manque se voit en

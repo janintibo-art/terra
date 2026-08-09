@@ -1,5 +1,39 @@
 # Journal des versions
 
+## v0.37.0 — Le temps s'explique, le soleil existe, les étoiles se voient
+
+**Le HUD dit enfin ce que le temps fait.** Le bouton annonce un
+multiplicateur, mais la descente le divise par la dilatation d'altitude —
+jusqu'à 2 880 au ras du sol. Le même ×200 fait donc passer un jour
+planétaire en 0,2 s depuis l'orbite et en 12 min à pied, et rien ne
+l'expliquait. Nouvelle ligne : vitesse effective, facteur de descente
+appliqué, et durée réelle du jour. Aucun réglage n'est modifié — le
+comportement était voulu, il était seulement invisible. Le calcul vit dans
+`:sim` (`TimeReadout`) et non dans le HUD : un chiffre montré à
+l'utilisateur mérite le même filet de tests que la simulation.
+
+**Le ciel sait où est le soleil.** Il n'était qu'un dégradé vertical : au
+couchant, tout l'horizon rougeoyait pareil, y compris dos au soleil. Deux
+lobes de diffusion avant, largeurs calculées — un halo serré de 8° autour
+de l'astre, une nappe de 33° qui couche la couleur sur un quart du ciel —
+plus le **disque solaire** lui-même, rayon 0,40° (le vrai Soleil fait
+0,265° ; à 60° de champ sur 1080 px cela donne 29 pixels, lisible sans
+faire tache), à bord adouci sur 0,1° pour ne pas créneler. Le halo est
+atmosphérique et s'éteint avec l'air ; le disque reste visible depuis
+l'orbite. La couleur du disque suit la même mesure de crépuscule que le sol
+et les tuiles, pour que tout vire ensemble.
+
+**Les étoiles sont dimensionnées en unités d'écran.** `gl_PointSize` est en
+pixels physiques : 1,5 px sur un écran à 440 dpi fait un dixième de
+millimètre, d'où des étoiles à peine visibles. Elles passent à 2–6 unités
+d'écran, soit 5,5 à 16,5 px sur cet appareil et une taille correcte sur un
+écran basse densité. Le halo du point était par ailleurs trop piqué
+(`a²` éteignait le bord, le disque perçu faisait 60 % du point demandé) :
+noyau net plus halo large désormais.
+
+`TimeReadoutTest` : durée du jour, rapport de dilatation, pause, seuils
+d'unité, écriture en fraction sous ×1. Génération intouchée.
+
 ## v0.36.0 — Lot 2.17 : micro-détail du sol, filtré par la maille
 
 Le sol proche avait trois échelles de teinte (1 274 m, 71 m, 9,1 m),
