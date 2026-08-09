@@ -115,6 +115,10 @@ class TileMesh(
         val dirX = FloatArray(verts * verts)
         val dirY = FloatArray(verts * verts)
         val dirZ = FloatArray(verts * verts)
+        // Maille de cette tuile : c'est elle qui décide quelles octaves de
+        // teinte de sol sont résolues (lot 2.17). Même expression que
+        // skirtDepthM, qui mesure la même chose pour une autre raison.
+        val cellSizeM = (((Math.PI * 0.5 / (1 shl tile.level)) * planetRadiusM) / MESH_N).toFloat()
         val ao = FloatArray(verts * verts) { 1f }
         // Altitude RENDUE (vraie sous la mer, écrêtée sur la banquise) et
         // profondeur d'eau par sommet — lot 2.9-a.
@@ -179,7 +183,7 @@ class TileMesh(
                 // biome AVANT le rivage, pour que les hauts-fonds héritent
                 // d'un fond varié comme la terre émergée.
                 if (a > -shoreBlend) {
-                    profile.groundTintAt(df, tintScratch)
+                    profile.groundTintAt(df, tintScratch, cellSizeM)
                     rgb[0] *= tintScratch[0]
                     rgb[1] *= tintScratch[1]
                     rgb[2] *= tintScratch[2]

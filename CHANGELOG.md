@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.36.0 — Lot 2.17 : micro-détail du sol, filtré par la maille
+
+Le sol proche avait trois échelles de teinte (1 274 m, 71 m, 9,1 m),
+appliquées **quel que soit le niveau de tuile**. Deux défauts symétriques,
+tous deux corrigés ici :
+
+- **Au loin**, l'octave de 9 m était évaluée sur des mailles
+  kilométriques — bien sous sa fréquence de Nyquist. Ce n'était plus du
+  grain mais du bruit replié : le damier de la leçon v0.31.3, en plus
+  discret.
+- **De près**, la plus fine des trois faisait 9 m de période : à hauteur
+  d'œil, le sol sous les pieds était un aplat. C'est le « sol nu » des
+  points ouverts.
+
+Chaque octave est désormais pondérée par un fondu calculé depuis la maille
+de sa tuile, et deux échelles fines sont ajoutées : **gravier à 1,20 m** et
+**grain grenu à 0,455 m**. Elles n'apparaissent qu'aux niveaux qui peuvent
+les porter (20 et 23), donc sans salir aucune vue lointaine — mieux, les
+octaves éteintes ne sont même pas évaluées, si bien que le coût de la
+teinte retombe aux niveaux grossiers, ceux qui couvrent le plus de tuiles.
+
+Deux réglages corrigés en cours de validation, tous deux par le calcul :
+les amplitudes du premier jet faisaient peser le détail fin pour 45 % de la
+teinte existante (ramené à 33 %), et le fondu, étalé de 2 à 4 mailles,
+franchissait exactement **un** niveau de quadtree — la teinte claquait de
+0,11 à chaque bascule. Étalé de 1,5 à 8 mailles (2,4 niveaux), le ressaut
+tombe à 0,082, borne calculée et reprise telle quelle par le test.
+
+`GroundTintScaleTest` : extinction aux mailles grossières, présence
+effective du détail décimétrique, ressaut de bascule sous seuil, bornes
+d'écrêtage tenues avec cinq octaves comme avec trois. Génération
+intouchée, `GENERATION_VERSION` reste à 13.
+
 ## v0.35.1 — Correctif : NaN au fond des fosses
 
 Test rouge sur un vrai bug, attrapé par un test de JUPE qui n'a rien à voir

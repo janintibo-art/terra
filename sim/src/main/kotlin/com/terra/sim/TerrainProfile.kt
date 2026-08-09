@@ -438,14 +438,69 @@ class TerrainProfile(
         return ((z ushr 40).toInt() and 0xFFFFFF).toFloat() / 0x1000000.toFloat()
     }
 
-    fun groundTintAt(p: Vec3, out: FloatArray) {
-        val patch = micro.fbm(p.x * 5_000f + 11f, p.y * 5_000f - 4f, p.z * 5_000f + 27f, 2)
-        val mottle = micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2)
-        val grain = micro.fbm(p.x * 700_000f + 3f, p.y * 700_000f + 9f, p.z * 700_000f - 5f, 1)
-        val value = 1f + mottle * 0.13f + grain * 0.07f
+    /**
+     * Teinte du sol, filtrée par la maille qui va la porter — lot 2.17.
+     *
+     * Cinq octaves, de la plaque kilométrique au grain décimétrique. Chacune
+     * n'entre que lorsque la maille de la tuile la RÉSOUT : sans ce filtre,
+     * l'octave de 9 m évaluée sur une maille de plusieurs kilomètres n'est
+     * plus du grain mais du bruit replié — le damier de la leçon v0.31.3, en
+     * plus discret. C'est aussi ce qui autorise à ajouter des échelles
+     * décimétriques sans salir les vues lointaines : elles n'y existent pas.
+     *
+     * @param cellSizeM pas du maillage qui échantillonne cette teinte, en
+     *   mètres. Zéro ou négatif = pas de filtrage (toutes les octaves), pour
+     *   les appelants qui échantillonnent au plus fin.
+     */
+    fun groundTintAt(p: Vec3, out: FloatArray, cellSizeM: Float = 0f) {
+        val wPatch = octaveWeight(TINT_PERIOD_PATCH, cellSizeM)
+        val wMottle = octaveWeight(TINT_PERIOD_MOTTLE, cellSizeM)
+        val wGrain = octaveWeight(TINT_PERIOD_GRAIN, cellSizeM)
+        val wGravel = octaveWeight(TINT_PERIOD_GRAVEL, cellSizeM)
+        val wSpeck = octaveWeight(TINT_PERIOD_SPECK, cellSizeM)
+
+        // Les octaves éteintes ne sont pas seulement pondérées à zéro : leur
+        // bruit n'est pas évalué du tout. Aux niveaux grossiers — ceux qui
+        // couvrent le plus de tuiles — le coût de la teinte retombe donc au
+        // niveau d'avant le lot, au lieu de doubler.
+        val patch = if (wPatch > 0f)
+            micro.fbm(p.x * 5_000f + 11f, p.y * 5_000f - 4f, p.z * 5_000f + 27f, 2) * wPatch
+        else 0f
+        val mottle = if (wMottle > 0f)
+            micro.fbm(p.x * 90_000f - 7f, p.y * 90_000f + 3f, p.z * 90_000f, 2) * wMottle
+        else 0f
+        val grain = if (wGrain > 0f)
+            micro.fbm(p.x * 700_000f + 3f, p.y * 700_000f + 9f, p.z * 700_000f - 5f, 1) * wGrain
+        else 0f
+        // Gravier et grain grenu : les deux échelles que le sol n'avait pas,
+        // et sans lesquelles la plaine reste un aplat sous les pieds.
+        val gravel = if (wGravel > 0f)
+            micro.fbm(p.x * 5_300_000f - 21f, p.y * 5_300_000f + 13f, p.z * 5_300_000f + 6f, 1) * wGravel
+        else 0f
+        val speck = if (wSpeck > 0f)
+            micro.fbm(p.x * 14_000_000f + 41f, p.y * 14_000_000f - 29f, p.z * 14_000_000f + 17f, 1) * wSpeck
+        else 0f
+
+        val value = 1f + mottle * 0.13f + grain * 0.07f + gravel * 0.05f + speck * 0.03f
         out[0] = (value * (1f + patch * 0.10f)).coerceIn(0.76f, 1.24f)
         out[1] = (value * (1f + patch * 0.03f)).coerceIn(0.76f, 1.24f)
         out[2] = (value * (1f - patch * 0.08f)).coerceIn(0.76f, 1.24f)
+    }
+
+    /**
+     * Poids d'une octave de période donnée, pour une maille donnée.
+     *
+     * Nul tant que la maille ne fournit pas assez d'échantillons par période,
+     * plein quand elle en fournit largement. Le fondu s'étale de 1,5 à 8
+     * mailles, soit un facteur 5,3 : un premier jet à 2–4 mailles couvrait
+     * exactement UN niveau de quadtree, et la teinte claquait de 0,11 à
+     * chaque bascule (validation). Étalé sur 2,4 niveaux, le ressaut tombe
+     * à 0,07 — sous le seuil où l'œil accroche un changement de niveau.
+     */
+    private fun octaveWeight(periodM: Float, cellSizeM: Float): Float {
+        if (cellSizeM <= 0f) return 1f
+        val ratio = periodM / cellSizeM
+        return clamp01((ratio - TINT_NYQUIST_LO) / (TINT_NYQUIST_HI - TINT_NYQUIST_LO))
     }
 
     companion object {
@@ -456,6 +511,20 @@ class TerrainProfile(
          * que le relief fin reste aussi marqué qu'avant de près.
          */
         const val DETAIL_AMPLITUDE_M = 52f
+
+        // Périodes des octaves de teinte de sol, en mètres : période =
+        // rayon / fréquence du bruit. Écrites ici parce que ce sont ELLES
+        // que le filtre compare à la maille — la fréquence, elle, n'est
+        // qu'un facteur d'échelle sans signification physique.
+        const val TINT_PERIOD_PATCH = 1274f
+        const val TINT_PERIOD_MOTTLE = 70.8f
+        const val TINT_PERIOD_GRAIN = 9.1f
+        const val TINT_PERIOD_GRAVEL = 1.20f
+        const val TINT_PERIOD_SPECK = 0.455f
+
+        /** Bornes du fondu de Nyquist, en nombre de mailles par période. */
+        const val TINT_NYQUIST_LO = 1.5f
+        const val TINT_NYQUIST_HI = 8.0f
 
         /**
          * Comblement minimal pour qu'une cuvette devienne un lac, en mètres.
