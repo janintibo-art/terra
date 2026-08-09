@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.34.1 — Correctif : la surface d'eau se construit en double
+
+Test rouge sur un VRAI bug, attrapé au premier passage de CI par le test de
+rayon de `TileWaterTest` : la surface d'eau était à 0,26 m de son rayon pour
+une tolérance calculée de 0,0075 m. Cause : les sommets d'eau étaient émis
+depuis les tableaux de directions en FLOAT (ceux des normales), et la
+quantification float32 d'une direction coûte jusqu'à R × 2⁻²⁴ ≈ 0,38 m sur
+le rayon reconstruit — de quoi noyer le biais anti-affleurement de 5 cm et
+faire frémir la ligne d'eau contre un terrain construit, lui, en double.
+C'est l'invariant n°5 du projet, violé à un endroit et respecté à trois
+lignes de là.
+
+Le mailleur conserve désormais les directions en double le long de la
+grille et l'émission d'eau les consomme, exactement comme le terrain.
+Validation numérique : pire erreur de la chaîne float 0,30 m (l'échec CI :
+0,26 m), chaîne double 0,002 m, tolérance 0,0077 m — marge ×4. Le test ne
+change pas d'un caractère : il avait raison.
+
+Au passage, les deux avertissements du journal de compilation disparaissent
+(paramètre `shoreBlend` orphelin de `colorFor` depuis la mort de la frange
+de rivage, lambda de recherche de tuile).
+
 ## v0.34.0 — Lot 2.9-a : le fond marin existe, l'eau devient une couche
 
 La mer n'est plus une facette du terrain écrêtée au niveau zéro. Le terrain

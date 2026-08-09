@@ -120,6 +120,16 @@ class TileMesh(
         // profondeur d'eau par sommet — lot 2.9-a.
         val rAlt = FloatArray(verts * verts)
         val wDepth = FloatArray(verts * verts)
+        // Directions en DOUBLE, conservées pour l'émission de la couche
+        // d'eau. Correctif v0.34.1 : la première mouture utilisait les
+        // tableaux float des normales (dirX/dirY/dirZ), et la quantification
+        // float32 d'une direction coûte jusqu'à R × 2⁻²⁴ ≈ 0,38 m sur le
+        // rayon reconstruit — mesuré 0,26 m en CI, quand le biais de la
+        // surface fait 5 cm. Invariant n°5 : les positions métriques se
+        // construisent en double, comme celles du terrain juste au-dessus.
+        val dirXD = DoubleArray(verts * verts)
+        val dirYD = DoubleArray(verts * verts)
+        val dirZD = DoubleArray(verts * verts)
         val colR = FloatArray(verts * verts)
         val colG = FloatArray(verts * verts)
         val colB = FloatArray(verts * verts)
@@ -158,6 +168,7 @@ class TileMesh(
                 relZ[idx] = d.z * r - cz
                 alt[idx] = a
                 dirX[idx] = df.x; dirY[idx] = df.y; dirZ[idx] = df.z
+                dirXD[idx] = d.x; dirYD[idx] = d.y; dirZD[idx] = d.z
 
                 // Couleur du biome INTERPOLÉE entre les trois sommets du
                 // triangle, au lieu d'être copiée du plus proche. Sans cela,
@@ -174,7 +185,7 @@ class TileMesh(
                     rgb[2] *= tintScratch[2]
                 }
                 val jitter = 1f   // le modelé vit désormais dans groundTintAt
-                colorFor(sampler, hint, df, a, jitter, rgb, shoreBlend,
+                colorFor(sampler, hint, df, a, jitter, rgb,
                     profile.params, colR, colG, colB, idx)
 
                 // Eau douce : le lac reprend la teinte du ciel plus qu'il ne
@@ -506,22 +517,26 @@ class TileMesh(
                         wDepth[v01] <= 0f && wDepth[v11] <= 0f) continue
                     // Même ordre de parcours que les facettes du terrain :
                     // même orientation, même élagage arrière.
-                    wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
-                    wo = emitWaterVertex(wo, v10, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
-                    wo = emitWaterVertex(wo, v11, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
-                    wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
-                    wo = emitWaterVertex(wo, v11, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
-                    wo = emitWaterVertex(wo, v01, rw, cx, cy, cz, dirX, dirY, dirZ, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v10, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v11, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v00, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v11, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)
+                    wo = emitWaterVertex(wo, v01, rw, cx, cy, cz, dirXD, dirYD, dirZD, wDepth, depthMorph)
                 }
             }
         }
     }
 
-    /** Écrit un sommet d'eau : position au rayon de la mer, profondeur, morph. */
+    /**
+     * Écrit un sommet d'eau : position au rayon de la mer, profondeur, morph.
+     * Directions en DOUBLE obligatoires (invariant n°5) : en float, le rayon
+     * reconstruit dériverait de ±0,38 m — v0.34.1.
+     */
     private fun emitWaterVertex(
         o: Int, v: Int, rw: Double,
         cx: Double, cy: Double, cz: Double,
-        dirX: FloatArray, dirY: FloatArray, dirZ: FloatArray,
+        dirX: DoubleArray, dirY: DoubleArray, dirZ: DoubleArray,
         wDepth: FloatArray, depthMorph: FloatArray
     ): Int {
         waterData[o] = (dirX[v] * rw - cx).toFloat()
@@ -1241,8 +1256,6 @@ class TileMesh(
             jitter: Float,
             /** Couleur de biome déjà interpolée : R, G, B. */
             rgb: FloatArray,
-            /** Demi-largeur de la frange de rivage, en mètres. */
-            shoreBlend: Float,
             params: PlanetParams,
             outR: FloatArray, outG: FloatArray, outB: FloatArray, idx: Int
         ) {

@@ -69,7 +69,7 @@ class TileWaterTest {
 
         /** Première tuile équatoriale dont le centre est en mer franche. */
         private val oceanTile: TileId by lazy {
-            findTile { tile, centerAlt -> centerAlt < -100f } ?: fail(
+            findTile { _, centerAlt -> centerAlt < -100f } ?: fail(
                 "aucune tuile océanique équatoriale trouvée — improbable sur " +
                     "un monde à ~70 % d'océan, vérifier la recherche"
             )
