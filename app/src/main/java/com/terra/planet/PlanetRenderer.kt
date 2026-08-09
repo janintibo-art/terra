@@ -1151,7 +1151,13 @@ class PlanetRenderer(
             precision mediump float;
             uniform vec3 uSunL;
             uniform float uDayF;
-            uniform float uDrift;
+            // highp EXPLICITE : le sommet declare uDrift en highp par
+            // defaut, et Mali exige la concordance de precision entre les
+            // deux etages, sous peine d'echec d'edition de liens (constate
+            // sur appareil, v0.26.0). mediump aurait fait trembler la
+            // derive : ~0,35 unite de resolution a ces magnitudes, 4 % de
+            // la longueur d'onde du bruit.
+            uniform highp float uDrift;
             varying vec3 vDir;
             varying float vBase;
             float h3(vec3 p) {

@@ -1,5 +1,19 @@
 # Journal des versions
 
+## v0.26.1 — Correctif : le programme nuages ne liait pas sur Mali
+
+La remontée d'erreurs du lot 0.6 a fait son travail : « L0001, uDrift du
+fragment ne concorde pas avec le sommet — la précision diffère ». Le
+sommet déclarait uDrift en highp par défaut, le fragment le faisait tomber
+sous son precision mediump global ; Mali exige la concordance exacte, le
+programme échouait à l'édition de liens et le ciel restait vide — tout le
+reste tournait.
+
+Correctif : uDrift en highp EXPLICITE côté fragment (le G77 le supporte).
+L'alternative mediump aurait fait trembler la dérive par pas visibles.
+Audit au passage : uDrift est le seul uniform partagé entre étages des
+trois nouveaux programmes (étoiles, lune, nuages) — aucun autre cas.
+
 ## v0.26.0 — Lot 2.14 : la couche nuageuse
 
 Une coquille sphérique à 9 km d'altitude, dont l'alpha est un bruit de
