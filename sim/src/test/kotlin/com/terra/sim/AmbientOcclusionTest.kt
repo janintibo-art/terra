@@ -60,11 +60,11 @@ class AmbientOcclusionTest {
         val r = world.params.radiusM.toDouble()
         val n = TileMesh.MESH_N
 
-        // Somme des luminances par (biome, creux/bosse).
-        val darkSum = HashMap<Int, Double>()
-        val darkN = HashMap<Int, Int>()
-        val brightSum = HashMap<Int, Double>()
-        val brightN = HashMap<Int, Int>()
+        // Échantillons (concavité, luminance) par biome. Aucun seuil de
+        // sélection : la v0.29.1 exigeait 42 m de concavité là où un pas de
+        // grille de 305 m en produit 1 à 5, et vidait les populations. La
+        // séparation se fera par QUARTILES, peuplés par construction.
+        val samples = HashMap<Int, ArrayList<Pair<Float, Float>>>()
 
         for (tile in landTiles) {
             val mesh = TileMesh(tile, world.terrain, sampler, r)
@@ -107,38 +107,33 @@ class AmbientOcclusionTest {
                     altAt(-nr.x * s, -nr.y * s, -nr.z * s)
                 )
                 val concavity = neighbours - a
-                // Zone morte : seuls les creux et bosses NETS comptent —
-                // un demi-pas d'altitude, l'échelle où l'effet est fort.
-                val scale = (stepRad * world.params.radiusM * 0.55).toFloat()
-                if (kotlin.math.abs(concavity) < scale * 0.25f) continue
-
                 val biome = sampler.biomeAt(d, sampler.nearestVertex(d, 0)).ordinal
                 val lum = mesh.vertexData[v - TileMesh.FLOATS_PER_VERTEX + TileMesh.OFFSET_COLOR] * 0.3f +
                     mesh.vertexData[v - TileMesh.FLOATS_PER_VERTEX + TileMesh.OFFSET_COLOR + 1] * 0.6f +
                     mesh.vertexData[v - TileMesh.FLOATS_PER_VERTEX + TileMesh.OFFSET_COLOR + 2] * 0.1f
-                if (concavity > 0f) {
-                    darkSum[biome] = (darkSum[biome] ?: 0.0) + lum
-                    darkN[biome] = (darkN[biome] ?: 0) + 1
-                } else {
-                    brightSum[biome] = (brightSum[biome] ?: 0.0) + lum
-                    brightN[biome] = (brightN[biome] ?: 0) + 1
-                }
+                samples.getOrPut(biome) { ArrayList() }.add(Pair(concavity, lum))
             }
         }
 
-        // Comparaison stratifiée : uniquement les biomes assez peuplés des
-        // deux côtés, puis cumul pondéré — jamais une moyenne brute.
+        // Comparaison stratifiée par biome, quart le plus CONCAVE contre
+        // quart le plus CONVEXE : les deux populations valent 25 % de
+        // l'échantillon quelle que soit l'amplitude du relief — aucune
+        // constante à calibrer, donc aucune à se tromper. Cumul pondéré
+        // ensuite, jamais une moyenne brute (leçon v0.15.3).
         var weighted = 0.0
         var weight = 0
-        for (b in darkN.keys) {
-            val dn = darkN[b] ?: 0
-            val bn = brightN[b] ?: 0
-            if (dn < 20 || bn < 20) continue
-            val k = minOf(dn, bn)
-            weighted += ((brightSum[b]!! / bn) - (darkSum[b]!! / dn)) * k
-            weight += k
+        for ((_, list) in samples) {
+            if (list.size < 80) continue
+            val sorted = list.sortedBy { it.first }
+            val q = sorted.size / 4
+            var convexSum = 0.0
+            var concaveSum = 0.0
+            for (i in 0 until q) convexSum += sorted[i].second
+            for (i in sorted.size - q until sorted.size) concaveSum += sorted[i].second
+            weighted += (convexSum / q - concaveSum / q) * q
+            weight += q
         }
-        assertTrue(weight > 0, "aucun biome assez peuplé des deux côtés")
+        assertTrue(weight > 0, "aucun biome n'atteint 80 échantillons")
         val gap = weighted / weight
         assertTrue(
             gap > 0.0,

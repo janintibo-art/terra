@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.29.2 — Le test d'occlusion perd son dernier seuil deviné
+
+Deuxième échec du même test, cause différente et nettement plus
+embarrassante : sa « zone morte » exigeait 42 m de concavité pour retenir
+un sommet, alors qu'un pas de grille de 305 m sur un relief ordinaire en
+produit 1 à 5. Elle excluait donc la quasi-totalité des sommets et
+laissait les populations vides — un seuil deviné, dans un test écrit pour
+corriger un seuil deviné.
+
+Le correctif supprime la constante au lieu de la retoucher : séparation
+par QUARTILES. Les sommets sont triés par concavité, et l'on compare le
+quart le plus concave au quart le plus convexe. Les deux populations
+valent 25 % de l'échantillon par construction, quelle que soit l'amplitude
+réelle du relief — il n'y a plus rien à calibrer, donc plus rien à
+manquer. La stratification par biome et le cumul pondéré sont conservés.
+
+Leçon consignée : quand un test échoue deux fois de suite, le problème
+n'est plus le réglage mais la PRÉSENCE d'un réglage. Une statistique
+auto-normalisée (quantiles, rangs) ne se trompe pas d'échelle.
+
 ## v0.29.1 — Test d'occlusion réécrit : il mesurait l'océan
 
 Le test de la v0.28.0 échouait avec une dispersion de 7,3·10⁻⁴ — celle
