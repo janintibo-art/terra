@@ -1,5 +1,18 @@
 # Journal des versions
 
+## v0.25.1 — Correctif de compilation : trois imports manquants
+
+Une seule vraie faute : `Rng` non importé dans CelestialSky — sa signature
+avait été vérifiée, pas son import, la moitié de la leçon. Toutes les
+erreurs « Double vs Float » n'étaient que la cascade du type en erreur de
+nextFloat(). Le renderer aurait échoué juste derrière : `CelestialSky` et
+`Icosphere` y manquaient aussi.
+
+Le filet s'étend : un contrôle d'imports (toute classe du projet utilisée
+est importée ou pleinement qualifiée) a été prototypé pour cette livraison
+et rejoint les passes statiques de la prochaine archive de relance, aux
+côtés du contrôle des propriétés d'instance promis à la v0.23.1.
+
 ## v0.25.0 — Lot 2.12 : le ciel nocturne
 
 Chaque monde a désormais son ciel : onze cents étoiles semées par la

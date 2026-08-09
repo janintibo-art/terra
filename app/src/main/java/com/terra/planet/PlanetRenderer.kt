@@ -5,7 +5,9 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.util.Log
 import com.terra.core.Vec3
+import com.terra.sim.CelestialSky
 import com.terra.sim.CoarseSampler
+import com.terra.sim.Icosphere
 import com.terra.sim.PlanetCamera
 import com.terra.sim.TerrainProfile
 import com.terra.sim.TileId

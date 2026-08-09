@@ -1,5 +1,6 @@
 package com.terra.sim
 
+import com.terra.core.Rng
 import com.terra.core.Seed
 import com.terra.core.Vec3
 import kotlin.math.cos
