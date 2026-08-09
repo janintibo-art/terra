@@ -1,5 +1,34 @@
 # Journal des versions
 
+## v0.29.3 — L'occlusion était inopérante : le test avait raison
+
+Troisième échec du test d'occlusion, et cette fois il ne s'agissait plus
+du test : écart mesuré −9,8·10⁻⁴, autrement dit AUCUN effet. Le défaut
+était dans le code de production depuis la v0.28.0.
+
+La normalisation divisait la concavité par la LONGUEUR de la maille — des
+centaines de mètres — alors que la concavité est une VARIATION
+D'ALTITUDE, quelques mètres. Deux ordres de grandeur d'écart : 0,4 % à
+5 % d'assombrissement selon le relief, invisible à l'œil comme au test.
+Comparer une hauteur à une longueur horizontale n'avait aucun sens.
+
+Correctif : la référence devient la RUGOSITÉ MESURÉE de la tuile — la
+moyenne de ses propres |concavités|, plancher de 5 cm pour qu'une tuile
+plate ne voie pas son bruit d'arrondi amplifié en marbrures. Le rapport
+concavité/rugosité vaut alors ±1 sur tout relief, et l'écart entre un
+creux et une crête atteint 38 % de luminance : visible, et identique à
+tous les niveaux du quadtree comme sur tous les terrains.
+
+Deux leçons, la seconde plus utile que la première :
+
+- Une grandeur ne se normalise que par une grandeur de MÊME DIMENSION.
+  Diviser des mètres verticaux par des mètres horizontaux passe la
+  vérification des unités et reste un non-sens physique.
+- Un test qui échoue trois fois n'est pas forcément un mauvais test. Les
+  deux premières fois, il l'était ; la troisième, il faisait son travail.
+  L'auto-normalisation adoptée pour le sortir d'affaire est exactement le
+  correctif dont le code de production avait besoin.
+
 ## v0.29.2 — Le test d'occlusion perd son dernier seuil deviné
 
 Deuxième échec du même test, cause différente et nettement plus

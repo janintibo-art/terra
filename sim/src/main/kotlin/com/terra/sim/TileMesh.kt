@@ -253,6 +253,59 @@ class TileMesh(
             }
         }
 
+        // --- 1 ter bis. Occlusion ambiante (lot 2.13) -----------------------
+        //
+        // Un fond de vallon reçoit moins de lumière du ciel qu'une crête :
+        // le relief alentour lui en cache une partie. Mesure locale sans
+        // lancer de rayon — la CONCAVITÉ, altitude du sommet comparée à la
+        // moyenne de ses quatre voisins de grille.
+        //
+        // La normalisation est le point délicat, et la v0.28.0 s'y était
+        // trompée : elle divisait la concavité par la LONGUEUR de la maille
+        // (des centaines de mètres) quand la concavité est une VARIATION
+        // D'ALTITUDE (quelques mètres). Deux ordres de grandeur d'écart,
+        // 0,4 % d'assombrissement — invisible à l'œil comme au test, qui a
+        // mis trois tours à le prouver. Une grandeur ne se normalise que
+        // par une grandeur de MÊME DIMENSION.
+        //
+        // La référence est donc la RUGOSITÉ MESURÉE de la tuile : la moyenne
+        // de ses propres |concavités|. Auto-normalisée, comme les quartiles
+        // du test — aucune constante métrique, donc aucune à se tromper, et
+        // l'effet garde la même force à tous les niveaux du quadtree comme
+        // sur tous les reliefs.
+        val conc = FloatArray(verts * verts)
+        var concSum = 0.0
+        var concCount = 0
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                if (mat[c] > 0.4f) continue
+                val cw = alt[c - 1]
+                val ce = alt[c + 1]
+                val cs = alt[c - verts]
+                val cn = alt[c + verts]
+                val k = (cw + ce + cs + cn) * 0.25f - alt[c]
+                conc[c] = k
+                concSum += kotlin.math.abs(k.toDouble())
+                concCount++
+            }
+        }
+        // Plancher de 5 cm : une tuile parfaitement plate ne doit pas voir
+        // son bruit d'arrondi amplifié en marbrures.
+        val roughness = if (concCount > 0)
+            max(0.05f, (concSum / concCount).toFloat() * 2.2f) else 1f
+        for (j in 0..n) {
+            for (i in 0..n) {
+                val c = (j + off) * verts + (i + off)
+                if (mat[c] > 0.4f) { ao[c] = 1f; continue }
+                // Un creux net garde 62 % de la lumière du ciel (l'horizon
+                // reste largement ouvert au fond d'un vallon), une crête en
+                // gagne 8 %.
+                ao[c] = (1f - (conc[c] / roughness).coerceIn(-0.08f, 0.38f))
+                    .coerceIn(0.62f, 1.08f)
+            }
+        }
+
         // --- 1 quater. Roche des pentes (lot 2.17 a) ------------------------
         //
         // Au-delà d'une pente de repos, l'herbe et la terre ne tiennent
