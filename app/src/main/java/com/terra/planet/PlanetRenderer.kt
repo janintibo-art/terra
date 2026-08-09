@@ -1731,6 +1731,7 @@ class PlanetRenderer(
             varying float vDusk;
             varying float vFresnel;
             varying float vFoam;
+            varying float vWater;
 """ + CLOUD_FIELD_GLSL + """
             void main() {
                 vec3 world = uCenterWorld + aPosition;
@@ -1822,6 +1823,7 @@ class PlanetRenderer(
                 float cosView = max(dot(nrm, view), 0.0);
                 float fres = 0.02 + 0.98 * pow(1.0 - cosView, 5.0);
                 vFresnel = fres * waterness;
+                vWater = waterness;
 
                 // --- Ecume de rivage ---
                 //
@@ -1900,6 +1902,7 @@ class PlanetRenderer(
             varying float vDusk;
             varying float vFresnel;
             varying float vFoam;
+            varying float vWater;
 
             void main() {
                 // L'ombre du nuage attenue la lumiere DIRECTE seulement :
@@ -1923,8 +1926,18 @@ class PlanetRenderer(
                 color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
                 // Lueur nocturne plus franche qu'en orbite : au sol, un noir
                 // total rend la face nocturne intestable. Clair de lune
-                // implicite, en attendant les vraies lunes du lot 2.12.
-                color += vColor * (0.018 + 0.038 * (1.0 - vDay));
+                // implicite.
+                //
+                // ÉTEINTE SUR L'EAU. Ce terme simule une retrodiffusion de
+                // surface : l'herbe, la roche et le sable renvoient un peu
+                // de la lumiere du ciel dans toutes les directions. L'eau ne
+                // le fait pas — elle REFLECHIT, et un ciel nocturne est
+                // noir. Appliquee a l'eau, cette lueur faisait luire lacs et
+                // rivieres en filaments blancs au fond des vallees, alors
+                // qu'ils devraient etre le point le plus SOMBRE du paysage
+                // (constate sur appareil, v0.32.0 : l'eau ressortait 1,5
+                // fois plus claire que la foret, de nuit).
+                color += vColor * (0.018 + 0.038 * (1.0 - vDay)) * (1.0 - 0.88 * vWater);
 
                 // Meme genou que le globe : les deux chemins doivent rendre
                 // les zones claires de la meme facon, sinon la bascule de mode

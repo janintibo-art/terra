@@ -1,5 +1,32 @@
 # Journal des versions
 
+## v0.32.2 — Les filaments blancs nocturnes : l'eau ne rétrodiffuse pas
+
+Des fils blancs sinueux couvraient le paysage, y compris en pleine nuit.
+C'est ce « en pleine nuit » qui a livré le diagnostic : la nuit, TOUS les
+termes multipliés par vDay sont éteints — diffus, spéculaire, halo. Seule
+subsiste la lueur nocturne. Les filaments étaient donc blancs DANS LA
+DONNÉE, pas blanchis par l'éclairage : ce ne pouvait pas être des reflets.
+Leur forme — de fins rubans au fond des vallées — désignait les lacs et
+rivières du lot 1.11.
+
+L'erreur est physique. La lueur nocturne simule une RÉTRODIFFUSION de
+surface : l'herbe, la roche et le sable renvoient un peu de la lumière du
+ciel dans toutes les directions. L'eau ne le fait pas — elle RÉFLÉCHIT, et
+un ciel nocturne est noir. Appliquée à l'eau, cette lueur faisait luire les
+plans d'eau 1,5 fois plus que la forêt, alors qu'ils devraient être le
+point le plus SOMBRE du paysage.
+
+Correctif : la lueur nocturne est atténuée de 88 % sur l'eau. Les rivières
+deviendront des rubans sombres la nuit — et, avec le Fresnel de la v0.32.1,
+des miroirs du ciel de jour et au crépuscule. Deux comportements opposés
+selon l'heure, et tous deux justes.
+
+Note de méthode : ce diagnostic n'a demandé aucune capture supplémentaire.
+Éliminer les termes éteints la nuit suffisait à écarter toutes les
+hypothèses de reflet — raisonner sur ce que le code PEUT produire vaut
+souvent mieux que raisonner sur ce que l'image semble montrer.
+
 ## v0.32.1 — L'eau réfléchit enfin le ciel (lot 2.9, volet reflets)
 
 **Réflexion de Fresnel.** Une mer regardée d'aplomb est sombre et laisse
