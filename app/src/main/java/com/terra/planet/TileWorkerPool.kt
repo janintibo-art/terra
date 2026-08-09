@@ -93,15 +93,28 @@ class TileWorkerPool(
                 // quelle : l'écart de priorité se résorbe en une image ou deux.
                 return
             }
+            // La variable est déclarée AVANT le Job pour que le corps puisse
+            // la capturer : dans ce lambda, `this` désignerait le pool, pas
+            // le job — la comparaison serait toujours fausse et le registre
+            // fuirait à chaque tuile.
+            var self: Job? = null
             val job = Job(key, priority) {
                 try {
                     body()
                 } catch (t: Throwable) {
                     Log.e(TAG, "Génération de tuile échouée", t)
                 } finally {
-                    synchronized(pending) { pending.remove(key) }
+                    // Retrait CONDITIONNEL : entre l'annulation de ce job et
+                    // sa fin, une nouvelle soumission a pu réenregistrer la
+                    // même clé. Un remove(key) aveugle effacerait ce nouveau
+                    // job du registre — il tournerait hors de tout contrôle,
+                    // et la soumission suivante en créerait un doublon.
+                    synchronized(pending) {
+                        if (pending[key] === self) pending.remove(key)
+                    }
                 }
             }
+            self = job
             pending[key] = job
             executor.execute(job)
         }

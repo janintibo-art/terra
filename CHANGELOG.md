@@ -1,5 +1,51 @@
 # Journal des versions
 
+## v0.30.0 — Reprise et concurrence : les quatre défauts critiques
+
+Premier lot issu du double audit (le tien, le mien). Quatre correctifs de
+fond, aucun visuel.
+
+**1. Globe noir après perte de contexte — l'issue était CERTAINE, pas
+possible.** Un filet existait dans onResume, mais il ne pouvait jamais se
+déclencher : il testait `drawnTriangles == 0`, or drawGlobe() sort avant la
+ligne qui met ce compteur à jour — la condition restait fausse à jamais. Et
+s'il s'était déclenché, il aurait reconstruit le globe SANS son raffinement
+haute définition. Le renderer conserve désormais son maillage RÉSIDENT et le
+reverse lui-même dès que `uploadedVertexCount` retombe à zéro : plus aucune
+dépendance à l'ordre entre onResume et onSurfaceCreated. Le filet inopérant
+est retiré.
+
+**2. Étoiles perdues à la reprise.** Même famille : le champ était consommé
+puis mis à null. Il est conservé, avec un drapeau de téléversement remis à
+zéro à la recréation du contexte.
+
+**3. pendingMesh pouvait perdre un maillage.** `lire, téléverser, mettre à
+null` effaçait ce que le fil de travail écrivait PENDANT le téléversement.
+Remplacé par un échange atomique (getAndSet) : ce qui arrive après le point
+d'échange sera vu à l'image suivante, jamais perdu.
+
+**4. Course dans TileWorkerPool.** Le `finally` faisait `pending.remove(key)`
+sans vérifier que la clé était bien la sienne : une resoumission intercalée
+disparaissait du registre, et la suivante créait un doublon. Retrait
+désormais conditionnel. Piège évité en chemin : dans le corps du job, `this`
+désigne le POOL et non le job — la comparaison aurait été toujours fausse et
+le registre aurait fui à chaque tuile. La référence est capturée
+explicitement.
+
+**5. Bonus, une régression de performance que j'avais introduite en v0.27.0 :**
+la météo construisait un CoarseSampler NEUF à chaque rafraîchissement du HUD
+en mode sol — soit le graphe d'adjacence des 10 242 cellules, dix fois par
+seconde. Un seul échantillonneur est désormais construit par monde, partagé
+avec le contexte de tuiles.
+
+**Limite assumée, dite franchement :** aucun de ces cinq correctifs n'est
+couvert par un test. `onSurfaceCreated`, l'échange atomique avec le fil
+OpenGL et la course du pool vivent dans :app, que la CI n'exécute pas — et
+le pool dépend d'android.util.Log, donc n'est pas testable en JVM pure en
+l'état. Le filet reste la relecture et l'essai sur appareil. Rendre le pool
+testable demanderait de le déplacer dans :sim avec une abstraction de
+journalisation : c'est un lot en soi, à décider.
+
 ## v0.29.4 — Coutures d'ombrage : la normalisation ne doit rien à la tuile
 
 L'occlusion de la v0.29.3 est enfin visible — les dunes se sculptent — mais

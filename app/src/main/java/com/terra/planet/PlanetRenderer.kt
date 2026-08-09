@@ -147,7 +147,30 @@ class PlanetRenderer(
     @Volatile var lastError: String? = null
         private set
 
-    @Volatile var pendingMesh: PlanetMesh? = null
+    /**
+     * Maillage du globe publié par le fil de travail, en attente de
+     * téléversement. Échangé par [java.util.concurrent.atomic.AtomicReference]
+     * et non lu-puis-annulé : la v0.29.4 faisait `lire, téléverser, mettre à
+     * null`, si bien qu'un maillage écrit PENDANT le téléversement était
+     * effacé sans avoir jamais été vu.
+     */
+    private val pendingMeshRef = java.util.concurrent.atomic.AtomicReference<PlanetMesh?>(null)
+    var pendingMesh: PlanetMesh?
+        get() = pendingMeshRef.get()
+        set(value) { pendingMeshRef.set(value) }
+
+    /**
+     * Dernier maillage RÉSIDENT, conservé après téléversement.
+     *
+     * Sans lui, une perte de contexte OpenGL (mise en veille, appel entrant)
+     * laissait le globe noir DÉFINITIVEMENT : onSurfaceCreated remet
+     * uploadedVertexCount à zéro, et plus personne ne détenait le maillage.
+     * Le filet de onResume ne pouvait pas jouer, car drawGlobe() sort avant
+     * la ligne qui met drawnTriangles à jour — la condition restait fausse
+     * pour toujours. Conserver la référence est la seule parade robuste :
+     * elle ne dépend d'aucun ordre d'appel du cycle de vie Android.
+     */
+    @Volatile private var residentMesh: PlanetMesh? = null
 
     // --- Ressources du chemin globe ---
     private var program = 0
@@ -191,7 +214,14 @@ class PlanetRenderer(
     private var moonProgram = 0
     private var moonVbo = 0
     private var moonVertexCount = 0
+    /**
+     * Champ d'étoiles du monde. CONSERVÉ après téléversement, comme le
+     * maillage : la v0.29.4 le mettait à null, et le ciel restait vide après
+     * toute reprise de contexte. Le drapeau dit s'il doit être (re)versé.
+     */
     @Volatile var pendingStars: FloatArray? = null
+        set(value) { field = value; starsUploaded = false }
+    @Volatile private var starsUploaded = false
     private var cloudProgram = 0
     private var cloudVbo = 0
     private var cloudVertexCount = 0
@@ -252,7 +282,7 @@ class PlanetRenderer(
         tileProgram = 0
         skyProgram = 0
         skyVbo = 0
-        starProgram = 0; starVbo = 0
+        starProgram = 0; starVbo = 0; starsUploaded = false
         moonProgram = 0; moonVbo = 0
         cloudProgram = 0; cloudVbo = 0
         weatherProgram = 0; weatherVbo = 0
@@ -351,9 +381,17 @@ class PlanetRenderer(
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
-        pendingMesh?.let {
+        // Échange atomique : ce qui arrive après ce point sera vu à l'image
+        // suivante, jamais perdu.
+        pendingMeshRef.getAndSet(null)?.let {
             upload(it)
-            pendingMesh = null
+            residentMesh = it
+        }
+        // Contexte recréé : le maillage résident n'est plus sur le GPU. On le
+        // reverse sans rien recalculer — et sans dépendre de l'ordre entre
+        // onResume et onSurfaceCreated.
+        if (uploadedVertexCount == 0) {
+            residentMesh?.let { upload(it) }
         }
 
         val snapshot = cameraSnapshot
@@ -796,7 +834,8 @@ class PlanetRenderer(
         mvp: FloatArray, spinC: Float, spinS: Float,
         snapshot: CameraSnapshot, dayF: Float, farPlane: Float
     ) {
-        pendingStars?.let {
+        // Reversé si jamais téléversé, ou si le contexte a été recréé.
+        if (!starsUploaded || starVbo == 0) pendingStars?.let {
             if (starVbo == 0) {
                 val ids = IntArray(1); GLES20.glGenBuffers(1, ids, 0)
                 starVbo = ids[0]
@@ -807,7 +846,7 @@ class PlanetRenderer(
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, starVbo)
             GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, it.size * 4, buf,
                 GLES20.GL_STATIC_DRAW)
-            pendingStars = null
+            starsUploaded = true
         }
         if (starProgram == 0) {
             starProgram = buildProgram(STAR_VERTEX, STAR_FRAGMENT)

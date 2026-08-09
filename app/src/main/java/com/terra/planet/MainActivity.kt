@@ -139,6 +139,16 @@ class MainActivity : Activity() {
     @Volatile private var globeDetail: com.terra.sim.GlobeRefinement? = null
 
     /**
+     * Échantillonneur du monde courant, partagé par la météo et le HUD.
+     *
+     * Sa construction bâtit le graphe d'adjacence des 10 242 cellules : la
+     * v0.27.0 en créait un NEUF à chaque rafraîchissement du HUD en mode
+     * sol, dix fois par seconde. Construit une fois par monde, sur le fil de
+     * travail comme le reste de la génération.
+     */
+    @Volatile private var worldSampler: CoarseSampler? = null
+
+    /**
      * Vitesse plein manche, en pixels de glissement équivalents par seconde.
      * Le joystick passe par cam.pan(), la même mécanique que le doigt :
      * la vitesse au sol reste donc proportionnelle à l'altitude, sans code
@@ -394,8 +404,10 @@ class MainActivity : Activity() {
                 // sur le fil de travail plutôt qu'à la première tuile.
                 worldEpoch++
                 raycaster = TerrainRaycaster(data.terrain)
+                val sampler = CoarseSampler(data)
+                worldSampler = sampler
                 renderer.tileContext = TileContext(
-                    data.terrain, CoarseSampler(data),
+                    data.terrain, sampler,
                     data.params.radiusM.toDouble(), worldEpoch
                 )
                 mainHandler.post {
@@ -608,7 +620,8 @@ class MainActivity : Activity() {
 
     // ---------------------------------------------------------- descente
 
-    private fun toggleDescent() {        if (descentActive) {
+    private fun toggleDescent() {
+        if (descentActive) {
             descentActive = false
             renderer.descentMode = false
             joystick.visibility = View.GONE
@@ -883,9 +896,10 @@ class MainActivity : Activity() {
         if (descentActive) {
             val w = world
             val cam = camera
-            if (w != null && cam != null) {
+            val sampler = worldSampler
+            if (w != null && cam != null && sampler != null) {
                 val d = cam.focusDirection().toVec3()
-                val cell = com.terra.sim.CoarseSampler(w).nearestVertex(d, weatherHint)
+                val cell = sampler.nearestVertex(d, weatherHint)
                 weatherHint = cell
                 val t = w.temperatureC[cell] + com.terra.sim.SeasonalClimate.deltaC(
                     w.position(cell).y, w.continentality[cell],
@@ -1113,11 +1127,14 @@ class MainActivity : Activity() {
         super.onResume()
         glView.onResume()
         lastTickNanos = 0L
-        world?.let { data ->
-            if (renderer.drawnTriangles == 0) {
-                worker.execute { renderer.pendingMesh = PlanetMesh(data, currentLayer) }
-            }
-        }
+        // Le filet historique — reconstruire le maillage si drawnTriangles
+        // valait zéro — est retiré : il ne se déclenchait JAMAIS (drawGlobe
+        // sort avant la ligne qui met drawnTriangles à jour, la condition
+        // restait fausse pour toujours) et, s'il l'avait fait, il aurait
+        // reconstruit le globe SANS son raffinement haute définition. Le
+        // renderer conserve désormais son maillage résident et le reverse
+        // lui-même quand le contexte est recréé : aucune dépendance à
+        // l'ordre entre onResume et onSurfaceCreated.
     }
 
     override fun onPause() {
@@ -1141,6 +1158,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.29.4"
+        const val VERSION = "0.30.0"
     }
 }
