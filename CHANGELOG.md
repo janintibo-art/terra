@@ -1,5 +1,26 @@
 # Journal des versions
 
+## v0.35.1 — Correctif : NaN au fond des fosses
+
+Test rouge sur un vrai bug, attrapé par un test de JUPE qui n'a rien à voir
+avec l'eau — il vérifiait la luminance des couleurs de sommet et les a
+trouvées non finies. Cause : la couleur du fond marin s'écrivait comme un
+quotient de deux exponentielles, `exp(−2d/λ_c) / exp(−2d/λ_b)`. En float32,
+le numérateur s'annule dès 182 m de profondeur et le dénominateur dès
+1 664 m : au-delà, `0 / 0 = NaN`, et une fosse de quelques kilomètres
+suffisait à peindre toute la tuile en NaN.
+
+Le quotient s'écrit désormais en UNE exponentielle,
+`exp(−2d·(1/λ_c − 1/λ_b))` — mathématiquement identique, jamais de division,
+underflow propre vers zéro. La décomposition reste validée : écart maximal à
+la couleur opaque inchangé à 0,033.
+
+Deux tests ajoutés ou améliorés : `seafloorColor` et `waterLayerAlpha` sont
+balayées jusqu'à 12 000 m et doivent rester finies et dans [0,1] ; le test
+de jupe distingue maintenant « non fini » de « nul » dans son message — les
+deux ne se soignent pas pareil, et la confusion a coûté une lecture de
+rapport.
+
 ## v0.35.0 — Lot 2.9-b : l'eau devient transparente
 
 Le relief sous-marin se voit à travers la surface, avec parallaxe : c'est la

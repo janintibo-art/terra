@@ -1024,9 +1024,15 @@ class TileMesh(
          */
         fun seafloorColor(depthM: Float, out: FloatArray) {
             val d = if (depthM < 0f) 0f else depthM
-            val tb = exp(-2f * d / WATER_LAMBDA_B)
-            out[0] = SEAFLOOR_R * exp(-2f * d / WATER_LAMBDA_R) / tb
-            out[1] = SEAFLOOR_G * exp(-2f * d / WATER_LAMBDA_G) / tb
+            // Le quotient T_c/T_b s'écrit en UNE exponentielle, jamais comme
+            // une division de deux (correctif v0.35.1). En float32,
+            // exp(−2d/3,5) s'annule dès 182 m et exp(−2d/32) dès 1 664 m :
+            // au fond d'une fosse, la division donnait 0/0 = NaN, qui
+            // contaminait toute la couleur de la tuile. Écrire l'exposant
+            // comme une différence est mathématiquement identique et
+            // s'annule proprement.
+            out[0] = SEAFLOOR_R * exp(-2f * d * (1f / WATER_LAMBDA_R - 1f / WATER_LAMBDA_B))
+            out[1] = SEAFLOOR_G * exp(-2f * d * (1f / WATER_LAMBDA_G - 1f / WATER_LAMBDA_B))
             out[2] = SEAFLOOR_B
         }
 

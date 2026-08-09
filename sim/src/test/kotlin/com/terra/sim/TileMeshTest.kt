@@ -259,7 +259,15 @@ class TileMeshTest {
 
         val terrain = meanLuminance(0, terrainFloats)
         val skirt = meanLuminance(terrainFloats, skirtFloats)
-        assertTrue(terrain > 0.0 && skirt > 0.0, "luminances nulles : lecture erronée")
+        // Message explicite : ce test a détaché un NaN de couleur en v0.35.0
+        // et annonçait « luminances nulles », ce qui a coûté une lecture de
+        // rapport pour comprendre. Un NaN et un zéro ne se soignent pas
+        // pareil, la formulation doit les distinguer.
+        assertTrue(terrain.isFinite() && skirt.isFinite(),
+            "luminance non finie (NaN) : une couleur de sommet est corrompue " +
+                "— terrain $terrain, jupe $skirt")
+        assertTrue(terrain > 0.0 && skirt > 0.0,
+            "luminances nulles : lecture erronée (terrain $terrain, jupe $skirt)")
         assertTrue(
             skirt < terrain * 0.85,
             "jupe à $skirt contre terrain à $terrain : elle n'est pas assombrie"

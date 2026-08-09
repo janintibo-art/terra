@@ -265,6 +265,26 @@ class TileWaterTest {
     }
 
     @Test
+    fun `le fond marin reste fini jusqu au fond des fosses`() {
+        // Le test qui aurait attrapé le NaN de la v0.35.0 : la couleur du
+        // fond s'écrivait comme un quotient de deux exponentielles, et en
+        // float32 le numérateur s'annule dès 182 m, le dénominateur dès
+        // 1 664 m — au-delà, 0/0. Une fosse de 6 000 m suffisait à peindre
+        // la tuile en NaN. On balaye donc bien au-delà du relief possible.
+        val out = FloatArray(3)
+        var d = 0f
+        while (d <= 12_000f) {
+            TileMesh.seafloorColor(d, out)
+            for (k in 0 until 3) {
+                assertTrue(out[k].isFinite(), "fond non fini à $d m (canal $k)")
+                assertTrue(out[k] in 0f..1f, "fond hors [0,1] à $d m (canal $k)")
+            }
+            assertTrue(TileMesh.waterLayerAlpha(d).isFinite(), "alpha non fini à $d m")
+            d += 5f
+        }
+    }
+
+    @Test
     fun `l opacite de la couche laisse voir le fond en eau peu profonde`() {
         // La promesse du lot : le relief sous-marin doit transparaître près
         // du bord et disparaître au large. Bornes du script de validation.
