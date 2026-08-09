@@ -1,5 +1,24 @@
 # Journal des versions
 
+## v0.39.0 — Lot 2.7-a : registres d'échelle
+
+Cinq registres — sol, local, régional, continental, orbite — classés par
+l'altitude de l'œil et stabilisés par une hystérésis en ratio (×1,12 de part
+et d'autre). Les frontières sont calibrées par `validation/registres.py` sur
+la distance d'horizon (quelle géographie remplit l'écran), et deux d'entre
+elles sont des ancres existantes : 700 m est le plancher de dilatation
+temporelle, 2 000 km est l'ouverture de l'inclinaison. Deux tests
+verrouillent ces égalités pour qu'aucune constante ne vive à deux endroits.
+
+Les registres ne re-quantifient AUCUNE vitesse : la loi continue du pan fait
+déjà ce travail. Ce sont des étiquettes de navigation — au HUD dès cette
+version, routeur de la bascule quadtree ↔ globe au 2.7-b.
+
+Au passage, le plan lointain quitte le rendu pour :sim
+(`ScaleRegistry.farPlaneM`), à l'identique — un test d'égalité exacte avec
+l'ancienne écriture en ligne garantit que le déplacement est pur. Aucun
+changement visuel dans cette version.
+
 ## v0.38.1 — Calque « Ressources »
 
 Neuvième calque : la ressource dominante en teinte, sur un fond de relief

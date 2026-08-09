@@ -9,6 +9,7 @@ import com.terra.sim.CelestialSky
 import com.terra.sim.CoarseSampler
 import com.terra.sim.Icosphere
 import com.terra.sim.PlanetCamera
+import com.terra.sim.ScaleRegistry
 import com.terra.sim.TerrainProfile
 import com.terra.sim.TileId
 import com.terra.sim.TileMesh
@@ -601,13 +602,15 @@ class PlanetRenderer(
 
 
         // --- Matrices : l'œil est à l'origine, le monde vient à lui ---
-        val altitude = max(2.0, snapshot.altitudeM)
         val near = PlanetCamera.nearPlaneFor(snapshot.heightAboveGroundM, snapshot.rangeM).toFloat()
         nearPlaneM = near
-        // Le plan lointain doit englober l'horizon et les montagnes qui le
-        // dépassent ; le facteur absorbe l'inclinaison et les jupes.
-        val horizonM = sqrt(max(0.0, (radius + altitude) * (radius + altitude) - radius * radius))
-        val far = (horizonM * 1.8 + 80_000.0).toFloat()
+        // Horizon et plan lointain : les formules vivent désormais dans :sim
+        // (ScaleRegistry, lot 2.7-a), où elles sont TESTÉES — y compris leur
+        // identité avec l'ancienne écriture en ligne d'ici. Ce fichier n'a
+        // pas de filet : ne rien recalculer localement. L'horizon reste
+        // nécessaire ici pour la densité de brume, plus bas.
+        val horizonM = ScaleRegistry.slantHorizonM(snapshot.altitudeM, radius)
+        val far = ScaleRegistry.farPlaneM(snapshot.altitudeM, radius).toFloat()
         Matrix.perspectiveM(projection, 0, Math.toDegrees(snapshot.fovRad.toDouble()).toFloat(), aspect, near, far)
         Matrix.setLookAtM(
             view, 0,

@@ -29,6 +29,7 @@ import com.terra.sim.Biome
 import com.terra.sim.CoarseSampler
 import com.terra.sim.ConsoleCommand
 import com.terra.sim.PlanetCamera
+import com.terra.sim.ScaleRegistry
 import com.terra.sim.TerrainRaycaster
 import com.terra.sim.TileWorkerPool
 import com.terra.sim.MapLayer
@@ -97,6 +98,15 @@ class MainActivity : Activity() {
      */
     @Volatile private var raycaster: TerrainRaycaster? = null
     private var descentActive = false
+
+    /**
+     * Registre d'échelle courant (lot 2.7-a) : étiquette de navigation
+     * stabilisée par hystérésis, affichée au HUD. Au 2.7-b, son changement
+     * déclenchera la bascule quadtree ↔ globe — c'est pour cela que l'état
+     * vit ici, mis à jour à 10 Hz par la boucle d'interface, et non recalculé
+     * à la volée dans le texte du HUD.
+     */
+    private val scaleRegistry = ScaleRegistry()
     private var worldEpoch = 0
     private lateinit var modeButton: TextView
 
@@ -908,6 +918,12 @@ class MainActivity : Activity() {
         } else 1f
         clock.advance(dt * dilation) { }
 
+        // Registre d'échelle : suivi seulement en descente — en mode globe,
+        // la caméra n'a pas d'altitude métrique (repère propre, 0,02..60).
+        if (descentActive) {
+            camera?.let { scaleRegistry.update(it.eyeAltitudeM()) }
+        }
+
         renderer.spinDeg = worldTime.spinDegrees(clock.tick)
         val sun = worldTime.sunDirection(clock.tick)
         renderer.sunX = sun[0]; renderer.sunY = sun[1]; renderer.sunZ = sun[2]
@@ -1025,6 +1041,7 @@ class MainActivity : Activity() {
             val cam = camera
             if (cam != null) {
                 sb.append("alt ").append(formatAltitude(cam.eyeAltitudeM()))
+                    .append(" (").append(scaleRegistry.current.label).append(')')
                     .append(" · tuiles ").append(renderer.tilesDrawn)
                     .append('/').append(renderer.tilesSelected)
                     .append(" · manque ").append(renderer.tilesMissing)
