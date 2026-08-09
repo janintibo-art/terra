@@ -1030,12 +1030,33 @@ class PlanetRenderer(
         val rz = snapshot.fwdX * snapshot.upY - snapshot.fwdY * snapshot.upX
 
         val night = 1f - dayF
-        val topR = 0.10f * dayF * presence + 0.004f
-        val topG = 0.28f * dayF * presence + 0.008f
-        val topB = 0.62f * dayF * presence + 0.022f
-        val botR = (0.55f * dayF + 0.016f) * presence + 0.004f
-        val botG = (0.66f * dayF + 0.022f) * presence + 0.006f
-        val botB = (0.82f * dayF + 0.045f) * presence + 0.016f
+
+        // --- Crépuscule (lot 2.10) ---
+        //
+        // Même mesure que le terrain, pour que les deux virent ENSEMBLE : un
+        // sol orangé sous un ciel resté bleu jurerait. L'élévation du soleil
+        // sur la verticale du lieu ; la fenêtre est étroite et la courbe
+        // cubique la resserre encore.
+        //
+        // Le BAS du ciel rougit fortement — c'est là que le regard traverse
+        // le plus d'atmosphère — et le haut à peine : c'est ce dégradé, pas
+        // une teinte uniforme, qui fait un couchant.
+        val eyeUp = kotlin.math.sqrt(
+            snapshot.eyeXM * snapshot.eyeXM + snapshot.eyeYM * snapshot.eyeYM +
+                snapshot.eyeZM * snapshot.eyeZM
+        ).coerceAtLeast(1.0)
+        val sunElev = ((snapshot.eyeXM / eyeUp) * sunX +
+            (snapshot.eyeYM / eyeUp) * sunY +
+            (snapshot.eyeZM / eyeUp) * sunZ).toFloat()
+        val d0 = (1f - kotlin.math.abs(sunElev) * 6f).coerceIn(0f, 1f)
+        val dusk = d0 * d0 * d0
+
+        val topR = (0.10f + 0.34f * dusk) * dayF * presence + 0.004f
+        val topG = (0.28f - 0.06f * dusk) * dayF * presence + 0.008f
+        val topB = (0.62f - 0.20f * dusk) * dayF * presence + 0.022f
+        val botR = ((0.55f + 0.62f * dusk) * dayF + 0.016f) * presence + 0.004f
+        val botG = ((0.66f - 0.18f * dusk) * dayF + 0.022f) * presence + 0.006f
+        val botB = ((0.82f - 0.52f * dusk) * dayF + 0.045f) * presence + 0.016f
         val groundFade = (0.25f + 0.75f * presence)
         var gR = (0.50f * dayF + 0.020f * night + 0.008f) * groundFade
         var gG = (0.58f * dayF + 0.024f * night + 0.010f) * groundFade
@@ -1707,6 +1728,7 @@ class PlanetRenderer(
             varying float vFog;
             varying float vRim;
             varying float vCloudShade;
+            varying float vDusk;
 """ + CLOUD_FIELD_GLSL + """
             void main() {
                 vec3 world = uCenterWorld + aPosition;
@@ -1782,7 +1804,37 @@ class PlanetRenderer(
                 // Reflet calcule sur la normale de la HOULE, pas sur la
                 // verticale : c'est ce qui fait scintiller la mer au lieu de
                 // n'y poser qu'une seule tache de soleil.
-                vSpec = pow(max(dot(nrm, halfway), 0.0), 90.0) * 0.40 * waterness;
+                float ndh = max(dot(nrm, halfway), 0.0);
+                // Eau : reflet serre et vif. Sol : un lustre LARGE et faible,
+                // qui existe sur toute surface reelle — sable et roche
+                // renvoient la lumiere rasante, la neige davantage. Sans lui,
+                // un sol eclaire de biais restait parfaitement mat, ce qui le
+                // rendait plat quel que soit le relief.
+                //
+                // La rugosite se lit dans la COULEUR deja calculee : un sol
+                // clair (neige, sel, sable sec) reflechit plus qu'un sol
+                // sombre (foret, roche humide). Aucun canal nouveau — le
+                // format de sommet reste intact.
+                float albedo = (aColor.r + aColor.g + aColor.b) * 0.3333;
+                float groundGloss = smoothstep(0.35, 0.85, albedo) * 0.10;
+                vSpec = pow(ndh, 90.0) * 0.40 * waterness
+                      + pow(ndh, 8.0) * groundGloss * (1.0 - waterness);
+
+                // --- Crepuscule (lot 2.10, promesse non tenue jusqu'ici) ---
+                //
+                // Le lot 2.10 annoncait un « rougeoiement rasant » ; le ciel
+                // se contentait de s'assombrir sans virer. Quand le soleil
+                // rase l'horizon LOCAL, sa lumiere traverse une epaisseur
+                // d'atmosphere bien plus grande : le bleu est diffuse au
+                // loin, il ne reste que l'orange. On mesure exactement cela
+                // par le cosinus du soleil sur la verticale du lieu.
+                //
+                // La fenetre est etroite (le soleil descend vite) et la
+                // courbe cubique la resserre encore : l'effet culmine au
+                // ras de l'horizon et disparait des que le soleil monte.
+                float sunElev = dot(sph, sun);
+                float dusk = clamp(1.0 - abs(sunElev) * 6.0, 0.0, 1.0);
+                vDusk = dusk * dusk * dusk;
 
                 // Halo du limbe, comme le globe : l'atmosphere s'epaissit la
                 // ou le regard frole la sphere. Calcule au sommet, borne [0,1].
@@ -1816,12 +1868,19 @@ class PlanetRenderer(
             varying float vFog;
             varying float vRim;
             varying float vCloudShade;
+            varying float vDusk;
 
             void main() {
                 // L'ombre du nuage attenue la lumiere DIRECTE seulement :
                 // l'ambiante vient du ciel entier, qu'un nuage ne masque pas.
-                vec3 color = vColor * (0.12 + 0.88 * vDiffuse * vCloudShade) * vDay;
-                color += vec3(0.90, 0.94, 1.0) * vSpec * vDay;
+                // La lumiere DIRECTE se teinte au crepuscule ; l'ambiante,
+                // qui vient du ciel entier, garde sa couleur. C'est ce qui
+                // donne des ombres bleutees sous un soleil orange, comme au
+                // vrai couchant.
+                vec3 sunColor = mix(vec3(1.0, 1.0, 1.0), vec3(1.32, 0.72, 0.42), vDusk);
+                vec3 color = vColor * 0.12 * vDay
+                           + vColor * (0.88 * vDiffuse * vCloudShade) * vDay * sunColor;
+                color += vec3(0.90, 0.94, 1.0) * vSpec * vDay * sunColor;
                 color += vec3(0.28, 0.50, 0.95) * vRim * 0.55;
                 // Lueur nocturne plus franche qu'en orbite : au sol, un noir
                 // total rend la face nocturne intestable. Clair de lune

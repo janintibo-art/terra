@@ -1,5 +1,35 @@
 # Journal des versions
 
+## v0.32.0 — Crépuscule et rugosité des matériaux
+
+Deux petits lots groupés, tous deux issus du croisement graphique.
+
+**1. Le crépuscule, promesse du lot 2.10 enfin tenue.** Ce lot annonçait un
+« rougeoiement rasant » ; le ciel se contentait de s'assombrir sans virer.
+Quand le soleil rase l'horizon LOCAL, sa lumière traverse une épaisseur
+d'atmosphère bien plus grande : le bleu se diffuse au loin, il ne reste que
+l'orange. C'est exactement ce que mesure le cosinus du soleil sur la
+verticale du lieu — pas une minuterie, une géométrie.
+
+Le ciel et le terrain utilisent la MÊME mesure, sans quoi un sol orangé
+sous un ciel resté bleu jurerait. Au couchant, l'horizon vire à un orange
+franc et le zénith au violet sombre : c'est ce dégradé, et non une teinte
+uniforme, qui fait un crépuscule. Et la lumière DIRECTE seule se teinte —
+l'ambiante vient du ciel entier et garde sa couleur, ce qui donne des
+ombres bleutées sous un soleil orange, comme au vrai couchant.
+
+**2. Rugosité par matériau.** Le spéculaire n'existait que sur l'eau : un
+sol éclairé de biais restait parfaitement mat, donc plat quel que soit son
+relief. Toute surface réelle renvoie la lumière rasante — le sable sec et
+la neige davantage que la forêt ou la roche humide. La rugosité se lit dans
+la COULEUR déjà calculée (un sol clair réfléchit plus qu'un sol sombre) :
+aucun canal nouveau, le format de sommet reste intact. Eau : reflet serré
+et vif, exposant 90. Sol : lustre large et faible, exposant 8.
+
+Audit systématique des shaders passé en routine après l'épisode uSnow :
+uniformes partagés entre étages ET varyings lus sans être écrits. Zéro
+divergence.
+
 ## v0.31.3 — uSnow, et le damier de l'occlusion
 
 **1. Échec d'édition de liens sur uSnow.** Exactement le piège de la
