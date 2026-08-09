@@ -112,6 +112,7 @@ class MainActivity : Activity() {
     private var touchDownAt = 0L
     private var touchMoved = false
     private var lastTickNanos = 0L
+    private var uiLoopRunning = false
 
     private val speeds = listOf(0f, 1f, 20f, 200f)
     private val speedLabels = listOf("❚❚", "×1", "×20", "×200")
@@ -842,10 +843,23 @@ class MainActivity : Activity() {
 
     // --------------------------------------------------------------- HUD
 
+    /**
+     * Boucle d'interface et de simulation, 10 Hz.
+     *
+     * Elle s'ARRÊTE en arrière-plan : jusqu'à la v0.30.0, seul le rendu était
+     * suspendu par glView.onPause(), et cette boucle continuait de faire
+     * avancer le temps planétaire, de bâtir le texte du HUD et d'échantillonner
+     * la météo, écran éteint — batterie consommée pour rien. Le drapeau est
+     * lu à chaque itération plutôt que de retirer les messages : c'est plus
+     * simple à raisonner, et le pas suivant s'éteint de lui-même.
+     */
     private fun startUiLoop() {
+        if (uiLoopRunning) return
+        uiLoopRunning = true
         refreshButtonStates()
         mainHandler.post(object : Runnable {
             override fun run() {
+                if (!uiLoopRunning) return
                 tickSimulation()
                 if (hudVisible) hud.text = buildHudText()
                 mainHandler.postDelayed(this, 100L)
@@ -1126,7 +1140,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         glView.onResume()
+        // Remise à zéro AVANT de relancer la boucle : le premier pas repart
+        // d'un delta nul, pas de la durée de la veille.
         lastTickNanos = 0L
+        startUiLoop()
         // Le filet historique — reconstruire le maillage si drawnTriangles
         // valait zéro — est retiré : il ne se déclenchait JAMAIS (drawGlobe
         // sort avant la ligne qui met drawnTriangles à jour, la condition
@@ -1140,12 +1157,18 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         persist()
+        // La simulation s'arrête avec le rendu : le temps planétaire ne doit
+        // pas courir écran éteint. La reprise du temps est traitée par
+        // lastTickNanos = 0 dans onResume — sans quoi le premier pas après
+        // la veille vaudrait toute la durée d'absence.
+        uiLoopRunning = false
         glView.onPause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         persist()
+        uiLoopRunning = false
         mainHandler.removeCallbacksAndMessages(null)
         worker.shutdownNow()
         tilePool.shutdown()
@@ -1158,6 +1181,6 @@ class MainActivity : Activity() {
     }
 
     companion object {
-        const val VERSION = "0.30.0"
+        const val VERSION = "0.30.1"
     }
 }

@@ -21,18 +21,59 @@ class WorldStore(context: Context) {
     private val file = File(context.filesDir, FILE_NAME)
     private val temp = File(context.filesDir, "$FILE_NAME.tmp")
 
+    /**
+     * Écrit la sauvegarde de façon atomique et durable.
+     *
+     * Trois défauts de la version précédente, dans l'ordre de gravité :
+     *
+     *  1. Elle SUPPRIMAIT la sauvegarde avant de renommer le temporaire. Entre
+     *     les deux, aucun fichier n'existait : une coupure à cet instant
+     *     perdait le monde. On renomme désormais par-dessus — sur le même
+     *     système de fichiers, `rename` est atomique, la sauvegarde passe
+     *     directement de l'ancienne version à la nouvelle.
+     *  2. Elle ne forçait pas l'écriture sur le support. `writeBytes` rend la
+     *     main quand les octets sont dans le cache du noyau ; une coupure de
+     *     courant pouvait laisser un fichier de la bonne taille au contenu
+     *     partiel. Un `fd.sync()` explicite ferme cette fenêtre.
+     *  3. Elle ne vérifiait pas ce qu'elle venait d'écrire. Le décodage de
+     *     contrôle coûte quelques microsecondes sur moins de 200 octets et
+     *     garantit qu'on ne remplace jamais une sauvegarde valide par une
+     *     corrompue.
+     */
     fun save(snapshot: WorldSave.Snapshot): Boolean = try {
-        temp.writeBytes(WorldSave.encode(snapshot))
-        if (file.exists()) file.delete()
-        val ok = temp.renameTo(file)
-        if (!ok) Log.w(TAG, "Renommage de la sauvegarde impossible")
-        ok
+        val bytes = WorldSave.encode(snapshot)
+        if (WorldSave.decode(bytes) == null) {
+            Log.w(TAG, "Sauvegarde refusée : l'encodage ne se relit pas")
+            false
+        } else {
+            java.io.FileOutputStream(temp).use { out ->
+                out.write(bytes)
+                out.flush()
+                // Durabilité : sans sync, les octets ne sont que dans le
+                // cache du noyau et une coupure laisse un fichier tronqué.
+                out.fd.sync()
+            }
+            // Pas de delete préalable : rename écrase atomiquement.
+            val ok = temp.renameTo(file)
+            if (!ok) {
+                Log.w(TAG, "Renommage de la sauvegarde impossible")
+                temp.delete()
+            }
+            ok
+        }
     } catch (t: Throwable) {
         Log.w(TAG, "Échec de la sauvegarde", t)
+        try { temp.delete() } catch (ignored: Throwable) { }
         false
     }
 
+    /**
+     * Relit la sauvegarde. Un temporaire résiduel signale une écriture
+     * interrompue : on l'efface plutôt que de le laisser s'accumuler, la
+     * sauvegarde précédente restant intacte par construction.
+     */
     fun load(): WorldSave.Snapshot? = try {
+        if (temp.exists()) temp.delete()
         if (!file.exists()) null else WorldSave.decode(file.readBytes())
     } catch (t: Throwable) {
         Log.w(TAG, "Échec du chargement", t)

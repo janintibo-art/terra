@@ -1,5 +1,35 @@
 # Journal des versions
 
+## v0.30.1 — Durabilité, cycle de vie, portabilité
+
+Second lot d'audit. Trois correctifs, aucun visuel.
+
+**1. Sauvegarde atomique et durable.** Trois défauts, par gravité : elle
+SUPPRIMAIT le fichier avant de renommer le temporaire (fenêtre où aucune
+sauvegarde n'existait — une coupure à cet instant perdait le monde) ; elle
+ne forçait pas l'écriture sur le support (`writeBytes` rend la main quand
+les octets sont dans le cache du noyau, une coupure de courant pouvait
+laisser un fichier de la bonne taille au contenu partiel) ; elle ne
+vérifiait pas ce qu'elle venait d'écrire. Désormais : encodage relu avant
+écriture, `fd.sync()` explicite, renommage PAR-DESSUS sans suppression
+préalable — sur un même système de fichiers, `rename` est atomique. Au
+chargement, un temporaire résiduel signale une écriture interrompue et est
+effacé ; la sauvegarde précédente est intacte par construction.
+
+**2. La simulation s'arrête en arrière-plan.** Seul le rendu était suspendu :
+la boucle 10 Hz continuait d'avancer le temps planétaire, de bâtir le HUD et
+d'échantillonner la météo, écran éteint. Elle s'éteint maintenant à onPause
+et repart à onResume, avec `lastTickNanos` remis à zéro AVANT le relancement
+— sans quoi le premier pas après la veille vaudrait toute la durée
+d'absence.
+
+**3. `highp` en fragment n'est pas garanti sur GLES2.** C'est une capacité
+optionnelle, annoncée par `GL_FRAGMENT_PRECISION_HIGH`. Le Mali-G77 l'a ;
+un GPU plus ancien aurait refusé de compiler le shader de nuages, laissant
+ces appareils sans nuages ni pluie. Garde `#ifdef` avec repli `mediump`. Le
+`uTime` du shader de météo reste en highp : il est dans l'étage SOMMET, où
+la précision haute est garantie par la spécification.
+
 ## v0.30.0 — Reprise et concurrence : les quatre défauts critiques
 
 Premier lot issu du double audit (le tien, le mien). Quatre correctifs de

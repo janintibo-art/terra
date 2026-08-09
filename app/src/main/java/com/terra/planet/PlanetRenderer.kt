@@ -1308,6 +1308,17 @@ class PlanetRenderer(
 
         private const val CLOUD_FRAGMENT = """
             precision mediump float;
+            // GLES2 ne GARANTIT pas highp dans les fragment shaders : c'est
+            // une capacite optionnelle, annoncee par cette macro. Le Mali-G77
+            // l'a, un GPU plus ancien refuserait de compiler le shader — et
+            // l'application serait sans nuages ni pluie sur ces appareils.
+            // Le repli mediump degrade la derive (pas visibles au bout de
+            // quelques heures de temps monde) mais compile partout.
+            #ifdef GL_FRAGMENT_PRECISION_HIGH
+            #define TIME_PRECISION highp
+            #else
+            #define TIME_PRECISION mediump
+            #endif
             uniform vec3 uSunL;
             uniform float uDayF;
             // highp EXPLICITE : le sommet declare uDrift en highp par
@@ -1316,7 +1327,7 @@ class PlanetRenderer(
             // sur appareil, v0.26.0). mediump aurait fait trembler la
             // derive : ~0,35 unite de resolution a ces magnitudes, 4 % de
             // la longueur d'onde du bruit.
-            uniform highp float uDrift;
+            uniform TIME_PRECISION float uDrift;
             varying vec3 vDir;
             varying float vBase;
             float h3(vec3 p) {
