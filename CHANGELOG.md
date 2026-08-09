@@ -1,5 +1,44 @@
 # Journal des versions
 
+## v0.38.0 — Lot 1.17 : carte de ressources (la Phase 1 est close)
+
+Six ressources par cellule d'icosphère : sol arable, bois, pierre, cuivre,
+fer, étain. Chacune est placée par sa géologie — le cuivre aux arcs de
+subduction et aux panaches, le fer dans les vieux boucliers continentaux
+loin de toute frontière active, l'étain aux seules collisions
+continentales, le sol arable aux alluvions de plaine. C'est ce qui rendra
+vraie la phrase du lot 6.8 : sans dépôt de cuivre à portée, une tribu reste
+à la pierre.
+
+**Méthode : percentile, pas seuil.** Un gisement se décrit spontanément par
+un seuil (« du cuivre au-dessus de 0,7 »), mais ce score dépend du monde
+tiré : sur trois distributions simulées, le même seuil couvrait 0 %, 12 %
+et 79 % des terres (`validation/ressources.py`). On trie donc les cellules
+terrestres et on garde la fraction voulue — la couverture devient exacte
+par construction, sur tout monde et à toute graine.
+
+Ce que les tests vérifient n'est donc pas la couverture, garantie, mais la
+**cohérence géologique** : contraste de médianes entre la population du
+gisement et les terres, sur la grandeur qui l'explique. Seuil 0,60, calculé
+— un masque qui fonctionne donne 0,26, le hasard ne descend pas sous 1,0.
+Les médianes plutôt que les moyennes : une distance angulaire a une
+distribution à longue queue.
+
+Champ **dérivé** (invariant n°6) : calculé à la demande depuis des données
+déjà figées, hors empreinte et hors sauvegarde. `GENERATION_VERSION` reste
+donc à **13** et les mondes existants gardent leur empreinte — ils gagnent
+la carte au premier accès.
+
+Deux précautions prises d'avance : un monde peut n'avoir aucune collision
+continentale, donc pas d'étain ; le test constate alors l'absence légitime
+au lieu d'échouer, mais vérifie d'abord laquelle des deux situations il
+observe. Et le percentile ne peut jamais dépasser sa cible, ce qui est
+exigé de toutes les ressources, quand l'égalité n'est exigée que de celles
+dont le masque couvre forcément des terres.
+
+**La Phase 1 est complète.** Il ne reste de la Phase 2 que 2.7, 2.11 (qui
+dépend de la Phase 6) et 2.18–2.20.
+
 ## v0.37.0 — Le temps s'explique, le soleil existe, les étoiles se voient
 
 **Le HUD dit enfin ce que le temps fait.** Le bouton annonce un

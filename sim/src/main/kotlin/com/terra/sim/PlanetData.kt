@@ -100,6 +100,16 @@ class PlanetData(
     val geography: Geography by lazy { Geography.analyze(this) }
 
     /**
+     * Carte des ressources exploitables — lot 1.17.
+     *
+     * Calculée à la demande et DÉRIVÉE : elle n'entre ni dans l'empreinte ni
+     * dans la sauvegarde (invariant n°6), ce qui permet de l'ajouter sans
+     * toucher `GENERATION_VERSION`. Les mondes déjà enregistrés gardent la
+     * leur, et gagnent la carte au premier accès.
+     */
+    val resources: ResourceField by lazy { ResourceField.generate(this) }
+
+    /**
      * Empreinte du monde — lot de consolidation.
      *
      * Condense l'ensemble des champs générés en un seul entier 64 bits. Sert de
