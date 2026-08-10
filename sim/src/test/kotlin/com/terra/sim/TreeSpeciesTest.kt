@@ -141,6 +141,37 @@ class TreeSpeciesTest {
     }
 
     @Test
+    fun lePiedEstEnfouiAssezMaisPasTrop() {
+        // Assez : l'anneau de base ouvert doit passer sous terre, donc au
+        // moins le diamètre du tronc — et pour les grands sujets, de quoi
+        // couvrir l'écart d'une tuile de niveau 18 (~36 cm), qui est celle
+        // qu'on obtient à 50 m de distance.
+        for (species in TreeSpecies.values()) {
+            val tree = TreeGenerator.generate(species.params(), 2L)
+            val sink = tree.footSinkM()
+            val trunkRadius = tree.segments[0].radiusBaseM
+            assertTrue(sink > 0f, "${species.label} : pied non enfoui")
+            assertTrue(
+                sink >= trunkRadius,
+                "${species.label} : enfouissement $sink sous le rayon $trunkRadius"
+            )
+            // Pas trop : une mousse de 8 cm ne doit pas disparaître.
+            assertTrue(
+                sink <= 0.25f * tree.heightM() + 1e-6f,
+                "${species.label} : arbre englouti"
+            )
+        }
+        // Les grands sujets couvrent bien l'écart d'une tuile de niveau 18.
+        for (species in listOf(TreeSpecies.CONIFERE, TreeSpecies.FEUILLU, TreeSpecies.PALMIER)) {
+            val tree = TreeGenerator.generate(species.params(), 2L)
+            assertTrue(
+                tree.footSinkM() >= 0.36f,
+                "${species.label} flotterait sur une tuile de niveau 18"
+            )
+        }
+    }
+
+    @Test
     fun determinismeParEspece() {
         for (species in TreeSpecies.values()) {
             val a = TreeGenerator.generate(species.params(), 77L)

@@ -1,5 +1,24 @@
 # Journal des versions
 
+## v0.46.1 — Le pied de l'arbre s'enfouit
+
+Le sol DESSINÉ est la surface d'une tuile (grille de 16×16 altitudes
+interpolées), pas le terrain exact sur lequel l'arbre était posé. Les deux
+s'écartent entre les nœuds : ~36 cm sous une tuile de niveau 18, celle
+qu'on obtient à 50 m de distance. Le pied flottait donc au-dessus du sol
+visible, avec son anneau de base ouvert en évidence — mot pour mot la leçon
+v0.26.1, tirée pour la végétation des tuiles et oubliée ici.
+
+`TreeSkeleton.footSinkM()` calcule l'enfouissement dans :sim, testé :
+max(2 × rayon du tronc, 5 % de la hauteur), plafonné au quart de la
+hauteur. Soit 58 cm pour un conifère, 56 pour un feuillu, mais 6 mm pour
+une mousse — le plafond empêche d'engloutir les petites plantes.
+
+Limite assumée : au-delà d'environ 150 m, la tuile devient assez grossière
+pour que l'écart dépasse l'enfouissement. La vraie réponse est celle de la
+v0.26.1 — échantillonner la surface de la TUILE — et elle viendra avec la
+répartition du lot 3.6, qui donnera accès à la grille d'altitudes.
+
 ## v0.46.0 — Lot 3.3-a : les arbres prennent du volume
 
 Le fil de fer du lot 3.1 dessinait des traits d'un pixel et ignorait

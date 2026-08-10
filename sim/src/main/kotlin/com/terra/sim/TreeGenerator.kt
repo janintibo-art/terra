@@ -302,6 +302,45 @@ class TreeSkeleton(val segments: List<Segment>) {
         return if (h > 1e-6f) spreadM() / h else 0f
     }
 
+    /**
+     * Profondeur d'enfouissement du pied, en mètres (lot 3.3-a, v0.46.1).
+     *
+     * ## Pourquoi enfouir
+     *
+     * Le sol DESSINÉ est la surface d'une tuile — une grille de 16×16
+     * altitudes interpolées — tandis que l'arbre est posé sur le terrain
+     * EXACT. Les deux s'écartent entre les nœuds de la grille : environ
+     * 36 cm sous une tuile de niveau 18 (celle qu'on obtient à 50 m de
+     * distance), et jusqu'à 1,4 m au niveau 16. Un pied posé sur l'exact
+     * FLOTTE donc au-dessus du visible — c'est mot pour mot la leçon
+     * v0.26.1, déjà tirée pour la végétation des tuiles, et que ce lot
+     * avait oubliée.
+     *
+     * ## La formule
+     *
+     * `max(2 × rayon du tronc, 5 % de la hauteur)`, plafonné au quart de la
+     * hauteur. Le premier terme garantit que l'anneau de base ouvert passe
+     * sous terre quelle que soit l'espèce ; le second donne aux grands
+     * sujets de quoi absorber l'écart de tuile ; le plafond empêche
+     * d'engloutir une mousse de huit centimètres.
+     *
+     * ## Ce qui reste imparfait, et pourquoi c'est accepté ici
+     *
+     * Au-delà d'environ 150 m, la tuile devient assez grossière pour que
+     * l'écart dépasse l'enfouissement : le pied peut redevenir visible. La
+     * vraie réponse est celle de la v0.26.1 — échantillonner la surface de
+     * la TUILE, pas le terrain exact — mais elle suppose l'accès à la
+     * grille d'altitudes de la tuile, qui arrivera avec la répartition du
+     * lot 3.6. Pour un arbre de diagnostic posé à la console, l'écart
+     * résiduel vaut quelques pixels à cette distance.
+     */
+    fun footSinkM(): Float {
+        val trunk = segments.firstOrNull() ?: return 0f
+        val h = heightM()
+        val sink = kotlin.math.max(2f * trunk.radiusBaseM, 0.05f * h)
+        return kotlin.math.min(sink, 0.25f * h)
+    }
+
     /** Segments nés le long d'un parent plutôt qu'à sa pointe (lot 3.2). */
     fun lateralCount(): Int = segments.count { s ->
         if (s.parent < 0) return@count false

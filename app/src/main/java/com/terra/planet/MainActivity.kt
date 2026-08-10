@@ -908,7 +908,12 @@ class MainActivity : Activity() {
                     // Ancre au point visé, posée sur le relief.
                     val up = cam.focusDirection()
                     val altM = kotlin.math.max(0.0, ray.altitudeAlong(up))
-                    val r = data.params.radiusM.toDouble() + altM
+                    // Le pied s'enfonce sous le terrain EXACT : le sol
+                    // dessiné est une surface de tuile qui passe plus bas
+                    // entre ses nœuds, et un arbre posé sur l'exact flotte
+                    // au-dessus du visible (leçon v0.26.1). La profondeur
+                    // est calculée et testée dans :sim.
+                    val r = data.params.radiusM.toDouble() + altM - tree.footSinkM()
                     // Repère local : haut × nord = est (convention).
                     val pole = com.terra.core.Vec3d(0.0, 1.0, 0.0)
                     val north = (pole - up * (up dot pole)).normalized()
@@ -930,6 +935,7 @@ class MainActivity : Activity() {
                     showConsoleMessage(
                         "${cmd.species.label} n°${cmd.seed} planté au point visé.\n" +
                             "${tree.segments.size} segments · $triangles triangles · " +
+                            "pied enfoui de ${"%.0f".format(tree.footSinkM() * 100)} cm · " +
                             "${"%.1f".format(tree.heightM())} m de haut, " +
                             "${"%.1f".format(tree.spreadM())} m d'envergure.\n" +
                             "« arbre off » pour le retirer."
