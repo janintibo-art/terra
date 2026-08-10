@@ -1,5 +1,22 @@
 # Journal des versions
 
+## v0.42.0 — Lot 2.20-a : capture d'écran, et vitesse ×400
+
+Un bouton « Photo » (barre de droite, et commande console `photo`) enregistre
+la surface OpenGL en PNG — SANS le HUD ni les boutons, qui sont des vues
+Android par-dessus : le mode carte postale est gratuit. À partir de
+l'API 29, la photo va dans la galerie (Pictures/Terra) via MediaStore, sans
+aucune permission, conformément à la promesse du projet ; sous l'API 29 le
+repli est le dossier privé de l'appli, sans permission non plus. La lecture
+des pixels se fait en toute fin d'image sur le fil GL, la compression PNG
+sur un fil de travail. Le nom de fichier (monde assaini, version, altitude,
+horodatage UTC) est construit dans :sim, pur et testé — l'époque du test
+d'horodatage a d'ailleurs été vérifiée en Python après qu'une valeur posée
+de tête s'est révélée fausse de quatre jours.
+
+La barre des vitesses gagne un cran ×400, demandé pour voir vivre le monde
+depuis le sol. Six tests ajoutés (nom de capture ×4, console ×2).
+
 ## v0.41.0 — Outillage : bouton Console et commandes rapides
 
 Un bouton « Console » rejoint la barre de droite (l'appui long en mode sol

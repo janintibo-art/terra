@@ -190,6 +190,14 @@ class PlanetRenderer(
     // --- Ressources du chemin descente ---
     private var tileProgram = 0
 
+    // --- Capture d'écran (lot 2.20-a) ---
+    /** Armé par l'UI ; consommé en fin d'image sur le fil GL. */
+    @Volatile var captureRequested = false
+    /** Reçoit les pixels RGBA de BAS en HAUT, sur le fil GL : décamper vite. */
+    @Volatile var onCapture: ((java.nio.ByteBuffer, Int, Int) -> Unit)? = null
+    @Volatile private var surfaceWidth = 0
+    @Volatile private var surfaceHeight = 0
+
     // --- Globe métrique (lot 2.7-b1, instrumentation) ---
     //
     // Trois rendus du limbe comparables à la console (« limbe … ») : les
@@ -490,6 +498,8 @@ class PlanetRenderer(
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
         aspect = if (height > 0) width.toFloat() / height else 1f
+        surfaceWidth = width
+        surfaceHeight = height
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -537,6 +547,28 @@ class PlanetRenderer(
             fps = fpsFrames / fpsAccumulator
             fpsAccumulator = 0f
             fpsFrames = 0
+        }
+
+        // --- Capture d'écran (lot 2.20-a), toute dernière étape ---
+        // glReadPixels ne lit que la surface GL : le HUD, le joystick et les
+        // boutons sont des vues Android PAR-DESSUS et n'y figurent pas — le
+        // mode « carte postale » est gratuit. La lecture bloque le tube
+        // quelques millisecondes : acceptable pour un geste ponctuel, et
+        // c'est pourquoi elle ne s'arme jamais toute seule.
+        if (captureRequested) {
+            captureRequested = false
+            val cb = onCapture
+            val w = surfaceWidth
+            val h = surfaceHeight
+            if (cb != null && w > 0 && h > 0) {
+                val pixels = java.nio.ByteBuffer.allocateDirect(w * h * 4)
+                    .order(java.nio.ByteOrder.nativeOrder())
+                GLES20.glReadPixels(
+                    0, 0, w, h, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixels
+                )
+                pixels.rewind()
+                cb(pixels, w, h)
+            }
         }
     }
 

@@ -36,6 +36,12 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande photo`() {
+        assertTrue(ConsoleCommand.parse("photo") is ConsoleCommand.TakePhoto)
+        assertTrue(ConsoleCommand.parse("  PHOTO  ") is ConsoleCommand.TakePhoto)
+    }
+
+    @Test
     fun `commande limbe`() {
         val g = ConsoleCommand.parse("limbe globe")
         assertTrue(g is ConsoleCommand.SetLimbMode)

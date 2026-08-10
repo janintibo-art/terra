@@ -41,6 +41,9 @@ sealed class ConsoleCommand {
      */
     data class SetLimbMode(val mode: Int) : ConsoleCommand()
 
+    /** `photo` — enregistre une capture de la surface GL (lot 2.20-a). */
+    object TakePhoto : ConsoleCommand()
+
     data class Invalid(val message: String) : ConsoleCommand()
 
     companion object {
@@ -52,6 +55,7 @@ sealed class ConsoleCommand {
             "soleil <heure>            avance jusqu'à cette heure locale, ex : soleil 12\n" +
             "mode sol | mode globe     bascule la vue\n" +
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
+            "photo                     enregistre une capture d'écran\n" +
             "limbe tuiles|globe|collerette\n" +
             "   rendu du limbe en mode sol (diagnostic du lot 2.7)\n" +
             "aide                      ce texte"
@@ -81,6 +85,7 @@ sealed class ConsoleCommand {
                         else -> SetLocalHour(h)
                     }
                 }
+                "photo" -> TakePhoto
                 "limbe" -> when (parts.getOrNull(1)?.lowercase()) {
                     "tuiles", "tuile" -> SetLimbMode(0)
                     "globe" -> SetLimbMode(1)

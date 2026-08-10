@@ -2,13 +2,17 @@ package com.terra.planet
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ContentValues
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.opengl.GLSurfaceView
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.text.InputType
 import android.util.Log
 import android.util.TypedValue
@@ -132,8 +136,8 @@ class MainActivity : Activity() {
     private var lastTickNanos = 0L
     private var uiLoopRunning = false
 
-    private val speeds = listOf(0f, 1f, 20f, 200f)
-    private val speedLabels = listOf("❚❚", "×1", "×20", "×200")
+    private val speeds = listOf(0f, 1f, 20f, 200f, 400f)
+    private val speedLabels = listOf("❚❚", "×1", "×20", "×200", "×400")
 
     // Tiroirs latéraux (v0.16.2) : les barres vivent dans deux panneaux
     // rétractables, calques à gauche, temps et monde à droite. Fermés, seule
@@ -190,6 +194,7 @@ class MainActivity : Activity() {
         store = WorldStore(this)
 
         renderer = PlanetRenderer(tilePool)
+        renderer.onCapture = { pixels, w, h -> saveCapture(pixels, w, h) }
         applyScreenDensity()
         configChooser = BestConfigChooser()
         glView = GLSurfaceView(this).apply {
@@ -239,6 +244,7 @@ class MainActivity : Activity() {
         timeBar.addView(makeButton("Régl.") { showParamEditor() }, column())
         timeBar.addView(makeButton("Monde") { showSeedDialog() }, column())
         timeBar.addView(makeButton("Console") { showConsoleDialog() }, column())
+        timeBar.addView(makeButton("Photo") { renderer.captureRequested = true }, column())
         modeButton = makeButton("Sol") { toggleDescent() }
         timeBar.addView(modeButton, column())
         pedestrianButton = makeButton("Piéton") { togglePedestrian() }
@@ -844,7 +850,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 12, 24, 0)
             addView(quickRow("limbe tuiles", "limbe globe", "limbe col"))
-            addView(quickRow("teinte", "soleil 12", "aide"))
+            addView(quickRow("photo", "soleil 12"))
+            addView(quickRow("teinte", "aide"))
             addView(input)
         }
         dialog = AlertDialog.Builder(this)
@@ -883,6 +890,10 @@ class MainActivity : Activity() {
                 )
                 clock.restore(clock.tick + jump)
             }
+            ConsoleCommand.TakePhoto -> {
+                renderer.captureRequested = true
+                // Le message viendra de saveCapture, avec le chemin réel.
+            }
             is ConsoleCommand.SetLimbMode -> {
                 renderer.limbMode = cmd.mode
                 val label = when (cmd.mode) {
@@ -905,6 +916,69 @@ class MainActivity : Activity() {
             is ConsoleCommand.Help -> showConsoleMessage(ConsoleCommand.HELP_TEXT)
             is ConsoleCommand.Invalid -> showConsoleMessage(cmd.message)
         }
+    }
+
+    /**
+     * Enregistre une capture — lot 2.20-a. Appelé sur le FIL GL avec les
+     * pixels bruts : on décampe aussitôt vers un fil de travail, la
+     * compression PNG (~centaines de ms) n'a rien à faire dans la boucle
+     * de rendu.
+     */
+    private fun saveCapture(pixels: java.nio.ByteBuffer, w: Int, h: Int) {
+        Thread {
+            try {
+                val src = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                src.copyPixelsFromBuffer(pixels)
+                // glReadPixels livre les lignes de BAS en haut : miroir
+                // vertical, sinon la planète est tête en bas.
+                val flip = android.graphics.Matrix().apply { postScale(1f, -1f) }
+                val shot = Bitmap.createBitmap(src, 0, 0, w, h, flip, false)
+                src.recycle()
+
+                val name = com.terra.sim.CaptureName.build(
+                    world?.name ?: "monde",
+                    BuildConfig.VERSION_NAME,
+                    if (descentActive) camera?.eyeAltitudeM() else null,
+                    System.currentTimeMillis()
+                )
+
+                val where: String
+                if (Build.VERSION.SDK_INT >= 29) {
+                    // Galerie via MediaStore : AUCUNE permission requise à
+                    // partir de l'API 29 — conforme à la promesse du projet.
+                    val values = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, name)
+                        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Terra")
+                    }
+                    val uri = contentResolver.insert(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
+                    ) ?: throw IllegalStateException("insertion MediaStore refusée")
+                    contentResolver.openOutputStream(uri).use { out ->
+                        checkNotNull(out) { "flux de sortie nul" }
+                        shot.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    where = "Galerie · Pictures/Terra/$name"
+                } else {
+                    // API < 29 : la galerie exigerait une permission
+                    // d'écriture, contraire à la promesse. Le dossier privé
+                    // de l'appli n'en demande aucune ; il est lisible au
+                    // gestionnaire de fichiers (Android/data/…).
+                    val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
+                    val f = java.io.File(dir, name)
+                    java.io.FileOutputStream(f).use { out ->
+                        shot.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    where = f.absolutePath
+                }
+                shot.recycle()
+                runOnUiThread { showConsoleMessage("Capture enregistrée :\n$where") }
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    showConsoleMessage("Capture échouée : ${t.javaClass.simpleName}")
+                }
+            }
+        }.start()
     }
 
     private fun showConsoleMessage(text: String) {
