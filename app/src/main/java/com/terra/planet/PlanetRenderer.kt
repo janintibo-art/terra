@@ -190,6 +190,42 @@ class PlanetRenderer(
     // --- Ressources du chemin descente ---
     private var tileProgram = 0
 
+    // --- Arbre de test (lot 3.1, fil de fer par console) ---
+    //
+    // :sim fabrique les sommets (position locale + teinte, testés) ; ici on
+    // ne fait que téléverser et dessiner. L'ancre est métrique double ; le
+    // repère local vient de l'activité en COLONNES (est, haut, nord) pour
+    // que uFrame·(x, y, z) local donne est·x + haut·y + nord·z — le Y local
+    // de l'arbre est sa verticale.
+    @Volatile private var treeWireResident: FloatArray? = null
+    @Volatile private var treeWireDirty = false
+    private val treeBaseM = DoubleArray(3)
+    private val treeFrame = FloatArray(9)
+    private var treeVbo = 0
+    private var treeVertexCount = 0
+    private var treeProgram = 0
+    private var trAPosition = -1
+    private var trAColor = -1
+    private var trUViewProj = -1
+    private var trUBaseRel = -1
+    private var trUFrame = -1
+
+    fun plantTestTree(
+        wire: FloatArray,
+        baseXM: Double, baseYM: Double, baseZM: Double,
+        frame: FloatArray
+    ) {
+        treeBaseM[0] = baseXM; treeBaseM[1] = baseYM; treeBaseM[2] = baseZM
+        System.arraycopy(frame, 0, treeFrame, 0, 9)
+        treeWireResident = wire
+        treeWireDirty = true
+    }
+
+    fun clearTestTree() {
+        treeWireResident = null
+        treeWireDirty = true
+    }
+
     // --- Capture d'écran (lot 2.20-a) ---
     /** Armé par l'UI ; consommé en fin d'image sur le fil GL. */
     @Volatile var captureRequested = false
@@ -376,6 +412,10 @@ class PlanetRenderer(
         tileProgram = 0
         waterProgram = 0
         mgProgram = 0
+        treeProgram = 0
+        treeVbo = 0
+        treeVertexCount = 0
+        treeWireDirty = true
         collarVbo = 0
         collarVertexCount = 0
         collarLastAltM = -1.0
@@ -474,6 +514,15 @@ class PlanetRenderer(
             mgUDeExag = GLES20.glGetUniformLocation(mgProgram, "uDeExag")
             mgURadialBias = GLES20.glGetUniformLocation(mgProgram, "uRadialBias")
             mgUSun = GLES20.glGetUniformLocation(mgProgram, "uSun")
+        }
+
+        treeProgram = buildProgram(TREE_VERTEX_SHADER, TREE_FRAGMENT_SHADER)
+        if (treeProgram != 0) {
+            trAPosition = GLES20.glGetAttribLocation(treeProgram, "aPosition")
+            trAColor = GLES20.glGetAttribLocation(treeProgram, "aColor")
+            trUViewProj = GLES20.glGetUniformLocation(treeProgram, "uViewProj")
+            trUBaseRel = GLES20.glGetUniformLocation(treeProgram, "uBaseRel")
+            trUFrame = GLES20.glGetUniformLocation(treeProgram, "uFrame")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -927,6 +976,11 @@ class PlanetRenderer(
         disableAttribute(tAMaterial)
         disableAttribute(tAMorph)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+
+        // --- Arbre de test (lot 3.1), après le terrain opaque --------------
+        // Profondeur écrite par le terrain, testée ici ; l'eau translucide
+        // dessinée ensuite se mélangera par-dessus si l'arbre est sous elle.
+        drawTestTree(snapshot)
 
         // --- Couche d'eau (lot 2.9-a), après TOUT le terrain ---------------
         //
@@ -1597,6 +1651,70 @@ class PlanetRenderer(
     }
 
     /**
+     * Fil de fer de l'arbre de test — lot 3.1. La soustraction ancre−œil se
+     * fait en DOUBLE sur CPU (invariant n°5) ; le shader ne voit que des
+     * coordonnées locales de quelques mètres, sûres en float32.
+     */
+    private fun drawTestTree(snapshot: CameraSnapshot) {
+        if (treeWireDirty) {
+            treeWireDirty = false
+            val wire = treeWireResident
+            if (wire == null) {
+                treeVertexCount = 0
+            } else {
+                try {
+                    if (treeVbo == 0) {
+                        val ids = IntArray(1)
+                        GLES20.glGenBuffers(1, ids, 0)
+                        treeVbo = ids[0]
+                    }
+                    val buffer = ByteBuffer.allocateDirect(wire.size * 4)
+                        .order(ByteOrder.nativeOrder())
+                        .asFloatBuffer()
+                    buffer.put(wire)
+                    buffer.position(0)
+                    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, treeVbo)
+                    GLES20.glBufferData(
+                        GLES20.GL_ARRAY_BUFFER, wire.size * 4, buffer,
+                        GLES20.GL_DYNAMIC_DRAW
+                    )
+                    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+                    treeVertexCount = wire.size / 6
+                } catch (t: Throwable) {
+                    treeVertexCount = 0
+                    lastError = "Arbre : ${t.javaClass.simpleName}"
+                }
+            }
+        }
+        if (treeProgram == 0 || treeVbo == 0 || treeVertexCount == 0) return
+
+        GLES20.glUseProgram(treeProgram)
+        GLES20.glUniformMatrix4fv(trUViewProj, 1, false, mvp, 0)
+        GLES20.glUniform3f(
+            trUBaseRel,
+            (treeBaseM[0] - snapshot.eyeXM).toFloat(),
+            (treeBaseM[1] - snapshot.eyeYM).toFloat(),
+            (treeBaseM[2] - snapshot.eyeZM).toFloat()
+        )
+        GLES20.glUniformMatrix3fv(trUFrame, 1, false, treeFrame, 0)
+
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, treeVbo)
+        val stride = 6 * 4
+        if (trAPosition >= 0) {
+            GLES20.glEnableVertexAttribArray(trAPosition)
+            GLES20.glVertexAttribPointer(trAPosition, 3, GLES20.GL_FLOAT, false, stride, 0)
+        }
+        if (trAColor >= 0) {
+            GLES20.glEnableVertexAttribArray(trAColor)
+            GLES20.glVertexAttribPointer(trAColor, 3, GLES20.GL_FLOAT, false, stride, 12)
+        }
+        GLES20.glDrawArrays(GLES20.GL_LINES, 0, treeVertexCount)
+        if (trAPosition >= 0) GLES20.glDisableVertexAttribArray(trAPosition)
+        if (trAColor >= 0) GLES20.glDisableVertexAttribArray(trAColor)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+    }
+
+    /**
      * Globe métrique ou collerette — lot 2.7-b1.
      *
      * Le maillage contemplatif (unités de planète, relief exagéré) est
@@ -2081,6 +2199,38 @@ class PlanetRenderer(
 
         /** Une tuile non vue pendant ~4 s à 30 i/s est rendue au pool. */
         private const val KEEP_FRAMES = 120L
+
+        // ------------------------------------------- shaders de l'arbre-test
+        //
+        // Coordonnées LOCALES en mètres (quelques dizaines au plus) : le
+        // repère est appliqué au sommet, l'ancre relative à l'œil arrive en
+        // uniforme déjà soustraite en double côté CPU.
+
+        private const val TREE_VERTEX_SHADER = """
+            uniform mat4 uViewProj;
+            uniform vec3 uBaseRel;
+            uniform mat3 uFrame;
+
+            attribute vec3 aPosition;
+            attribute vec3 aColor;
+
+            varying vec3 vColor;
+
+            void main() {
+                gl_Position = uViewProj * vec4(uBaseRel + uFrame * aPosition, 1.0);
+                vColor = aColor;
+            }
+        """
+
+        private const val TREE_FRAGMENT_SHADER = """
+            precision mediump float;
+
+            varying vec3 vColor;
+
+            void main() {
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        """
 
         // ----------------------------------------- shaders du globe métrique
         //

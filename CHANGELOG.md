@@ -1,5 +1,27 @@
 # Journal des versions
 
+## v0.44.0 — Lot 3.1 : générateur d'arbres (Phase 3 ouverte)
+
+Une grammaire de branchement paramétrée (angle, ramification, longueur,
+conicité, dispersion, tropisme) produit des squelettes déterministes en
+Kotlin pur : segments avec base, pointe, rayons, profondeur et parent, dans
+un repère local Y-haut. Un enfant « continuation » à angle réduit fait les
+fûts, les autres branches ouvrent à l'angle nominal, l'azimut tourne à
+l'angle d'or (137,51°), le tropisme redresse par nlerp (monotonie vérifiée
+dans validation/arbres.py, qui chiffre aussi le budget : garde à 20 000
+segments par REFUS déterministe — écrêter changerait la forme). La pointe
+d'un parent porte exactement le rayon de base de ses enfants : aucun
+ressaut aux raccords, testé au bit près.
+
+Console : « arbre [graine] » plante le squelette de l'espèce-test (k=3,
+profondeur 5, 364 segments) au point visé, dessiné en fil de fer teinté
+par profondeur — les sommets sont fabriqués et testés dans :sim, :app ne
+fait que les téléverser. « arbre off » le retire. Dix tests ajoutés pour le
+générateur, un pour la console.
+
+Le maillage (3.3), les familles d'espèces (3.2) et la répartition (3.6)
+s'appuieront sur cette ossature.
+
 ## v0.43.0 — Lot 2.7-b2 : bascule du limbe câblée sur le registre orbite
 
 L'instruction (§8 de validation/bascule.py) a établi le fait qui tranche :

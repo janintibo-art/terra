@@ -53,6 +53,13 @@ sealed class ConsoleCommand {
     /** `photo` — enregistre une capture de la surface GL (lot 2.20-a). */
     object TakePhoto : ConsoleCommand()
 
+    /**
+     * `arbre [graine]` / `arbre off` — plante ou retire le squelette
+     * d'arbre de test (lot 3.1) au point visé, dessiné en fil de fer.
+     * [seed] nul = retirer.
+     */
+    data class ShowTree(val seed: Long?) : ConsoleCommand()
+
     data class Invalid(val message: String) : ConsoleCommand()
 
     companion object {
@@ -65,6 +72,8 @@ sealed class ConsoleCommand {
             "mode sol | mode globe     bascule la vue\n" +
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
             "photo                     enregistre une capture d'écran\n" +
+            "arbre [graine] | arbre off\n" +
+            "   squelette d'arbre de test au point visé (lot 3.1)\n" +
             "limbe auto|tuiles|globe|collerette\n" +
             "   rendu du limbe en mode sol (auto : globe en orbite)\n" +
             "banc limbe [alt_km]       cadre le disque entier pour capture\n" +
@@ -96,6 +105,12 @@ sealed class ConsoleCommand {
                     }
                 }
                 "photo" -> TakePhoto
+                "arbre" -> when (val arg = parts.getOrNull(1)?.lowercase()) {
+                    null -> ShowTree(1L)
+                    "off", "non" -> ShowTree(null)
+                    else -> arg.toLongOrNull()?.let { ShowTree(it) }
+                        ?: Invalid("Usage : arbre [graine] | arbre off")
+                }
                 "limbe" -> when (parts.getOrNull(1)?.lowercase()) {
                     "tuiles", "tuile" -> SetLimbMode(0)
                     "globe" -> SetLimbMode(1)

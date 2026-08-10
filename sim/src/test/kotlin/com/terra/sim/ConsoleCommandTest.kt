@@ -36,6 +36,20 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande arbre`() {
+        val d = ConsoleCommand.parse("arbre")
+        assertTrue(d is ConsoleCommand.ShowTree)
+        assertEquals(1L, d.seed)
+        val g = ConsoleCommand.parse("arbre 42")
+        assertTrue(g is ConsoleCommand.ShowTree)
+        assertEquals(42L, g.seed)
+        val off = ConsoleCommand.parse("arbre off")
+        assertTrue(off is ConsoleCommand.ShowTree)
+        assertEquals(null, off.seed)
+        assertTrue(ConsoleCommand.parse("arbre chêne") is ConsoleCommand.Invalid)
+    }
+
+    @Test
     fun `commande photo`() {
         assertTrue(ConsoleCommand.parse("photo") is ConsoleCommand.TakePhoto)
         assertTrue(ConsoleCommand.parse("  PHOTO  ") is ConsoleCommand.TakePhoto)
