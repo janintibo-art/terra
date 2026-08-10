@@ -422,6 +422,12 @@ class MainActivity : Activity() {
 
                 world = data
                 worldTime = WorldTime(axialTiltDeg = params.axialTiltDeg)
+                // Globe métrique (lot 2.7-b1) : l'inverse de l'exagération du
+                // relief, calculé dans :sim où sa garde (exagération nulle)
+                // est testée.
+                renderer.deExagFactorM = com.terra.sim.GlobeMetric.deExaggerationFactor(
+                    params.maxAltitudeM, params.reliefExaggeration
+                )
                 renderer.pendingMesh = mesh
 
                 // Contexte du rendu à tuiles. L'époque croissante signale au
@@ -851,6 +857,18 @@ class MainActivity : Activity() {
                 )
                 clock.restore(clock.tick + jump)
             }
+            is ConsoleCommand.SetLimbMode -> {
+                renderer.limbMode = cmd.mode
+                val label = when (cmd.mode) {
+                    1 -> "globe métrique"
+                    2 -> "collerette"
+                    else -> "tuiles"
+                }
+                showConsoleMessage(
+                    "Limbe : $label." +
+                        if (!descentActive) " (visible en mode sol)" else ""
+                )
+            }
             is ConsoleCommand.SetLevelTint -> {
                 renderer.debugLevelTint = cmd.enabled ?: !renderer.debugLevelTint
                 showConsoleMessage(
@@ -1042,6 +1060,10 @@ class MainActivity : Activity() {
             if (cam != null) {
                 sb.append("alt ").append(formatAltitude(cam.eyeAltitudeM()))
                     .append(" (").append(scaleRegistry.current.label).append(')')
+                when (renderer.limbMode) {
+                    1 -> sb.append(" · limbe:globe")
+                    2 -> sb.append(" · limbe:collerette")
+                }
                     .append(" · tuiles ").append(renderer.tilesDrawn)
                     .append('/').append(renderer.tilesSelected)
                     .append(" · manque ").append(renderer.tilesMissing)

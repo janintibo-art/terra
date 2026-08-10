@@ -190,6 +190,37 @@ class PlanetRenderer(
     // --- Ressources du chemin descente ---
     private var tileProgram = 0
 
+    // --- Globe métrique (lot 2.7-b1, instrumentation) ---
+    //
+    // Trois rendus du limbe comparables à la console (« limbe … ») : les
+    // tuiles (état normal), le globe raffiné entier dessiné dans le repère
+    // métrique, ou la seule collerette de faces bordant l'horizon, glissée
+    // SOUS les tuiles. Aucun de ces chemins ne s'active sans la console.
+    /** 0 = tuiles · 1 = globe métrique · 2 = collerette. Écrit par le fil UI. */
+    @Volatile var limbMode = 0
+    /** maxAltitude/exagération du monde courant ; 0 tant qu'aucun monde. */
+    @Volatile var deExagFactorM = 0f
+    private var mgProgram = 0
+    private var mgAPosition = -1
+    private var mgAColor = -1
+    private var mgANormal = -1
+    private var mgAMaterial = -1
+    private var mgUViewProj = -1
+    private var mgUEyeM = -1
+    private var mgUPlanetR = -1
+    private var mgUDeExag = -1
+    private var mgURadialBias = -1
+    private var mgUSun = -1
+    /** Centres de faces du maillage résident, calculés à la première demande. */
+    private var faceCenterDirs: FloatArray? = null
+    private var collarVbo = 0
+    private var collarVertexCount = 0
+    private var collarLastDirX = 0f
+    private var collarLastDirY = 0f
+    private var collarLastDirZ = 0f
+    private var collarLastAltM = -1.0
+    private var metricGlobeTriangles = 0
+
     // --- Couche d'eau (lot 2.9-a) ---
     private var waterProgram = 0
     private var wAPosition = -1
@@ -328,6 +359,10 @@ class PlanetRenderer(
         uploadedVertexCount = 0
         tileProgram = 0
         waterProgram = 0
+        mgProgram = 0
+        collarVbo = 0
+        collarVertexCount = 0
+        collarLastAltM = -1.0
         skyProgram = 0
         skyVbo = 0
         starProgram = 0; starVbo = 0; starsUploaded = false
@@ -409,6 +444,20 @@ class PlanetRenderer(
             wUCloudShadow = GLES20.glGetUniformLocation(waterProgram, "uCloudShadow")
             wUTileCover = GLES20.glGetUniformLocation(waterProgram, "uTileCover")
             wUMorph = GLES20.glGetUniformLocation(waterProgram, "uMorph")
+        }
+
+        mgProgram = buildProgram(MG_VERTEX_SHADER, MG_FRAGMENT_SHADER)
+        if (mgProgram != 0) {
+            mgAPosition = GLES20.glGetAttribLocation(mgProgram, "aPosition")
+            mgAColor = GLES20.glGetAttribLocation(mgProgram, "aColor")
+            mgANormal = GLES20.glGetAttribLocation(mgProgram, "aNormal")
+            mgAMaterial = GLES20.glGetAttribLocation(mgProgram, "aMaterial")
+            mgUViewProj = GLES20.glGetUniformLocation(mgProgram, "uViewProj")
+            mgUEyeM = GLES20.glGetUniformLocation(mgProgram, "uEyeM")
+            mgUPlanetR = GLES20.glGetUniformLocation(mgProgram, "uPlanetR")
+            mgUDeExag = GLES20.glGetUniformLocation(mgProgram, "uDeExag")
+            mgURadialBias = GLES20.glGetUniformLocation(mgProgram, "uRadialBias")
+            mgUSun = GLES20.glGetUniformLocation(mgProgram, "uSun")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -634,6 +683,19 @@ class PlanetRenderer(
         drawSky(snapshot, radius, dayFEye)
         drawCelestial(mvp, c, s, snapshot, dayFEye, far)
 
+        // --- Globe métrique ou collerette (lot 2.7-b1), avant les tuiles ---
+        //
+        // Le mode est lu UNE fois par image (la console écrit depuis le fil
+        // UI) et partagé avec le fondu de limbe et la couche d'eau plus bas :
+        // une lecture par usage laisserait la console changer d'avis au
+        // milieu d'une image.
+        val limbRenderMode = limbMode
+        if (limbRenderMode != 0) {
+            drawMetricGlobe(limbRenderMode, snapshot, radius, sunLx, sunLz)
+        } else {
+            metricGlobeTriangles = 0
+        }
+
         GLES20.glUseProgram(tileProgram)
         GLES20.glUniformMatrix4fv(tUViewProj, 1, false, mvp, 0)
         GLES20.glUniform3f(tUSun, sunLx, sunY, sunLz)
@@ -673,7 +735,11 @@ class PlanetRenderer(
         // avaler l'arête d'une tuile de niveau 3, trop peu pour manger le
         // terrain intérieur.
         val limbBand = ((1f - cosHorizon) * 0.15f).coerceAtLeast(1e-4f)
-        val limbStrength = (((snapshot.altitudeM - 600_000.0) / 900_000.0)
+        // En mode globe ou collerette (lot 2.7-b1), le fondu est COUPÉ : il
+        // dissoudrait les tuiles dans le disque plat du ciel par-dessus la
+        // géométrie vraie qu'on cherche justement à juger.
+        val limbStrength = if (limbRenderMode != 0) 0f
+        else (((snapshot.altitudeM - 600_000.0) / 900_000.0)
             .coerceIn(0.0, 1.0)).toFloat()
         GLES20.glUniform3f(
             tUCenterRel,
@@ -722,7 +788,8 @@ class PlanetRenderer(
         GLES20.glUniform1f(tUWaveTime, waveTime)
 
         var triangles = 0
-        for (tile in drawList) {
+        val tileList = if (limbRenderMode == 1) emptyList() else drawList
+        for (tile in tileList) {
             // Diagnostic : teinte par niveau de subdivision, pour voir d'un
             // coup d'œil où s'arrête la couverture proche. Cycle de six
             // teintes vives, le niveau se lit à la couleur.
@@ -819,7 +886,9 @@ class PlanetRenderer(
         // 2.9-b, où il deviendra obligatoire. Les uniformes d'atmosphère
         // reprennent LES MÊMES valeurs locales que le terrain : la mer
         // baigne dans le même air, sinon elle se découperait au loin.
-        if (waterProgram != 0) {
+        // En mode globe entier (lot 2.7-b1), l'eau du globe est cuite dans
+        // ses sommets : la couche translucide ne se dessine pas.
+        if (waterProgram != 0 && limbRenderMode != 1) {
             // Lot 2.9-b : la couche devient translucide. Profondeur TESTEE
             // mais non ECRITE — une tuile d'eau ne doit pas masquer sa
             // voisine, et l'eau glissee sous les terres (emission par tuile,
@@ -896,7 +965,7 @@ class PlanetRenderer(
             GLES20.glDepthMask(true)
             GLES20.glDisable(GLES20.GL_BLEND)
         }
-        drawnTriangles = triangles
+        drawnTriangles = triangles + metricGlobeTriangles
 
         // --- Nuages, APRÈS le terrain : ils se mélangent par-dessus. ---
         drawClouds(
@@ -1478,6 +1547,144 @@ class PlanetRenderer(
         if (location >= 0) GLES20.glDisableVertexAttribArray(location)
     }
 
+    /**
+     * Globe métrique ou collerette — lot 2.7-b1.
+     *
+     * Le maillage contemplatif (unités de planète, relief exagéré) est
+     * dessiné dans le repère métrique de la descente : le shader de sommet
+     * dés-exagère le rayon et soustrait l'œil. La chaîne reste dans le
+     * budget chiffré (validation/bascule.py) : 0,76 m de tremblement au
+     * pire, 0,0006 px à la distance minimale du régime orbite. C'est un
+     * chemin d'ORBITE — au sol il violerait l'invariant n°5, et c'est le
+     * registre du 2.7-a qui, à terme, en gardera la porte.
+     *
+     * Profondeur écrite comme le terrain : en mode collerette, les tuiles
+     * dessinées ensuite gagnent partout où elles sont devant — le biais
+     * radial ne sert qu'à trancher là où les surfaces coïncident.
+     */
+    private fun drawMetricGlobe(
+        mode: Int, snapshot: CameraSnapshot, radius: Double,
+        sunLx: Float, sunLz: Float
+    ) {
+        metricGlobeTriangles = 0
+        if (mgProgram == 0 || uploadedVertexCount == 0 || vbo == 0) return
+
+        val biasM: Double
+        val drawVbo: Int
+        val drawCount: Int
+        if (mode == 1) {
+            biasM = 0.0
+            drawVbo = vbo
+            drawCount = uploadedVertexCount
+        } else {
+            refreshCollar(snapshot, radius)
+            if (collarVbo == 0 || collarVertexCount == 0) return
+            biasM = com.terra.sim.GlobeMetric.collarBiasM(
+                snapshot.altitudeM, radius, nearPlaneM.toDouble()
+            )
+            drawVbo = collarVbo
+            drawCount = collarVertexCount
+        }
+
+        GLES20.glUseProgram(mgProgram)
+        GLES20.glUniformMatrix4fv(mgUViewProj, 1, false, mvp, 0)
+        GLES20.glUniform3f(
+            mgUEyeM,
+            snapshot.eyeXM.toFloat(), snapshot.eyeYM.toFloat(), snapshot.eyeZM.toFloat()
+        )
+        GLES20.glUniform1f(mgUPlanetR, radius.toFloat())
+        GLES20.glUniform1f(mgUDeExag, deExagFactorM)
+        GLES20.glUniform1f(mgURadialBias, biasM.toFloat())
+        // Repère planète locale, le même soleil contre-tourné que les tuiles.
+        GLES20.glUniform3f(mgUSun, sunLx, sunY, sunLz)
+
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, drawVbo)
+        bindAttribute(mgAPosition, 3, PlanetMesh.OFFSET_POSITION)
+        bindAttribute(mgAColor, 3, PlanetMesh.OFFSET_COLOR)
+        bindAttribute(mgANormal, 3, PlanetMesh.OFFSET_NORMAL)
+        bindAttribute(mgAMaterial, 1, PlanetMesh.OFFSET_MATERIAL)
+
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, drawCount)
+
+        disableAttribute(mgAPosition)
+        disableAttribute(mgAColor)
+        disableAttribute(mgANormal)
+        disableAttribute(mgAMaterial)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+
+        metricGlobeTriangles = drawCount / 3
+    }
+
+    /**
+     * Resélectionne et retéléverse la collerette si la caméra a bougé
+     * au-delà des seuils de [com.terra.sim.LimbBand]. La sélection vit
+     * dans :sim, testée ; ici il n'y a que la copie des faces et le tampon.
+     * Coût du pire cas : ~1 500 faces × 120 octets ≈ 180 ko en
+     * GL_DYNAMIC_DRAW, quelques fois par orbite complète.
+     */
+    private fun refreshCollar(snapshot: CameraSnapshot, radius: Double) {
+        val mesh = residentMesh ?: return
+
+        var centers = faceCenterDirs
+        if (centers == null) {
+            centers = com.terra.sim.LimbBand.faceCenterDirs(
+                mesh.vertexData, PlanetMesh.FLOATS_PER_VERTEX
+            )
+            faceCenterDirs = centers
+        }
+
+        val eyeLen = sqrt(
+            snapshot.eyeXM * snapshot.eyeXM + snapshot.eyeYM * snapshot.eyeYM +
+                snapshot.eyeZM * snapshot.eyeZM
+        ).coerceAtLeast(1.0)
+        val dx = (snapshot.eyeXM / eyeLen).toFloat()
+        val dy = (snapshot.eyeYM / eyeLen).toFloat()
+        val dz = (snapshot.eyeZM / eyeLen).toFloat()
+
+        if (collarVbo != 0 && collarVertexCount > 0 &&
+            !com.terra.sim.LimbBand.shouldRebuild(
+                collarLastDirX, collarLastDirY, collarLastDirZ, collarLastAltM,
+                dx, dy, dz, snapshot.altitudeM
+            )
+        ) return
+
+        val selected = com.terra.sim.LimbBand.selectFaces(
+            centers, dx, dy, dz, snapshot.altitudeM, radius
+        )
+        val floatsPerFace = PlanetMesh.FLOATS_PER_VERTEX * 3
+        val scratch = FloatArray(selected.size * floatsPerFace)
+        var o = 0
+        for (f in selected) {
+            System.arraycopy(mesh.vertexData, f * floatsPerFace, scratch, o, floatsPerFace)
+            o += floatsPerFace
+        }
+
+        try {
+            if (collarVbo == 0) {
+                val ids = IntArray(1)
+                GLES20.glGenBuffers(1, ids, 0)
+                collarVbo = ids[0]
+            }
+            val buffer: FloatBuffer = ByteBuffer
+                .allocateDirect(scratch.size * 4)
+                .order(ByteOrder.nativeOrder())
+                .asFloatBuffer()
+            buffer.put(scratch)
+            buffer.position(0)
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, collarVbo)
+            GLES20.glBufferData(
+                GLES20.GL_ARRAY_BUFFER, scratch.size * 4, buffer, GLES20.GL_DYNAMIC_DRAW
+            )
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+            collarVertexCount = selected.size * 3
+            collarLastDirX = dx; collarLastDirY = dy; collarLastDirZ = dz
+            collarLastAltM = snapshot.altitudeM
+        } catch (t: Throwable) {
+            collarVertexCount = 0
+            lastError = "Collerette : ${t.javaClass.simpleName}"
+        }
+    }
+
     private fun upload(mesh: PlanetMesh) {
         try {
             if (vbo != 0) {
@@ -1501,6 +1708,14 @@ class PlanetRenderer(
             )
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
             uploadedVertexCount = mesh.vertexCount
+            // Nouveau monde ou contexte recréé : les centres de faces et la
+            // collerette décrivent l'ancien maillage. Les tailles étant
+            // identiques d'un monde à l'autre (même niveau d'icosphère),
+            // aucune vérification de taille ne les rattraperait — il faut
+            // invalider explicitement.
+            faceCenterDirs = null
+            collarVertexCount = 0
+            collarLastAltM = -1.0
         } catch (t: Throwable) {
             lastError = "Téléversement du maillage échoué : ${t.javaClass.simpleName}"
             Log.e(TAG, "Téléversement échoué", t)
@@ -1817,6 +2032,99 @@ class PlanetRenderer(
 
         /** Une tuile non vue pendant ~4 s à 30 i/s est rendue au pool. */
         private const val KEEP_FRAMES = 120L
+
+        // ----------------------------------------- shaders du globe métrique
+        //
+        // Lot 2.7-b1. Le sommet reconstruit le rayon VRAI depuis le rayon
+        // exagéré du maillage contemplatif, puis soustrait l'œil : les deux
+        // opérandes font ~6,4e6 m, l'annulation coûte 0,76 m — chiffré sous
+        // le millième de pixel en orbite (validation/bascule.py). En GLES2,
+        // le sommet est garanti highp ; c'est le FRAGMENT qui ne l'est pas
+        // (leçon uSnow v0.31.3) — d'où la règle de ces deux étages : tout ce
+        // qui est métrique se calcule au sommet, le fragment ne reçoit que
+        // des VECTEURS UNITAIRES, sûrs en mediump. Un varying en mètres
+        // déborderait mediump (max ~65 504).
+        //
+        // Le fragment est la copie de celui du globe contemplatif — même
+        // terminateur, même reflet d'eau, même halo, même genou — pour que
+        // « limbe globe » se compare à ce qu'on connaît, seuls les intrants
+        // géométriques changent (vSph/vViewDir au lieu de vWorld/uCamera).
+
+        private const val MG_VERTEX_SHADER = """
+            uniform mat4 uViewProj;
+            uniform vec3 uEyeM;        // œil en mètres, repère planétaire
+            uniform float uPlanetR;    // rayon planétaire en mètres
+            uniform float uDeExag;     // maxAltitude/exagération, 0 si exag. nulle
+            uniform float uRadialBias; // dépression de la collerette, en mètres
+
+            attribute vec3 aPosition;  // unités de planète, relief exagéré
+            attribute vec3 aColor;
+            attribute vec3 aNormal;
+            attribute float aMaterial;
+
+            varying vec3 vColor;
+            varying vec3 vNormal;
+            varying vec3 vSph;
+            varying vec3 vViewDir;
+            varying float vMaterial;
+
+            void main() {
+                float re = length(aPosition);
+                vec3 dir = aPosition / re;
+                float altM = (re - 1.0) * uDeExag;
+                vec3 world = dir * (uPlanetR + altM - uRadialBias);
+                vec3 rel = world - uEyeM;
+                gl_Position = uViewProj * vec4(rel, 1.0);
+                vColor = aColor;
+                vNormal = aNormal;
+                vMaterial = aMaterial;
+                vSph = dir;
+                vViewDir = normalize(-rel);
+            }
+        """
+
+        private const val MG_FRAGMENT_SHADER = """
+            precision mediump float;
+
+            uniform vec3 uSun;
+
+            varying vec3 vColor;
+            varying vec3 vNormal;
+            varying vec3 vSph;
+            varying vec3 vViewDir;
+            varying float vMaterial;
+
+            void main() {
+                vec3 n    = normalize(vNormal);
+                vec3 sun  = normalize(uSun);
+                vec3 view = normalize(vViewDir);
+
+                float day = clamp(dot(vSph, sun) * 2.2 + 0.22, 0.0, 1.0);
+
+                float diffuse = max(dot(n, sun), 0.0);
+                vec3 color = vColor * (0.10 + 0.85 * diffuse) * day;
+
+                if (vMaterial > 0.5) {
+                    vec3 halfway = normalize(sun + view);
+                    float spec = pow(max(dot(vSph, halfway), 0.0), 160.0);
+                    color += vec3(0.90, 0.94, 1.0) * spec * 0.32 * day;
+                }
+
+                float rim = pow(1.0 - max(dot(vSph, view), 0.0), 3.5);
+                color += vec3(0.28, 0.50, 0.95) * rim * 0.55 * day;
+
+                color += vColor * 0.018;
+
+                float peak = max(color.r, max(color.g, color.b));
+                float knee = 0.82;
+                if (peak > knee) {
+                    float over = peak - knee;
+                    color *= (knee + over / (1.0 + over * 1.7)) / peak;
+                }
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        """
 
         // ------------------------------------------------------ shaders globe
 

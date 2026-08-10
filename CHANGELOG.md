@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.40.0 — Lot 2.7-b1 : globe métrique et collerette (instrumentation)
+
+Trois rendus du limbe comparables sur appareil par la console — `limbe
+tuiles` (état normal, fondu vers le disque du ciel), `limbe globe`
+(l'icosphère raffinée entière, dessinée dans le repère métrique de la
+descente) et `limbe collerette` (la seule bande de ~1 000-1 500 faces
+bordant l'horizon, glissée sous les tuiles, biais de profondeur calibré).
+Aucun comportement ne change sans la console ; en modes globe et collerette
+le fondu de limbe v0.24.0 est coupé, sinon il peindrait le disque plat
+par-dessus la géométrie qu'on cherche à juger.
+
+Le maillage contemplatif est réutilisé tel quel (mémoire +0) : le shader de
+sommet dés-exagère le relief (formule et garde d'exagération nulle dans
+:sim, testées) et soustrait l'œil — 0,76 m d'annulation au pire, un
+millième de pixel en orbite, chiffré par `validation/bascule.py` qui
+contient toute l'instruction du lot. Le fragment ne reçoit que des vecteurs
+unitaires : un varying en mètres déborderait mediump (leçon v0.31.3
+étendue). Sélection de collerette, cadence de resélection et biais vivent
+dans :sim (`GlobeMetric`, `LimbBand`), neuf tests ajoutés.
+
+Le but : des captures pour trancher le 2.7-b2 — bascule sèche, fondu, ou
+peinture continue du globe — et statuer sur la collerette en registre
+continental, où le limbe garde 30 à 180 px d'erreur.
+
 ## v0.39.0 — Lot 2.7-a : registres d'échelle
 
 Cinq registres — sol, local, régional, continental, orbite — classés par

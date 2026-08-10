@@ -36,6 +36,21 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande limbe`() {
+        val g = ConsoleCommand.parse("limbe globe")
+        assertTrue(g is ConsoleCommand.SetLimbMode)
+        assertEquals(1, g.mode)
+        val c = ConsoleCommand.parse("limbe collerette")
+        assertTrue(c is ConsoleCommand.SetLimbMode)
+        assertEquals(2, c.mode)
+        val t = ConsoleCommand.parse("LIMBE Tuiles")
+        assertTrue(t is ConsoleCommand.SetLimbMode)
+        assertEquals(0, t.mode)
+        assertTrue(ConsoleCommand.parse("limbe") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("limbe rond") is ConsoleCommand.Invalid)
+    }
+
+    @Test
     fun `latitude hors bornes rejetee`() {
         assertTrue(ConsoleCommand.parse("tp 91 0") is ConsoleCommand.Invalid)
         assertTrue(ConsoleCommand.parse("tp 0 181") is ConsoleCommand.Invalid)

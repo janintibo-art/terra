@@ -34,6 +34,13 @@ sealed class ConsoleCommand {
     object Help : ConsoleCommand()
 
     /** Entrée incompréhensible, avec l'explication à afficher. */
+    /**
+     * `limbe tuiles|globe|collerette` — choisir le rendu du limbe en mode
+     * sol (lot 2.7-b1, instrumentation). Valeurs de [mode] :
+     * 0 = tuiles (état normal), 1 = globe métrique entier, 2 = collerette.
+     */
+    data class SetLimbMode(val mode: Int) : ConsoleCommand()
+
     data class Invalid(val message: String) : ConsoleCommand()
 
     companion object {
@@ -45,6 +52,8 @@ sealed class ConsoleCommand {
             "soleil <heure>            avance jusqu'à cette heure locale, ex : soleil 12\n" +
             "mode sol | mode globe     bascule la vue\n" +
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
+            "limbe tuiles|globe|collerette\n" +
+            "   rendu du limbe en mode sol (diagnostic du lot 2.7)\n" +
             "aide                      ce texte"
 
         /**
@@ -71,6 +80,12 @@ sealed class ConsoleCommand {
                         h < 0.0 || h >= 24.0 -> Invalid("Heure hors de [0, 24) : $h")
                         else -> SetLocalHour(h)
                     }
+                }
+                "limbe" -> when (parts.getOrNull(1)?.lowercase()) {
+                    "tuiles", "tuile" -> SetLimbMode(0)
+                    "globe" -> SetLimbMode(1)
+                    "collerette", "col" -> SetLimbMode(2)
+                    else -> Invalid("Usage : limbe tuiles|globe|collerette")
                 }
                 "teinte" -> when (parts.getOrNull(1)?.lowercase()) {
                     null -> SetLevelTint(null)
