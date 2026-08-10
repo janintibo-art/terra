@@ -239,7 +239,12 @@ data class TreeParams(
         require(radiusRatio in 0.1f..0.95f) { "radiusRatio hors de [0,1 ; 0,95] : $radiusRatio" }
         require(branchAngleRad in 0f..1.55f) { "branchAngleRad hors de [0 ; 1,55] : $branchAngleRad" }
         require(angleJitterRad in 0f..0.6f) { "angleJitterRad hors de [0 ; 0,6] : $angleJitterRad" }
-        require(children in 1..6) { "children hors de [1 ; 6] : $children" }
+        // Borne large et volontairement peu contraignante : la vraie
+        // protection est le compte total de segments, vérifié plus bas. Le
+        // palmier du lot 3.2 porte huit palmes — la borne de 6, posée au
+        // lot 3.1 avant que les palmiers n'existent, était arbitraire et
+        // refusait une espèce parfaitement saine.
+        require(children in 1..12) { "children hors de [1 ; 12] : $children" }
         require(maxDepth in 0..12) { "maxDepth hors de [0 ; 12] : $maxDepth" }
         require(straightness in 0f..1f) { "straightness hors de [0 ; 1] : $straightness" }
         require(lateralWhorls in 0..8) { "lateralWhorls hors de [0 ; 8] : $lateralWhorls" }

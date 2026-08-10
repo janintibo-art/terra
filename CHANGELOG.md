@@ -1,5 +1,23 @@
 # Journal des versions
 
+## v0.45.1 — Correctif : le palmier refusé par sa propre garde
+
+`children hors de [1 ; 6] : 8` — cinq tests rouges, un seul défaut. La
+borne avait été posée au lot 3.1, avant que les palmiers n'existent, et
+elle était arbitraire : ce qui protège réellement est le COMPTE de segments
+(20 000), vérifié séparément. Borne élargie à 12, avec la justification en
+commentaire.
+
+La cause racine est ailleurs, et c'est elle qui compte : le miroir Python
+(validation/especes.py) ne reproduisait que la GÉOMÉTRIE, pas les gardes.
+Il mesurait des silhouettes pour un paramétrage que le Kotlin refusait. Le
+miroir valide désormais les mêmes bornes que TreeParams.validate() avant
+toute mesure — un miroir sans les gardes ne prouve que la moitié de ce
+qu'on lui demande.
+
+Aucun test à ajouter : celui qui devait attraper le bug existait et l'a
+attrapé (toutesLesFamillesSeGenerentEtTiennentLeBudget).
+
 ## v0.45.0 — Lot 3.2 : sept familles d'espèces, et la grammaire qu'elles exigent
 
 Le lot 3.1 n'attachait les branches qu'à la POINTE du parent. Un feuillu,

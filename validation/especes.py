@@ -67,6 +67,28 @@ class P:
     def k_eff(self):
         return self.children + self.whorls * self.per_whorl
 
+    def validate(self):
+        """Miroir des require() de TreeParams.validate().
+
+        AJOUTÉ APRÈS COUP : la première version de ce script ne reproduisait
+        que la géométrie, pas les gardes — le palmier à huit palmes violait
+        « children in 1..6 » sans que rien ici ne le signale, et cinq tests
+        sont tombés en CI. Un miroir qui n'inclut pas les gardes ne prouve
+        que la moitié de ce qu'on lui demande.
+        """
+        assert self.trunk_len > 0 and self.trunk_r > 0, self.name
+        assert 0.1 <= self.len_ratio <= 0.95, f"{self.name} len_ratio"
+        assert 0.1 <= self.r_ratio <= 0.95, f"{self.name} r_ratio"
+        assert 0.0 <= self.angle <= 1.55, f"{self.name} angle"
+        assert 0.0 <= self.jitter <= 0.6, f"{self.name} jitter"
+        assert 1 <= self.children <= 12, f"{self.name} children"
+        assert 0 <= self.depth <= 12, f"{self.name} depth"
+        assert 0.0 <= self.straight <= 1.0, f"{self.name} straightness"
+        assert 0 <= self.whorls <= 8, f"{self.name} whorls"
+        assert 0 <= self.per_whorl <= 8, f"{self.name} per_whorl"
+        assert 0.0 <= self.attach <= 0.9, f"{self.name} attach"
+        assert self.k_eff() >= 1, f"{self.name} sans enfant"
+
     def worst_case(self):
         total, level = 0, 1
         for _ in range(self.depth + 1):
@@ -151,6 +173,7 @@ SPECIES = [
 print("=== 1. Budget par famille ===")
 print(f"  {'espèce':<10} {'k_eff':>6} {'D':>3} {'segments':>9} {'verdict':>10}")
 for p in SPECIES:
+    p.validate()
     wc = p.worst_case()
     assert wc is not None, f"{p.name} dépasse la garde"
     print(f"  {p.name:<10} {p.k_eff():>6} {p.depth:>3} {wc:>9,} {'OK':>10}")
