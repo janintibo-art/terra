@@ -1060,11 +1060,15 @@ class MainActivity : Activity() {
             if (cam != null) {
                 sb.append("alt ").append(formatAltitude(cam.eyeAltitudeM()))
                     .append(" (").append(scaleRegistry.current.label).append(')')
+                // Instruction séparée, PAS un maillon de la chaîne : un when
+                // dont la valeur serait consommée par le .append suivant
+                // devrait être exhaustif — c'est l'échec de compilation
+                // v0.40.0, une chaîne fluide coupée en deux sans le voir.
                 when (renderer.limbMode) {
                     1 -> sb.append(" · limbe:globe")
                     2 -> sb.append(" · limbe:collerette")
                 }
-                    .append(" · tuiles ").append(renderer.tilesDrawn)
+                sb.append(" · tuiles ").append(renderer.tilesDrawn)
                     .append('/').append(renderer.tilesSelected)
                     .append(" · manque ").append(renderer.tilesMissing)
                     .append(" · cache ").append(renderer.tilesCached)

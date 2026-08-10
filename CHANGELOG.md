@@ -1,5 +1,16 @@
 # Journal des versions
 
+## v0.40.1 — Correctif : compilation du HUD
+
+L'insertion de l'indicateur de mode limbe (v0.40.0) avait coupé en deux la
+chaîne fluide du HUD : le `.append` suivant s'enchaînait sur la valeur du
+`when`, le mettant en position d'expression — donc tenu d'être exhaustif.
+Échec de :app:compileDebugKotlin, MainActivity.kt:1063. Le `when` est
+désormais une instruction séparée et la suite repart de `sb`. Aucun test ne
+peut couvrir ce fichier (:app est sans filet JVM) ; la parade est de
+discipline : relire le site d'insertion APRÈS édition, ce qui avait attrapé
+les deux bugs du même lot dans PlanetRenderer mais n'a pas été fait ici.
+
 ## v0.40.0 — Lot 2.7-b1 : globe métrique et collerette (instrumentation)
 
 Trois rendus du limbe comparables sur appareil par la console — `limbe
