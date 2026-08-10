@@ -1,5 +1,14 @@
 # Journal des versions
 
+## v0.41.0 — Outillage : bouton Console et commandes rapides
+
+Un bouton « Console » rejoint la barre de droite (l'appui long en mode sol
+reste possible), et le dialogue gagne deux rangées de commandes rapides —
+limbe tuiles / limbe globe / limbe col, puis teinte / soleil 12 / aide.
+Chaque bouton EST la ligne de commande qu'il affiche et passe par le même
+runConsole que le champ libre : aucun chemin nouveau, rien de nouveau à
+tester. Demandé pendant la campagne de captures du lot 2.7-b1.
+
 ## v0.40.1 — Correctif : compilation du HUD
 
 L'insertion de l'indicateur de mode limbe (v0.40.0) avait coupé en deux la

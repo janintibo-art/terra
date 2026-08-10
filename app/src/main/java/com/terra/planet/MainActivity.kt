@@ -238,6 +238,7 @@ class MainActivity : Activity() {
         }
         timeBar.addView(makeButton("Régl.") { showParamEditor() }, column())
         timeBar.addView(makeButton("Monde") { showSeedDialog() }, column())
+        timeBar.addView(makeButton("Console") { showConsoleDialog() }, column())
         modeButton = makeButton("Sol") { toggleDescent() }
         timeBar.addView(modeButton, column())
         pedestrianButton = makeButton("Piéton") { togglePedestrian() }
@@ -821,11 +822,36 @@ class MainActivity : Activity() {
             typeface = Typeface.MONOSPACE
             setPadding(48, 32, 48, 32)
         }
-        AlertDialog.Builder(this)
+        // Commandes rapides : chaque bouton EST la ligne de commande qu'il
+        // affiche — même analyse, même chemin runConsole que le champ libre.
+        // Aucune logique nouvelle ici, donc rien de nouveau à tester : le
+        // dialogue n'est qu'un clavier prérempli.
+        var dialog: AlertDialog? = null
+        // column() d'onCreate est un LOCAL, hors de portée ici — et son
+        // MATCH_PARENT vertical serait faux pour une rangée : paramètres
+        // propres, largeur au contenu.
+        fun cell() = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        fun quickRow(vararg commands: String) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            for (c in commands) addView(makeButton(c) {
+                dialog?.dismiss()
+                runConsole(c)
+            }, cell())
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 12, 24, 0)
+            addView(quickRow("limbe tuiles", "limbe globe", "limbe col"))
+            addView(quickRow("teinte", "soleil 12", "aide"))
+            addView(input)
+        }
+        dialog = AlertDialog.Builder(this)
             .setTitle("Console")
-            .setView(input)
+            .setView(panel)
             .setPositiveButton("Exécuter") { _, _ -> runConsole(input.text.toString()) }
-            .setNegativeButton("Annuler", null)
+            .setNegativeButton("Fermer", null)
             .show()
     }
 
