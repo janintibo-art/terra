@@ -892,7 +892,12 @@ class MainActivity : Activity() {
                 clock.restore(clock.tick + jump)
             }
             is ConsoleCommand.ShowTree -> {
-                if (cmd.seed == null) {
+                // Capture locale OBLIGATOIRE : cmd.seed vient d'un autre
+                // module, Kotlin refuse le smart cast après le test de
+                // nullité (échec de compilation v0.44.0) — la propriété
+                // pourrait théoriquement changer entre les deux lectures.
+                val treeSeed = cmd.seed
+                if (treeSeed == null) {
                     renderer.clearTestTree()
                     showConsoleMessage("Arbre retiré.")
                 } else {
@@ -902,7 +907,7 @@ class MainActivity : Activity() {
                     val data = world
                     if (cam != null && ray != null && data != null) {
                         val tree = com.terra.sim.TreeGenerator.generate(
-                            com.terra.sim.TreeParams.defaultTree(), cmd.seed
+                            com.terra.sim.TreeParams.defaultTree(), treeSeed
                         )
                         // Ancre au point visé, posée sur le relief.
                         val up = cam.focusDirection()
@@ -925,7 +930,7 @@ class MainActivity : Activity() {
                             frame
                         )
                         showConsoleMessage(
-                            "Arbre ${cmd.seed} planté au point visé " +
+                            "Arbre $treeSeed planté au point visé " +
                                 "(${tree.segments.size} segments, " +
                                 "${"%.1f".format(tree.heightM())} m).\n" +
                                 "« arbre off » pour le retirer."

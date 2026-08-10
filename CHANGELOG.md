@@ -1,5 +1,16 @@
 # Journal des versions
 
+## v0.44.1 — Correctif : smart cast inter-modules, et compte des tests
+
+MainActivity.kt:905 : « Smart cast to 'Long' is impossible » — cmd.seed
+est une propriété publique de :sim, un AUTRE module, et Kotlin refuse le
+transtypage après un test de nullité sur une propriété qu'il ne peut pas
+garantir stable. Capture dans un val local avant le test. Leçon jumelle du
+Float-in-ClosedRange (v0.40.0) : les règles de sûreté de Kotlin se
+vérifient à la relecture comme des invariants, pas comme du style.
+Au passage : le changelog v0.44.0 annonçait dix tests pour le générateur,
+il y en a neuf.
+
 ## v0.44.0 — Lot 3.1 : générateur d'arbres (Phase 3 ouverte)
 
 Une grammaire de branchement paramétrée (angle, ramification, longueur,
