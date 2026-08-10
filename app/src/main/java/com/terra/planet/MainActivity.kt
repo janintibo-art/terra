@@ -920,16 +920,18 @@ class MainActivity : Activity() {
                         up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
                         north.x.toFloat(), north.y.toFloat(), north.z.toFloat()
                     )
+                    val mesh = com.terra.sim.TreeMesh.build(tree)
                     renderer.plantTestTree(
-                        tree.wireframeVertices(),
+                        mesh,
                         up.x * r, up.y * r, up.z * r,
                         frame
                     )
+                    val triangles = mesh.size / com.terra.sim.TreeMesh.FLOATS_PER_VERTEX / 3
                     showConsoleMessage(
-                        "${cmd.species.label} n°${cmd.seed} planté au point visé " +
-                            "(${tree.segments.size} segments, " +
+                        "${cmd.species.label} n°${cmd.seed} planté au point visé.\n" +
+                            "${tree.segments.size} segments · $triangles triangles · " +
                             "${"%.1f".format(tree.heightM())} m de haut, " +
-                            "${"%.1f".format(tree.spreadM())} m d'envergure).\n" +
+                            "${"%.1f".format(tree.spreadM())} m d'envergure.\n" +
                             "« arbre off » pour le retirer."
                     )
                 }

@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.46.0 — Lot 3.3-a : les arbres prennent du volume
+
+Le fil de fer du lot 3.1 dessinait des traits d'un pixel et ignorait
+totalement les rayons du squelette — d'où des troncs invisibles même de
+près, alors que le tronc d'un conifère devrait couvrir 15 px à 50 m et
+146 px à 5 m. (Et non, `glLineWidth` n'aurait pas sauvé la mise : la
+plupart des pilotes GLES2 plafonnent la largeur de trait à un pixel.)
+
+Chaque segment devient donc un TUBE à huit côtés, du rayon de base au rayon
+de pointe. La continuité des rayons, invariant testé depuis le 3.1, suffit
+à ce qu'aucune marche n'apparaisse aux raccords : il n'y a pas une ligne de
+code de couture. Les branches terminales se ferment en CÔNE — sans quoi le
+maillage resterait ouvert, avec un trou de 5,9 cm au bout des rameaux de
+conifère (41 px vus à deux mètres, à travers lesquels l'élagage des faces
+arrière donnerait à voir l'intérieur de la branche) — et le cône coûte
+moins cher qu'un tube. Éclairage lambert avec ambiante généreuse, couleur
+qui passe du brun d'écorce au vert de feuillage selon le rayon ET la
+profondeur (un palmier n'a qu'un niveau de branches et doit verdir quand
+même).
+
+L'instruction (validation/maillage_arbres.py) a corrigé une contradiction
+de ma propre rédaction — je concluais « 0,7 px d'écart » quand le tableau
+au-dessus affichait 13,9 px, la leçon des gyres v0.15.2 — et a remplacé ce
+critère par un critère SANS DIMENSION : à huit côtés, la silhouette
+s'écarte du cercle de 3,8 % de la largeur du tronc, quelle que soit la
+distance.
+
+Un conifère pèse 9 776 triangles et 1,06 Mo. Négligeable seul, intenable à
+cent : le lot 3.3-b (dégradation par distance) n'est pas un confort mais la
+condition du lot 3.5. Dix tests ajoutés, dont l'orientation des triangles
+(un triangle retourné ne se verrait que sur appareil) et le respect exact
+des rayons du squelette.
+
 ## v0.45.1 — Correctif : le palmier refusé par sa propre garde
 
 `children hors de [1 ; 6] : 8` — cinq tests rouges, un seul défaut. La

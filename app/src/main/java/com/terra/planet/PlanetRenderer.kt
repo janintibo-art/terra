@@ -190,40 +190,42 @@ class PlanetRenderer(
     // --- Ressources du chemin descente ---
     private var tileProgram = 0
 
-    // --- Arbre de test (lot 3.1, fil de fer par console) ---
+    // --- Arbre de test (lot 3.3-a, maillage plein par console) ---
     //
-    // :sim fabrique les sommets (position locale + teinte, testés) ; ici on
+    // :sim fabrique les sommets (position, normale, couleur — testés) ; ici on
     // ne fait que téléverser et dessiner. L'ancre est métrique double ; le
     // repère local vient de l'activité en COLONNES (est, haut, nord) pour
     // que uFrame·(x, y, z) local donne est·x + haut·y + nord·z — le Y local
     // de l'arbre est sa verticale.
-    @Volatile private var treeWireResident: FloatArray? = null
-    @Volatile private var treeWireDirty = false
+    @Volatile private var treeMeshResident: FloatArray? = null
+    @Volatile private var treeMeshDirty = false
     private val treeBaseM = DoubleArray(3)
     private val treeFrame = FloatArray(9)
     private var treeVbo = 0
     private var treeVertexCount = 0
     private var treeProgram = 0
     private var trAPosition = -1
+    private var trANormal = -1
     private var trAColor = -1
     private var trUViewProj = -1
     private var trUBaseRel = -1
     private var trUFrame = -1
+    private var trUSun = -1
 
     fun plantTestTree(
-        wire: FloatArray,
+        mesh: FloatArray,
         baseXM: Double, baseYM: Double, baseZM: Double,
         frame: FloatArray
     ) {
         treeBaseM[0] = baseXM; treeBaseM[1] = baseYM; treeBaseM[2] = baseZM
         System.arraycopy(frame, 0, treeFrame, 0, 9)
-        treeWireResident = wire
-        treeWireDirty = true
+        treeMeshResident = mesh
+        treeMeshDirty = true
     }
 
     fun clearTestTree() {
-        treeWireResident = null
-        treeWireDirty = true
+        treeMeshResident = null
+        treeMeshDirty = true
     }
 
     // --- Capture d'écran (lot 2.20-a) ---
@@ -415,7 +417,7 @@ class PlanetRenderer(
         treeProgram = 0
         treeVbo = 0
         treeVertexCount = 0
-        treeWireDirty = true
+        treeMeshDirty = true
         collarVbo = 0
         collarVertexCount = 0
         collarLastAltM = -1.0
@@ -519,10 +521,12 @@ class PlanetRenderer(
         treeProgram = buildProgram(TREE_VERTEX_SHADER, TREE_FRAGMENT_SHADER)
         if (treeProgram != 0) {
             trAPosition = GLES20.glGetAttribLocation(treeProgram, "aPosition")
+            trANormal = GLES20.glGetAttribLocation(treeProgram, "aNormal")
             trAColor = GLES20.glGetAttribLocation(treeProgram, "aColor")
             trUViewProj = GLES20.glGetUniformLocation(treeProgram, "uViewProj")
             trUBaseRel = GLES20.glGetUniformLocation(treeProgram, "uBaseRel")
             trUFrame = GLES20.glGetUniformLocation(treeProgram, "uFrame")
+            trUSun = GLES20.glGetUniformLocation(treeProgram, "uSun")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -977,10 +981,10 @@ class PlanetRenderer(
         disableAttribute(tAMorph)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
 
-        // --- Arbre de test (lot 3.1), après le terrain opaque --------------
+        // --- Arbre de test (lot 3.3-a), après le terrain opaque ------------
         // Profondeur écrite par le terrain, testée ici ; l'eau translucide
         // dessinée ensuite se mélangera par-dessus si l'arbre est sous elle.
-        drawTestTree(snapshot)
+        drawTestTree(snapshot, sunLx, sunY, sunLz)
 
         // --- Couche d'eau (lot 2.9-a), après TOUT le terrain ---------------
         //
@@ -1651,15 +1655,17 @@ class PlanetRenderer(
     }
 
     /**
-     * Fil de fer de l'arbre de test — lot 3.1. La soustraction ancre−œil se
+     * Maillage de l'arbre de test — lots 3.1 à 3.3-a. La soustraction ancre−œil se
      * fait en DOUBLE sur CPU (invariant n°5) ; le shader ne voit que des
      * coordonnées locales de quelques mètres, sûres en float32.
      */
-    private fun drawTestTree(snapshot: CameraSnapshot) {
-        if (treeWireDirty) {
-            treeWireDirty = false
-            val wire = treeWireResident
-            if (wire == null) {
+    private fun drawTestTree(
+        snapshot: CameraSnapshot, sunLx: Float, sunLy: Float, sunLz: Float
+    ) {
+        if (treeMeshDirty) {
+            treeMeshDirty = false
+            val mesh = treeMeshResident
+            if (mesh == null) {
                 treeVertexCount = 0
             } else {
                 try {
@@ -1668,18 +1674,18 @@ class PlanetRenderer(
                         GLES20.glGenBuffers(1, ids, 0)
                         treeVbo = ids[0]
                     }
-                    val buffer = ByteBuffer.allocateDirect(wire.size * 4)
+                    val buffer = ByteBuffer.allocateDirect(mesh.size * 4)
                         .order(ByteOrder.nativeOrder())
                         .asFloatBuffer()
-                    buffer.put(wire)
+                    buffer.put(mesh)
                     buffer.position(0)
                     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, treeVbo)
                     GLES20.glBufferData(
-                        GLES20.GL_ARRAY_BUFFER, wire.size * 4, buffer,
+                        GLES20.GL_ARRAY_BUFFER, mesh.size * 4, buffer,
                         GLES20.GL_DYNAMIC_DRAW
                     )
                     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
-                    treeVertexCount = wire.size / 6
+                    treeVertexCount = mesh.size / com.terra.sim.TreeMesh.FLOATS_PER_VERTEX
                 } catch (t: Throwable) {
                     treeVertexCount = 0
                     lastError = "Arbre : ${t.javaClass.simpleName}"
@@ -1697,19 +1703,27 @@ class PlanetRenderer(
             (treeBaseM[2] - snapshot.eyeZM).toFloat()
         )
         GLES20.glUniformMatrix3fv(trUFrame, 1, false, treeFrame, 0)
+        // Soleil dans le repère planète locale, comme pour les tuiles : le
+        // shader ramène la normale du repère de l'arbre à celui-ci.
+        GLES20.glUniform3f(trUSun, sunLx, sunLy, sunLz)
 
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, treeVbo)
-        val stride = 6 * 4
+        val stride = com.terra.sim.TreeMesh.FLOATS_PER_VERTEX * 4
         if (trAPosition >= 0) {
             GLES20.glEnableVertexAttribArray(trAPosition)
             GLES20.glVertexAttribPointer(trAPosition, 3, GLES20.GL_FLOAT, false, stride, 0)
         }
+        if (trANormal >= 0) {
+            GLES20.glEnableVertexAttribArray(trANormal)
+            GLES20.glVertexAttribPointer(trANormal, 3, GLES20.GL_FLOAT, false, stride, 12)
+        }
         if (trAColor >= 0) {
             GLES20.glEnableVertexAttribArray(trAColor)
-            GLES20.glVertexAttribPointer(trAColor, 3, GLES20.GL_FLOAT, false, stride, 12)
+            GLES20.glVertexAttribPointer(trAColor, 3, GLES20.GL_FLOAT, false, stride, 24)
         }
-        GLES20.glDrawArrays(GLES20.GL_LINES, 0, treeVertexCount)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, treeVertexCount)
         if (trAPosition >= 0) GLES20.glDisableVertexAttribArray(trAPosition)
+        if (trANormal >= 0) GLES20.glDisableVertexAttribArray(trANormal)
         if (trAColor >= 0) GLES20.glDisableVertexAttribArray(trAColor)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
     }
@@ -2210,15 +2224,25 @@ class PlanetRenderer(
             uniform mat4 uViewProj;
             uniform vec3 uBaseRel;
             uniform mat3 uFrame;
+            uniform vec3 uSun;
 
             attribute vec3 aPosition;
+            attribute vec3 aNormal;
             attribute vec3 aColor;
 
             varying vec3 vColor;
 
             void main() {
                 gl_Position = uViewProj * vec4(uBaseRel + uFrame * aPosition, 1.0);
-                vColor = aColor;
+
+                // uFrame est ORTHONORMÉ (est, haut, nord) : il transporte
+                // donc les normales aussi bien que les positions, sans
+                // passer par sa transposée inverse.
+                vec3 n = normalize(uFrame * aNormal);
+                float diffuse = max(dot(n, normalize(uSun)), 0.0);
+                // Ambiante généreuse : sans elle, la moitié à l'ombre d'un
+                // tronc devient noire et l'arbre se lit comme une découpe.
+                vColor = aColor * (0.35 + 0.75 * diffuse);
             }
         """
 
