@@ -180,6 +180,35 @@ print("    collerette. Au-delà, le mode utile est « globe » entier ; le mode"
 print("    collerette y abaisserait la silhouette jusqu'à ~1 px, assumé pour")
 print("    un outil de diagnostic. Miroir Kotlin : GlobeMetric.collarBiasM.")
 
+print("\n=== 8. Visibilité du limbe (ajout 2.7-b2) — le fait qui tranche ===")
+# L'inclinaison est verrouillée par la portée (maxTiltRad : nulle au-delà de
+# TILT_OPEN, pleine à TILT_OPEN/100). Le limbe n'entre donc dans le champ
+# que si tilt_max + demi-diagonale du champ ≥ angle du limbe.
+ASPECT = 2.22
+half_v = FOV_RAD / 2
+half_diag = math.atan(math.hypot(math.tan(half_v), math.tan(half_v) * ASPECT))
+MAX_TILT = 1.431170
+def max_tilt(rng):
+    if rng >= 2_000_000.0: return 0.0
+    return min(1.0, max(0.0, (math.log(2_000_000.0 / rng) / math.log(10.0)) / 2.0)) * MAX_TILT
+h_corner = R / math.sin(half_diag) - R
+lo_vis = None
+for rng in range(200_000, 3_600_000, 25_000):
+    h = rng * math.cos(max_tilt(rng))
+    limb = math.asin(R / (R + h))
+    if max_tilt(rng) + half_diag < limb and lo_vis is None:
+        lo_vis = rng
+print(f"  fenêtre basse (vue rasante, tilt ouvert)   : sous ~{lo_vis/1e3:.0f} km")
+print(f"  fenêtre haute (nadir, disque dans le coin) : au-delà de {h_corner/1e3:.0f} km")
+assert h_corner > 2_240_000, "l'entrée en orbite ne couvrirait pas la fenêtre haute"
+print("  → la bascule au registre orbite (entrée 2 240 km) couvre TOUTE la")
+print(f"    fenêtre haute, avec {(h_corner-2_240_000)/1e3:.0f} km de marge. Entre les deux")
+print("    fenêtres, le limbe est HORS CHAMP : le point ouvert « limbe")
+print("    continental 30-180 px » était un non-symptôme. Reste la frange")
+print("    rasante sous ~350 km (~27 px au pire, fondu éteint sous 600 km),")
+print("    assumée — la collerette reste disponible en diagnostic si elle")
+print("    devait un jour la traiter.")
+
 print("""
 CONCLUSION D'INSTRUCTION — découpage proposé :
 

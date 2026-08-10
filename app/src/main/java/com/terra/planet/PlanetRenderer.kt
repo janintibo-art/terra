@@ -204,8 +204,16 @@ class PlanetRenderer(
     // tuiles (état normal), le globe raffiné entier dessiné dans le repère
     // métrique, ou la seule collerette de faces bordant l'horizon, glissée
     // SOUS les tuiles. Aucun de ces chemins ne s'active sans la console.
-    /** 0 = tuiles · 1 = globe métrique · 2 = collerette. Écrit par le fil UI. */
-    @Volatile var limbMode = 0
+    /**
+     * 0 = tuiles (forcé) · 1 = globe (forcé) · 2 = collerette · 3 = AUTO :
+     * le globe remplace les tuiles quand le registre est « orbite »
+     * (lot 2.7-b2). Écrit par le fil UI.
+     */
+    @Volatile var limbMode = 3
+    /** Vrai quand le registre d'échelle courant est « orbite » (fil UI, 10 Hz). */
+    @Volatile var orbitRegime = false
+    /** Mode réellement appliqué à la dernière image (0/1/2), pour le HUD. */
+    @Volatile var limbModeEffective = 0
     /** maxAltitude/exagération du monde courant ; 0 tant qu'aucun monde. */
     @Volatile var deExagFactorM = 0f
     private var mgProgram = 0
@@ -720,8 +728,17 @@ class PlanetRenderer(
         // Le mode est lu UNE fois par image (la console écrit depuis le fil
         // UI) et partagé avec le fondu de limbe et la couche d'eau plus bas :
         // une lecture par usage laisserait la console changer d'avis au
-        // milieu d'une image.
-        val limbRenderMode = limbMode
+        // milieu d'une image. En AUTO (défaut), le globe ne remplace les
+        // tuiles qu'en régime orbite — l'hystérésis vient du registre
+        // d'échelle (2.7-a), rien à refaire ici. La bascule est sèche : le
+        // §8 de validation/bascule.py montre que le limbe n'entre dans le
+        // champ qu'au-delà de 2 959 km, 700 km APRÈS l'entrée en orbite —
+        // au moment du changement, seule la texture du terrain change.
+        val limbRenderMode = when (val m = limbMode) {
+            3 -> if (orbitRegime) 1 else 0
+            else -> m
+        }
+        limbModeEffective = limbRenderMode
         if (limbRenderMode != 0) {
             drawMetricGlobe(limbRenderMode, snapshot, radius, sunLx, sunLz)
         } else {

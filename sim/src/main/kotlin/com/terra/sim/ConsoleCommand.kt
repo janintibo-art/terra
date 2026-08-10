@@ -35,11 +35,20 @@ sealed class ConsoleCommand {
 
     /** Entrée incompréhensible, avec l'explication à afficher. */
     /**
-     * `limbe tuiles|globe|collerette` — choisir le rendu du limbe en mode
-     * sol (lot 2.7-b1, instrumentation). Valeurs de [mode] :
-     * 0 = tuiles (état normal), 1 = globe métrique entier, 2 = collerette.
+     * `limbe auto|tuiles|globe|collerette` — rendu du limbe en mode sol.
+     * Valeurs de [mode] : 0 = tuiles (forcé), 1 = globe métrique (forcé),
+     * 2 = collerette (diagnostic), 3 = auto — le globe remplace les tuiles
+     * quand le registre d'échelle est « orbite » (lot 2.7-b2, défaut).
      */
     data class SetLimbMode(val mode: Int) : ConsoleCommand()
+
+    /**
+     * `banc limbe [alt_km]` — banc d'essai du limbe : place la caméra au
+     * nadir à l'altitude donnée (12 000 km par défaut, là où le disque
+     * entier tient dans le champ) et met le soleil au zénith. Une capture
+     * par mode de limbe suffit alors à juger la silhouette.
+     */
+    data class BenchLimb(val altitudeKm: Double) : ConsoleCommand()
 
     /** `photo` — enregistre une capture de la surface GL (lot 2.20-a). */
     object TakePhoto : ConsoleCommand()
@@ -56,8 +65,9 @@ sealed class ConsoleCommand {
             "mode sol | mode globe     bascule la vue\n" +
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
             "photo                     enregistre une capture d'écran\n" +
-            "limbe tuiles|globe|collerette\n" +
-            "   rendu du limbe en mode sol (diagnostic du lot 2.7)\n" +
+            "limbe auto|tuiles|globe|collerette\n" +
+            "   rendu du limbe en mode sol (auto : globe en orbite)\n" +
+            "banc limbe [alt_km]       cadre le disque entier pour capture\n" +
             "aide                      ce texte"
 
         /**
@@ -90,7 +100,17 @@ sealed class ConsoleCommand {
                     "tuiles", "tuile" -> SetLimbMode(0)
                     "globe" -> SetLimbMode(1)
                     "collerette", "col" -> SetLimbMode(2)
-                    else -> Invalid("Usage : limbe tuiles|globe|collerette")
+                    "auto" -> SetLimbMode(3)
+                    else -> Invalid("Usage : limbe auto|tuiles|globe|collerette")
+                }
+                "banc" -> when (parts.getOrNull(1)?.lowercase()) {
+                    "limbe" -> {
+                        val alt = parts.getOrNull(2)?.let { parseNumber(it) } ?: 12_000.0
+                        if (alt < 3_000.0 || alt > 60_000.0)
+                            Invalid("Altitude du banc hors de [3000, 60000] km : $alt")
+                        else BenchLimb(alt)
+                    }
+                    else -> Invalid("Usage : banc limbe [alt_km]")
                 }
                 "teinte" -> when (parts.getOrNull(1)?.lowercase()) {
                     null -> SetLevelTint(null)

@@ -33,6 +33,7 @@ import com.terra.sim.Biome
 import com.terra.sim.CoarseSampler
 import com.terra.sim.ConsoleCommand
 import com.terra.sim.PlanetCamera
+import com.terra.sim.ScaleRegister
 import com.terra.sim.ScaleRegistry
 import com.terra.sim.TerrainRaycaster
 import com.terra.sim.TileWorkerPool
@@ -849,9 +850,9 @@ class MainActivity : Activity() {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 12, 24, 0)
-            addView(quickRow("limbe tuiles", "limbe globe", "limbe col"))
-            addView(quickRow("photo", "soleil 12"))
-            addView(quickRow("teinte", "aide"))
+            addView(quickRow("limbe auto", "limbe tuiles", "limbe globe"))
+            addView(quickRow("banc limbe", "photo"))
+            addView(quickRow("teinte", "soleil 12", "aide"))
             addView(input)
         }
         dialog = AlertDialog.Builder(this)
@@ -890,6 +891,21 @@ class MainActivity : Activity() {
                 )
                 clock.restore(clock.tick + jump)
             }
+            is ConsoleCommand.BenchLimb -> {
+                if (!descentActive) toggleDescent()
+                val cam = camera
+                if (cam != null) {
+                    cam.rangeM = cmd.altitudeKm * 1000.0
+                    cam.tiltRad = 0.0
+                    settleCamera(cam)
+                    runConsole("soleil 12")
+                    showConsoleMessage(
+                        "Banc du limbe : nadir à ${cmd.altitudeKm.toInt()} km, " +
+                            "soleil au zénith.\nPhoto, puis « limbe tuiles » ou " +
+                            "« limbe globe », et Photo à nouveau."
+                    )
+                }
+            }
             ConsoleCommand.TakePhoto -> {
                 renderer.captureRequested = true
                 // Le message viendra de saveCapture, avec le chemin réel.
@@ -897,9 +913,10 @@ class MainActivity : Activity() {
             is ConsoleCommand.SetLimbMode -> {
                 renderer.limbMode = cmd.mode
                 val label = when (cmd.mode) {
-                    1 -> "globe métrique"
-                    2 -> "collerette"
-                    else -> "tuiles"
+                    1 -> "globe métrique (forcé)"
+                    2 -> "collerette (diagnostic)"
+                    3 -> "auto — globe en orbite"
+                    else -> "tuiles (forcé)"
                 }
                 showConsoleMessage(
                     "Limbe : $label." +
@@ -1040,6 +1057,8 @@ class MainActivity : Activity() {
         // la caméra n'a pas d'altitude métrique (repère propre, 0,02..60).
         if (descentActive) {
             camera?.let { scaleRegistry.update(it.eyeAltitudeM()) }
+            // Bascule du limbe (2.7-b2) : le renderer suit le registre.
+            renderer.orbitRegime = scaleRegistry.current == ScaleRegister.ORBIT
         }
 
         renderer.spinDeg = worldTime.spinDegrees(clock.tick)
@@ -1165,8 +1184,12 @@ class MainActivity : Activity() {
                 // devrait être exhaustif — c'est l'échec de compilation
                 // v0.40.0, une chaîne fluide coupée en deux sans le voir.
                 when (renderer.limbMode) {
-                    1 -> sb.append(" · limbe:globe")
+                    0 -> sb.append(" · limbe:tuiles (forcé)")
+                    1 -> sb.append(" · limbe:globe (forcé)")
                     2 -> sb.append(" · limbe:collerette")
+                    else -> if (renderer.limbModeEffective == 1) {
+                        sb.append(" · limbe:globe")
+                    }
                 }
                 sb.append(" · tuiles ").append(renderer.tilesDrawn)
                     .append('/').append(renderer.tilesSelected)

@@ -42,6 +42,21 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande banc limbe`() {
+        val d = ConsoleCommand.parse("banc limbe")
+        assertTrue(d is ConsoleCommand.BenchLimb)
+        assertEquals(12_000.0, d.altitudeKm)
+        val a = ConsoleCommand.parse("banc limbe 5000")
+        assertTrue(a is ConsoleCommand.BenchLimb)
+        assertEquals(5_000.0, a.altitudeKm)
+        // Sous la fenêtre de visibilité (le disque ne tiendrait pas au
+        // champ), ou au-delà de la portée maximale : rejeté.
+        assertTrue(ConsoleCommand.parse("banc limbe 1000") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("banc limbe 90000") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("banc") is ConsoleCommand.Invalid)
+    }
+
+    @Test
     fun `commande limbe`() {
         val g = ConsoleCommand.parse("limbe globe")
         assertTrue(g is ConsoleCommand.SetLimbMode)
@@ -52,6 +67,9 @@ class ConsoleCommandTest {
         val t = ConsoleCommand.parse("LIMBE Tuiles")
         assertTrue(t is ConsoleCommand.SetLimbMode)
         assertEquals(0, t.mode)
+        val auto = ConsoleCommand.parse("limbe auto")
+        assertTrue(auto is ConsoleCommand.SetLimbMode)
+        assertEquals(3, auto.mode)
         assertTrue(ConsoleCommand.parse("limbe") is ConsoleCommand.Invalid)
         assertTrue(ConsoleCommand.parse("limbe rond") is ConsoleCommand.Invalid)
     }

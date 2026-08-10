@@ -1,5 +1,24 @@
 # Journal des versions
 
+## v0.43.0 — Lot 2.7-b2 : bascule du limbe câblée sur le registre orbite
+
+L'instruction (§8 de validation/bascule.py) a établi le fait qui tranche :
+l'inclinaison étant verrouillée par la portée, le limbe n'entre dans le
+champ que sous ~350 km (vue rasante) ou au-delà de 2 959 km (nadir). La
+bascule au registre orbite (entrée 2 240 km, hystérésis du 2.7-a) couvre
+donc TOUTE la fenêtre haute avec 700 km de marge, et le point ouvert
+« limbe continental 30-180 px » était un non-symptôme : hors champ. La
+bascule est sèche — au moment du changement, seule la texture du terrain
+change, le limbe n'est pas encore visible.
+
+Le mode « limbe auto » devient le défaut : globe métrique en orbite, tuiles
+en dessous. Les modes forcés (tuiles, globe, collerette) restent à la
+console pour le diagnostic ; le HUD n'affiche que l'écart au nominal. Une
+commande « banc limbe [alt_km] » (défaut 12 000) place la caméra au nadir
+avec le disque entier dans le champ et le soleil au zénith : une capture
+par mode suffit désormais à juger la silhouette. Un test ajouté (banc du
+limbe) ; le cas « limbe auto » rejoint le test existant de la commande.
+
 ## v0.42.0 — Lot 2.20-a : capture d'écran, et vitesse ×400
 
 Un bouton « Photo » (barre de droite, et commande console `photo`) enregistre
