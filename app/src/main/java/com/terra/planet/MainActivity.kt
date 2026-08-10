@@ -851,6 +851,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 12, 24, 0)
             addView(quickRow("limbe auto", "limbe tuiles", "limbe globe"))
+            addView(quickRow("arbre conifère", "arbre palmier", "arbre off"))
             addView(quickRow("arbre", "banc limbe", "photo"))
             addView(quickRow("teinte", "soleil 12", "aide"))
             addView(input)
@@ -891,51 +892,46 @@ class MainActivity : Activity() {
                 )
                 clock.restore(clock.tick + jump)
             }
+            ConsoleCommand.HideTree -> {
+                renderer.clearTestTree()
+                showConsoleMessage("Arbre retiré.")
+            }
             is ConsoleCommand.ShowTree -> {
-                // Capture locale OBLIGATOIRE : cmd.seed vient d'un autre
-                // module, Kotlin refuse le smart cast après le test de
-                // nullité (échec de compilation v0.44.0) — la propriété
-                // pourrait théoriquement changer entre les deux lectures.
-                val treeSeed = cmd.seed
-                if (treeSeed == null) {
-                    renderer.clearTestTree()
-                    showConsoleMessage("Arbre retiré.")
-                } else {
-                    if (!descentActive) toggleDescent()
-                    val cam = camera
-                    val ray = raycaster
-                    val data = world
-                    if (cam != null && ray != null && data != null) {
-                        val tree = com.terra.sim.TreeGenerator.generate(
-                            com.terra.sim.TreeParams.defaultTree(), treeSeed
-                        )
-                        // Ancre au point visé, posée sur le relief.
-                        val up = cam.focusDirection()
-                        val altM = kotlin.math.max(0.0, ray.altitudeAlong(up))
-                        val r = data.params.radiusM.toDouble() + altM
-                        // Repère local : haut × nord = est (convention).
-                        val pole = com.terra.core.Vec3d(0.0, 1.0, 0.0)
-                        val north = (pole - up * (up dot pole)).normalized()
-                        val east = up cross north
-                        // Colonnes (est, haut, nord) : le Y local de l'arbre
-                        // est sa verticale (voir PlanetRenderer).
-                        val frame = floatArrayOf(
-                            east.x.toFloat(), east.y.toFloat(), east.z.toFloat(),
-                            up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
-                            north.x.toFloat(), north.y.toFloat(), north.z.toFloat()
-                        )
-                        renderer.plantTestTree(
-                            tree.wireframeVertices(),
-                            up.x * r, up.y * r, up.z * r,
-                            frame
-                        )
-                        showConsoleMessage(
-                            "Arbre $treeSeed planté au point visé " +
-                                "(${tree.segments.size} segments, " +
-                                "${"%.1f".format(tree.heightM())} m).\n" +
-                                "« arbre off » pour le retirer."
-                        )
-                    }
+                if (!descentActive) toggleDescent()
+                val cam = camera
+                val ray = raycaster
+                val data = world
+                if (cam != null && ray != null && data != null) {
+                    val tree = com.terra.sim.TreeGenerator.generate(
+                        cmd.species.params(), cmd.seed
+                    )
+                    // Ancre au point visé, posée sur le relief.
+                    val up = cam.focusDirection()
+                    val altM = kotlin.math.max(0.0, ray.altitudeAlong(up))
+                    val r = data.params.radiusM.toDouble() + altM
+                    // Repère local : haut × nord = est (convention).
+                    val pole = com.terra.core.Vec3d(0.0, 1.0, 0.0)
+                    val north = (pole - up * (up dot pole)).normalized()
+                    val east = up cross north
+                    // Colonnes (est, haut, nord) : le Y local de l'arbre
+                    // est sa verticale (voir PlanetRenderer).
+                    val frame = floatArrayOf(
+                        east.x.toFloat(), east.y.toFloat(), east.z.toFloat(),
+                        up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
+                        north.x.toFloat(), north.y.toFloat(), north.z.toFloat()
+                    )
+                    renderer.plantTestTree(
+                        tree.wireframeVertices(),
+                        up.x * r, up.y * r, up.z * r,
+                        frame
+                    )
+                    showConsoleMessage(
+                        "${cmd.species.label} n°${cmd.seed} planté au point visé " +
+                            "(${tree.segments.size} segments, " +
+                            "${"%.1f".format(tree.heightM())} m de haut, " +
+                            "${"%.1f".format(tree.spreadM())} m d'envergure).\n" +
+                            "« arbre off » pour le retirer."
+                    )
                 }
             }
             is ConsoleCommand.BenchLimb -> {

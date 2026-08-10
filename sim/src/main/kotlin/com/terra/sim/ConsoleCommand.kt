@@ -54,11 +54,19 @@ sealed class ConsoleCommand {
     object TakePhoto : ConsoleCommand()
 
     /**
-     * `arbre [graine]` / `arbre off` — plante ou retire le squelette
-     * d'arbre de test (lot 3.1) au point visé, dessiné en fil de fer.
-     * [seed] nul = retirer.
+     * `arbre [espèce] [graine]` — plante un squelette au point visé
+     * (lots 3.1 et 3.2), dessiné en fil de fer.
+     *
+     * Deux commandes distinctes plutôt qu'une graine nullable : le retrait
+     * n'est pas « planter avec une graine absente », et une propriété
+     * nullable venant d'un autre module ne se transtype pas par simple test
+     * de nullité (échec de compilation v0.44.0 — le type dit maintenant la
+     * bonne chose).
      */
-    data class ShowTree(val seed: Long?) : ConsoleCommand()
+    data class ShowTree(val species: TreeSpecies, val seed: Long) : ConsoleCommand()
+
+    /** `arbre off` — retire le squelette de test. */
+    object HideTree : ConsoleCommand()
 
     data class Invalid(val message: String) : ConsoleCommand()
 
@@ -72,8 +80,9 @@ sealed class ConsoleCommand {
             "mode sol | mode globe     bascule la vue\n" +
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
             "photo                     enregistre une capture d'écran\n" +
-            "arbre [graine] | arbre off\n" +
-            "   squelette d'arbre de test au point visé (lot 3.1)\n" +
+            "arbre [espèce] [graine] | arbre off\n" +
+            "   squelette au point visé ; espèces : conifère, feuillu,\n" +
+            "   palmier, cactus, arbuste, herbacée, mousse\n" +
             "limbe auto|tuiles|globe|collerette\n" +
             "   rendu du limbe en mode sol (auto : globe en orbite)\n" +
             "banc limbe [alt_km]       cadre le disque entier pour capture\n" +
@@ -105,12 +114,7 @@ sealed class ConsoleCommand {
                     }
                 }
                 "photo" -> TakePhoto
-                "arbre" -> when (val arg = parts.getOrNull(1)?.lowercase()) {
-                    null -> ShowTree(1L)
-                    "off", "non" -> ShowTree(null)
-                    else -> arg.toLongOrNull()?.let { ShowTree(it) }
-                        ?: Invalid("Usage : arbre [graine] | arbre off")
-                }
+                "arbre" -> parseTree(parts)
                 "limbe" -> when (parts.getOrNull(1)?.lowercase()) {
                     "tuiles", "tuile" -> SetLimbMode(0)
                     "globe" -> SetLimbMode(1)
@@ -141,6 +145,30 @@ sealed class ConsoleCommand {
                 "aide", "help", "?" -> Help
                 else -> Invalid("Commande inconnue : ${parts[0]}. Tapez « aide ».")
             }
+        }
+
+        /**
+         * `arbre` · `arbre 42` · `arbre pin` · `arbre conifère 42` · `arbre off`
+         *
+         * Les deux arguments sont optionnels et reconnus par leur FORME —
+         * un nombre est une graine, un mot est une espèce — pour qu'on
+         * n'ait pas à retenir un ordre.
+         */
+        private fun parseTree(parts: List<String>): ConsoleCommand {
+            var species = TreeSpecies.FEUILLU
+            var seed = 1L
+            for (arg in parts.drop(1)) {
+                val lower = arg.lowercase()
+                if (lower == "off" || lower == "non") return HideTree
+                val asSeed = arg.toLongOrNull()
+                if (asSeed != null) {
+                    seed = asSeed
+                    continue
+                }
+                species = TreeSpecies.parse(arg)
+                    ?: return Invalid("Espèce inconnue : $arg (voir « aide »)")
+            }
+            return ShowTree(species, seed)
         }
 
         private fun parseTeleport(parts: List<String>): ConsoleCommand {

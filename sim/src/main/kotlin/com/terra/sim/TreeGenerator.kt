@@ -73,7 +73,6 @@ object TreeGenerator {
             val childDepth = parent.depth + 1
             val childLength = params.trunkLengthM * pow(params.lengthRatio, childDepth)
             val childRadiusBase = parent.radiusTipM
-            val childRadiusTip = childRadiusBase * params.radiusRatio
             val parentDir = parent.direction()
 
             // Base d'azimut PAR BRANCHE, tirée du flux : sans elle, toutes
@@ -81,13 +80,15 @@ object TreeGenerator {
             // dans les mêmes directions absolues.
             var azimuth = rng.nextFloatRange(0f, 2f * PI_F)
 
-            for (child in 0 until params.children) {
-                val nominal = if (child == 0) {
-                    params.branchAngleRad * CONTINUATION_ANGLE_RATIO
-                } else {
-                    params.branchAngleRad
-                }
-                val angle = (nominal + rng.nextFloatRange(
+            // Émission d'un enfant. L'azimut avance d'un angle d'or à
+            // chaque appel — l'ordre des appels fait donc partie de la
+            // définition de la forme : enfants de pointe d'abord, puis les
+            // verticilles de bas en haut. Le changer changerait les mondes.
+            fun emit(
+                baseX: Float, baseY: Float, baseZ: Float,
+                radiusBase: Float, nominalAngle: Float
+            ) {
+                val angle = (nominalAngle + rng.nextFloatRange(
                     -params.angleJitterRad, params.angleJitterRad
                 )).coerceIn(0f, MAX_BRANCH_ANGLE_RAD)
 
@@ -98,16 +99,50 @@ object TreeGenerator {
                 azimuth += GOLDEN_ANGLE_RAD
 
                 segments += TreeSkeleton.Segment(
-                    baseX = parent.tipX, baseY = parent.tipY, baseZ = parent.tipZ,
-                    tipX = parent.tipX + dir.x * childLength,
-                    tipY = parent.tipY + dir.y * childLength,
-                    tipZ = parent.tipZ + dir.z * childLength,
-                    radiusBaseM = childRadiusBase,
-                    radiusTipM = childRadiusTip,
+                    baseX = baseX, baseY = baseY, baseZ = baseZ,
+                    tipX = baseX + dir.x * childLength,
+                    tipY = baseY + dir.y * childLength,
+                    tipZ = baseZ + dir.z * childLength,
+                    radiusBaseM = radiusBase,
+                    radiusTipM = radiusBase * params.radiusRatio,
                     depth = childDepth,
                     parent = parentIndex
                 )
                 queue.addLast(segments.size - 1)
+            }
+
+            // Enfants de POINTE : le premier est la continuation du fût.
+            for (child in 0 until params.children) {
+                val nominal = if (child == 0) {
+                    params.branchAngleRad * CONTINUATION_ANGLE_RATIO
+                } else {
+                    params.branchAngleRad
+                }
+                emit(parent.tipX, parent.tipY, parent.tipZ, childRadiusBase, nominal)
+            }
+
+            // Enfants LATÉRAUX (lot 3.2) : des verticilles étagés le long du
+            // parent. Sans eux, aucun jeu de paramètres ne fait un conifère —
+            // un sapin porte ses branches le long de son fût, pas seulement à
+            // sa cime. Les étages se répartissent strictement entre la
+            // fraction d'attache et la pointe : jamais sur la base (le
+            // segment y a déjà son parent), jamais sur la pointe (les enfants
+            // de pointe y sont déjà).
+            for (whorl in 0 until params.lateralWhorls) {
+                val t = params.attachStartFraction +
+                    (1f - params.attachStartFraction) *
+                    (whorl + 1).toFloat() / (params.lateralWhorls + 1).toFloat()
+                val bx = parent.baseX + (parent.tipX - parent.baseX) * t
+                val by = parent.baseY + (parent.tipY - parent.baseY) * t
+                val bz = parent.baseZ + (parent.tipZ - parent.baseZ) * t
+                // Rayon du parent AU POINT d'attache : la continuité du lot
+                // 3.1 se généralise, un latéral ne naît jamais plus gros que
+                // le fût qui le porte.
+                val rb = parent.radiusBaseM +
+                    (parent.radiusTipM - parent.radiusBaseM) * t
+                repeat(params.lateralPerWhorl) {
+                    emit(bx, by, bz, rb, params.branchAngleRad)
+                }
             }
         }
 
@@ -171,8 +206,17 @@ data class TreeParams(
     /** Profondeur maximale ; le tronc est la profondeur 0. */
     val maxDepth: Int,
     /** Redressement vers le haut, 0 (aucun) à 1 (vertical). */
-    val straightness: Float
+    val straightness: Float,
+    /** Étages de branches le long du parent (lot 3.2). 0 = pointe seule. */
+    val lateralWhorls: Int = 0,
+    /** Branches par étage latéral. */
+    val lateralPerWhorl: Int = 0,
+    /** Fraction du parent sous laquelle aucun étage ne s'attache. */
+    val attachStartFraction: Float = 0.35f
 ) {
+
+    /** Facteur de branchement réel : pointe + latéraux. */
+    fun branchingFactor(): Int = children + lateralWhorls * lateralPerWhorl
 
     fun worstCaseSegments(): Int {
         // Somme k^0..k^D en entier 64 bits : le débordement 32 bits d'un
@@ -180,10 +224,11 @@ data class TreeParams(
         // garde.
         var total = 0L
         var level = 1L
+        val k = branchingFactor().toLong()
         for (d in 0..maxDepth) {
             total += level
             if (total > TreeGenerator.MAX_SEGMENTS) return Int.MAX_VALUE
-            level *= children
+            level *= k
         }
         return total.toInt()
     }
@@ -197,25 +242,20 @@ data class TreeParams(
         require(children in 1..6) { "children hors de [1 ; 6] : $children" }
         require(maxDepth in 0..12) { "maxDepth hors de [0 ; 12] : $maxDepth" }
         require(straightness in 0f..1f) { "straightness hors de [0 ; 1] : $straightness" }
+        require(lateralWhorls in 0..8) { "lateralWhorls hors de [0 ; 8] : $lateralWhorls" }
+        require(lateralPerWhorl in 0..8) { "lateralPerWhorl hors de [0 ; 8] : $lateralPerWhorl" }
+        require(attachStartFraction in 0f..0.9f) {
+            "attachStartFraction hors de [0 ; 0,9] : $attachStartFraction"
+        }
+        require(branchingFactor() >= 1) { "Un arbre sans aucun enfant possible" }
         require(worstCaseSegments() <= TreeGenerator.MAX_SEGMENTS) {
             "Paramétrage à plus de ${TreeGenerator.MAX_SEGMENTS} segments : refusé"
         }
     }
 
     companion object {
-        /** L'espèce-test du lot 3.1 : un feuillu générique, k=3, ratio 0,60
-         *  proche de la conservation de section (validation §4). */
-        fun defaultTree(): TreeParams = TreeParams(
-            trunkLengthM = 4.0f,
-            trunkRadiusM = 0.28f,
-            lengthRatio = 0.68f,
-            radiusRatio = 0.60f,
-            branchAngleRad = 0.62f,
-            angleJitterRad = 0.16f,
-            children = 3,
-            maxDepth = 5,
-            straightness = 0.18f
-        )
+        /** L'espèce par défaut : le feuillu (voir [TreeSpecies]). */
+        fun defaultTree(): TreeParams = TreeSpecies.FEUILLU.params()
     }
 }
 
@@ -240,6 +280,32 @@ class TreeSkeleton(val segments: List<Segment>) {
 
     /** Hauteur hors sol, pour cadrer une visualisation. */
     fun heightM(): Float = segments.maxOf { it.tipY }.coerceAtLeast(0f)
+
+    /** Envergure : distance horizontale maximale à l'axe du tronc. */
+    fun spreadM(): Float = segments.maxOf {
+        kotlin.math.sqrt(it.tipX * it.tipX + it.tipZ * it.tipZ)
+    }
+
+    /**
+     * Élancement = envergure / hauteur. C'est le critère qui sépare les
+     * familles à l'œil comme au test : un conifère tient sous 0,39, un
+     * feuillu passe au-dessus (bornes mesurées dans validation/especes.py,
+     * qui a écarté la conicité — elle ne sépare pas).
+     */
+    fun slendernessRatio(): Float {
+        val h = heightM()
+        return if (h > 1e-6f) spreadM() / h else 0f
+    }
+
+    /** Segments nés le long d'un parent plutôt qu'à sa pointe (lot 3.2). */
+    fun lateralCount(): Int = segments.count { s ->
+        if (s.parent < 0) return@count false
+        val p = segments[s.parent]
+        val dx = s.baseX - p.tipX
+        val dy = s.baseY - p.tipY
+        val dz = s.baseZ - p.tipZ
+        dx * dx + dy * dy + dz * dz > 1e-12f
+    }
 
     /**
      * Sommets fil de fer : deux points par segment, position (3) + teinte

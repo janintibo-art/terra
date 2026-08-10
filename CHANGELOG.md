@@ -1,5 +1,34 @@
 # Journal des versions
 
+## v0.45.0 — Lot 3.2 : sept familles d'espèces, et la grammaire qu'elles exigent
+
+Le lot 3.1 n'attachait les branches qu'à la POINTE du parent. Un feuillu,
+un palmier, un cactus s'en accommodent — un conifère non : un sapin porte
+ses branches le long de son fût. La grammaire gagne donc des VERTICILLES
+LATÉRAUX (lateralWhorls, lateralPerWhorl, attachStartFraction) ; le facteur
+de branchement devient children + whorls × perWhorl, si bien que la garde
+des 20 000 segments reste valable telle quelle. La continuité des rayons du
+3.1 se généralise : un latéral naît avec exactement le rayon du parent au
+point d'attache, jamais plus gros que le fût qui le porte.
+
+Sept familles : conifère, feuillu, palmier, cactus, arbuste, herbacée,
+mousse. Console : « arbre conifère », « arbre palmier 7 », « arbre 7
+palmier » (les arguments se reconnaissent à leur forme, l'ordre est libre),
+« arbre off ».
+
+L'instruction (validation/especes.py) a fait son travail AVANT le Kotlin :
+elle a invalidé un premier paramétrage où conifère et feuillu se
+confondaient, PUIS écarté un critère qui semblait évident — la conicité
+(envergure haute / envergure basse) ne sépare pas les deux familles, le fût
+nu plaçant la coupure au milieu du feuillage. C'est l'élancement (envergure
+/ hauteur) qui sépare : 0,30…0,33 contre 0,46…0,59, mesurés sur 400 tirages
+par famille. Tous les seuils des tests viennent de ces mesures.
+
+Au passage, « arbre off » n'est plus une graine nulle mais une commande
+distincte : le type dit maintenant la bonne chose, et le piège de smart
+cast inter-modules de la v0.44.0 disparaît par construction. Huit tests
+ajoutés (espèces), la commande console mise à jour.
+
 ## v0.44.1 — Correctif : smart cast inter-modules, et compte des tests
 
 MainActivity.kt:905 : « Smart cast to 'Long' is impossible » — cmd.seed

@@ -39,13 +39,27 @@ class ConsoleCommandTest {
     fun `commande arbre`() {
         val d = ConsoleCommand.parse("arbre")
         assertTrue(d is ConsoleCommand.ShowTree)
+        assertEquals(TreeSpecies.FEUILLU, d.species)
         assertEquals(1L, d.seed)
+
+        // Les arguments se reconnaissent par leur FORME, dans n'importe
+        // quel ordre : un nombre est une graine, un mot une espèce.
         val g = ConsoleCommand.parse("arbre 42")
         assertTrue(g is ConsoleCommand.ShowTree)
         assertEquals(42L, g.seed)
-        val off = ConsoleCommand.parse("arbre off")
-        assertTrue(off is ConsoleCommand.ShowTree)
-        assertEquals(null, off.seed)
+        val sp = ConsoleCommand.parse("arbre conifère")
+        assertTrue(sp is ConsoleCommand.ShowTree)
+        assertEquals(TreeSpecies.CONIFERE, sp.species)
+        val both = ConsoleCommand.parse("arbre palmier 7")
+        assertTrue(both is ConsoleCommand.ShowTree)
+        assertEquals(TreeSpecies.PALMIER, both.species)
+        assertEquals(7L, both.seed)
+        val reversed = ConsoleCommand.parse("arbre 7 palmier")
+        assertTrue(reversed is ConsoleCommand.ShowTree)
+        assertEquals(TreeSpecies.PALMIER, reversed.species)
+        assertEquals(7L, reversed.seed)
+
+        assertTrue(ConsoleCommand.parse("arbre off") is ConsoleCommand.HideTree)
         assertTrue(ConsoleCommand.parse("arbre chêne") is ConsoleCommand.Invalid)
     }
 
