@@ -925,7 +925,7 @@ class MainActivity : Activity() {
                         up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
                         north.x.toFloat(), north.y.toFloat(), north.z.toFloat()
                     )
-                    val mesh = com.terra.sim.TreeMesh.build(tree)
+                    val mesh = com.terra.sim.TreeMesh.build(tree, cmd.species.params())
                     renderer.plantTestTree(
                         mesh,
                         up.x * r, up.y * r, up.z * r,

@@ -53,43 +53,76 @@ enum class TreeSpecies(val label: String) {
             lengthRatio = 0.34f, radiusRatio = 0.58f,
             branchAngleRad = 1.20f, angleJitterRad = 0.10f,
             children = 1, maxDepth = 3, straightness = 0.05f,
-            lateralWhorls = 3, lateralPerWhorl = 3, attachStartFraction = 0.22f
+            lateralWhorls = 3, lateralPerWhorl = 3, attachStartFraction = 0.22f,
+            // Palme d'aiguilles : allongée sur le rameau, aplatie —
+            // rapport 6,4:1. Une touffe sphérique en ferait un arbre à
+            // pompons (validation/feuillage.py §5).
+            foliageDepthSpan = 1,
+            foliageLengthRatio = 1.15f, foliageWidthRatio = 0.45f,
+            foliageThicknessRatio = 0.18f,
+            foliageRed = 0.16f, foliageGreen = 0.34f, foliageBlue = 0.19f
         )
         FEUILLU -> TreeParams(
             trunkLengthM = 4.0f, trunkRadiusM = 0.28f,
             lengthRatio = 0.68f, radiusRatio = 0.60f,
             branchAngleRad = 0.78f, angleJitterRad = 0.16f,
-            children = 3, maxDepth = 5, straightness = 0.14f
+            children = 3, maxDepth = 5, straightness = 0.14f,
+            // Deux niveaux garnis : 243 rameaux terminaux seuls donneraient
+            // une couronne clairsemée (§2).
+            foliageDepthSpan = 2,
+            foliageLengthRatio = 0.9f, foliageWidthRatio = 0.85f,
+            foliageThicknessRatio = 0.8f,
+            foliageRed = 0.24f, foliageGreen = 0.46f, foliageBlue = 0.15f
         )
         PALMIER -> TreeParams(
             trunkLengthM = 7.0f, trunkRadiusM = 0.16f,
             lengthRatio = 0.55f, radiusRatio = 0.80f,
             branchAngleRad = 1.25f, angleJitterRad = 0.22f,
-            children = 8, maxDepth = 1, straightness = 0.0f
+            children = 8, maxDepth = 1, straightness = 0.0f,
+            // La palme EST la branche : touffe très allongée et plate.
+            foliageDepthSpan = 1,
+            foliageLengthRatio = 1.05f, foliageWidthRatio = 0.28f,
+            foliageThicknessRatio = 0.06f,
+            foliageRed = 0.28f, foliageGreen = 0.48f, foliageBlue = 0.18f
         )
         CACTUS -> TreeParams(
             trunkLengthM = 1.8f, trunkRadiusM = 0.20f,
             lengthRatio = 0.70f, radiusRatio = 0.88f,
             branchAngleRad = 1.05f, angleJitterRad = 0.10f,
-            children = 2, maxDepth = 2, straightness = 0.75f
+            children = 2, maxDepth = 2, straightness = 0.75f,
+            // Aucun feuillage : c'est la tige elle-même qui est verte.
+            foliageDepthSpan = 0
         )
         ARBUSTE -> TreeParams(
             trunkLengthM = 0.9f, trunkRadiusM = 0.06f,
             lengthRatio = 0.72f, radiusRatio = 0.66f,
             branchAngleRad = 0.85f, angleJitterRad = 0.25f,
-            children = 3, maxDepth = 4, straightness = 0.10f
+            children = 3, maxDepth = 4, straightness = 0.10f,
+            foliageDepthSpan = 2,
+            foliageLengthRatio = 0.9f, foliageWidthRatio = 0.85f,
+            foliageThicknessRatio = 0.8f,
+            foliageRed = 0.26f, foliageGreen = 0.44f, foliageBlue = 0.14f
         )
         HERBACEE -> TreeParams(
             trunkLengthM = 0.35f, trunkRadiusM = 0.010f,
             lengthRatio = 0.80f, radiusRatio = 0.70f,
             branchAngleRad = 0.55f, angleJitterRad = 0.30f,
-            children = 4, maxDepth = 1, straightness = 0.35f
+            children = 4, maxDepth = 1, straightness = 0.35f,
+            // Lames de graminée : longues, étroites, très fines.
+            foliageDepthSpan = 1,
+            foliageLengthRatio = 1.0f, foliageWidthRatio = 0.20f,
+            foliageThicknessRatio = 0.05f,
+            foliageRed = 0.38f, foliageGreen = 0.52f, foliageBlue = 0.18f
         )
         MOUSSE -> TreeParams(
             trunkLengthM = 0.05f, trunkRadiusM = 0.003f,
             lengthRatio = 0.75f, radiusRatio = 0.75f,
             branchAngleRad = 0.80f, angleJitterRad = 0.35f,
-            children = 3, maxDepth = 1, straightness = 0.05f
+            children = 3, maxDepth = 1, straightness = 0.05f,
+            foliageDepthSpan = 1,
+            foliageLengthRatio = 0.95f, foliageWidthRatio = 0.9f,
+            foliageThicknessRatio = 0.85f,
+            foliageRed = 0.30f, foliageGreen = 0.50f, foliageBlue = 0.22f
         )
     }
 

@@ -212,7 +212,28 @@ data class TreeParams(
     /** Branches par étage latéral. */
     val lateralPerWhorl: Int = 0,
     /** Fraction du parent sous laquelle aucun étage ne s'attache. */
-    val attachStartFraction: Float = 0.35f
+    val attachStartFraction: Float = 0.35f,
+
+    // --- Feuillage (lot 3.3-c) -------------------------------------------
+    /**
+     * Nombre de niveaux de profondeur, en partant des rameaux, qui portent
+     * une touffe. 0 = aucune (cactus). Le feuillu n'a que 243 rameaux
+     * terminaux et paraîtrait clairsemé avec un seul niveau ; le conifère
+     * en a mille et n'en demande pas plus (validation/feuillage.py §2).
+     */
+    val foliageDepthSpan: Int = 0,
+    /** Demi-longueur de la touffe LE LONG du rameau, en multiples de sa longueur. */
+    val foliageLengthRatio: Float = 0.9f,
+    /** Demi-largeur, en multiples de la longueur du rameau. */
+    val foliageWidthRatio: Float = 0.9f,
+    /** Demi-épaisseur, en multiples de la longueur du rameau. */
+    val foliageThicknessRatio: Float = 0.9f,
+    // Couleur du feuillage en trois composantes plutôt qu'un FloatArray :
+    // dans une data class, un tableau compare par RÉFÉRENCE, si bien que
+    // deux paramétrages identiques se diraient différents.
+    val foliageRed: Float = 0.22f,
+    val foliageGreen: Float = 0.42f,
+    val foliageBlue: Float = 0.16f
 ) {
 
     /** Facteur de branchement réel : pointe + latéraux. */
@@ -253,6 +274,13 @@ data class TreeParams(
             "attachStartFraction hors de [0 ; 0,9] : $attachStartFraction"
         }
         require(branchingFactor() >= 1) { "Un arbre sans aucun enfant possible" }
+        require(foliageDepthSpan in 0..4) {
+            "foliageDepthSpan hors de [0 ; 4] : $foliageDepthSpan"
+        }
+        require(foliageLengthRatio > 0f && foliageWidthRatio > 0f &&
+            foliageThicknessRatio > 0f) { "Touffe de dimension nulle" }
+        require(foliageRed in 0f..1f && foliageGreen in 0f..1f &&
+            foliageBlue in 0f..1f) { "Couleur de feuillage hors de [0 ; 1]" }
         require(worstCaseSegments() <= TreeGenerator.MAX_SEGMENTS) {
             "Paramétrage à plus de ${TreeGenerator.MAX_SEGMENTS} segments : refusé"
         }

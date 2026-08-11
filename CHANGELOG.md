@@ -1,5 +1,33 @@
 # Journal des versions
 
+## v0.47.0 — Lot 3.3-c : le feuillage (un lot que le plan n'avait pas)
+
+La feuille de route ne contenait AUCUN lot créant du feuillage : le 3.3 ne
+traite que des niveaux de détail, le 3.4 de la coloration, le 3.8 du cycle
+saisonnier — tous supposent un feuillage qui n'existait nulle part. C'était
+un trou du plan, pas un oubli d'implémentation : sans ce lot, le feuillu
+restait un arbre d'hiver.
+
+Contrainte propre à Terra : aucune texture n'est embarquée, donc les cartes
+de feuilles à découpe alpha — la solution habituelle — seraient ici deux
+rectangles opaques croisés. Le feuillage est donc GÉOMÉTRIQUE. Une touffe =
+un OCTAÈDRE (8 triangles) aux trois demi-axes réglables, centré sur son
+rameau et orienté par lui, dimensionné en multiples de la LONGUEUR du
+rameau pour que les touffes voisines se recouvrent — sinon la couronne se
+lit comme un chapelet de billes. Le conifère les prend très allongés et
+plats (rapport 6,4:1) : une palme d'aiguilles, pas un pompon ; le palmier
+plus encore ; le cactus n'en reçoit aucune, sa tige est verte.
+
+Les touffes garnissent les `foliageDepthSpan` derniers niveaux : deux pour
+les feuillus et arbustes (243 rameaux terminaux seuls donneraient une
+couronne clairsemée), un pour les autres. Budget : 17 776 triangles pour un
+conifère dont 8 000 de feuillage, 6 472 pour un feuillu — aucun arbre au-delà
+de 20 000.
+
+L'orientation des huit faces de l'octaèdre a été vérifiée en Python avant
+d'être écrite, puis confiée à un test : une face retournée ferait un trou
+dans la couronne, invisible en CI. Cinq tests ajoutés.
+
 ## v0.46.1 — Le pied de l'arbre s'enfouit
 
 Le sol DESSINÉ est la surface d'une tuile (grille de 16×16 altitudes

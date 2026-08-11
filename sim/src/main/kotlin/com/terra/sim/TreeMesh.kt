@@ -4,6 +4,7 @@ import com.terra.core.Vec3
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Maillage des arbres — lot 3.3-a.
@@ -52,6 +53,9 @@ object TreeMesh {
     /** Position (3) + normale (3) + couleur (3). */
     const val FLOATS_PER_VERTEX = 9
 
+    /** Une touffe = un octaèdre : 8 faces, sommets dupliqués. */
+    const val OCTAHEDRON_VERTICES = 24
+
     /**
      * Construit le maillage, sommets dupliqués et non indexés — même parti
      * que le maillage du globe, et le seul possible ici puisque chaque face
@@ -59,7 +63,11 @@ object TreeMesh {
      *
      * Repère local : Y vers le haut, base du tronc à l'origine, en mètres.
      */
-    fun build(skeleton: TreeSkeleton, sides: Int = DEFAULT_SIDES): FloatArray {
+    fun build(
+        skeleton: TreeSkeleton,
+        params: TreeParams? = null,
+        sides: Int = DEFAULT_SIDES
+    ): FloatArray {
         require(sides in 3..32) { "sides hors de [3 ; 32] : $sides" }
         val segments = skeleton.segments
 
@@ -74,7 +82,20 @@ object TreeMesh {
         var running = 0
         for (i in segments.indices) if (hasChild[i]) running++
         val terminal = segments.size - running
-        val vertexCount = running * 6 * sides + terminal * 3 * sides
+
+        // Feuillage (lot 3.3-c) : un octaèdre par segment des derniers
+        // niveaux. Le compte se fait AVANT d'allouer, sinon le tampon
+        // devrait croître au milieu de la construction.
+        val span = params?.foliageDepthSpan ?: 0
+        val maxDepth = if (segments.isEmpty()) 0 else segments.maxOf { it.depth }
+        val foliageFrom = maxDepth - span + 1
+        var clusters = 0
+        if (span > 0) {
+            for (seg in segments) if (seg.depth >= foliageFrom) clusters++
+        }
+
+        val vertexCount = running * 6 * sides + terminal * 3 * sides +
+            clusters * OCTAHEDRON_VERTICES
         val out = FloatArray(vertexCount * FLOATS_PER_VERTEX)
 
         // Anneaux réutilisés d'un segment à l'autre : ces tableaux sont
@@ -144,17 +165,116 @@ object TreeMesh {
             }
         }
 
+        if (span > 0 && params != null) {
+            for (seg in segments) {
+                if (seg.depth < foliageFrom) continue
+                o = emitFoliage(out, o, seg, params)
+            }
+        }
+
         return if (o == out.size) out else out.copyOf(o)
     }
 
+    /**
+     * Une touffe : un OCTAÈDRE aux trois demi-axes réglables, centré au
+     * milieu du rameau qui la porte et orienté sur lui.
+     *
+     * Pourquoi un octaèdre. Terra n'embarque AUCUNE texture : les cartes de
+     * feuilles à découpe alpha, solution habituelle, seraient ici deux
+     * rectangles opaques croisés. Le feuillage doit donc être un volume, et
+     * l'octaèdre est le meilleur rapport lecture/coût des candidats chiffrés
+     * (validation/feuillage.py §1) — le tétraèdre est trop anguleux,
+     * l'icosaèdre coûte 2,5× plus cher pour un gain invisible à la distance
+     * où l'on regarde un arbre.
+     *
+     * Les demi-axes sont des multiples de la LONGUEUR du rameau, si bien que
+     * les touffes voisines se recouvrent et que la couronne se lit comme une
+     * masse plutôt qu'un chapelet de billes (§4). Le conifère les prend très
+     * allongés et plats — une palme d'aiguilles, pas un pompon.
+     */
+    private fun emitFoliage(
+        out: FloatArray, offset: Int, seg: TreeSkeleton.Segment, params: TreeParams
+    ): Int {
+        var o = offset
+        val axis = seg.direction()
+        val len = seg.lengthM()
+        if (len < 1e-6f || axis.lengthSq < 1e-12f) return o
+
+        val helper = if (abs(axis.y) < 0.9f) Vec3(0f, 1f, 0f) else Vec3(1f, 0f, 0f)
+        val wide = (axis cross helper).normalized()
+        val thick = (wide cross axis)
+
+        val cx = (seg.baseX + seg.tipX) * 0.5f
+        val cy = (seg.baseY + seg.tipY) * 0.5f
+        val cz = (seg.baseZ + seg.tipZ) * 0.5f
+
+        val a = axis * (len * params.foliageLengthRatio)
+        val b = wide * (len * params.foliageWidthRatio)
+        val c = thick * (len * params.foliageThicknessRatio)
+        val color = floatArrayOf(params.foliageRed, params.foliageGreen, params.foliageBlue)
+
+        // Six pôles de l'octaèdre.
+        val px = floatArrayOf(cx + a.x, cx - a.x, cx + b.x, cx - b.x, cx + c.x, cx - c.x)
+        val py = floatArrayOf(cy + a.y, cy - a.y, cy + b.y, cy - b.y, cy + c.y, cy - c.y)
+        val pz = floatArrayOf(cz + a.z, cz - a.z, cz + b.z, cz - b.z, cz + c.z, cz - c.z)
+
+        // Huit faces, chacune reliant un pôle « long », un pôle « large » et
+        // un pôle « épais ». L'ordre des sommets suit le signe du produit
+        // des trois demi-axes, pour que la normale sorte du volume.
+        for (i in 0 until 2) {
+            for (j in 2 until 4) {
+                for (k in 4 until 6) {
+                    // Le sens de parcours s'inverse quand un nombre IMPAIR
+                    // de demi-axes est pris du côté négatif : sans cela une
+                    // face sur deux regarderait vers l'intérieur. Vérifié
+                    // numériquement (0 face retournée sur 8) avant d'être
+                    // écrit, puis gardé par un test.
+                    val flip = ((i == 1).toInt() + (j == 3).toInt() + (k == 5).toInt()) % 2 == 1
+                    val v1 = if (flip) k else j
+                    val v2 = if (flip) j else k
+                    val nx = crossX(px, py, pz, i, v1, v2)
+                    val ny = crossY(px, py, pz, i, v1, v2)
+                    val nz = crossZ(px, py, pz, i, v1, v2)
+                    val nl = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-12f)
+                    o = putXyz(out, o, px[i], py[i], pz[i], nx / nl, ny / nl, nz / nl, color)
+                    o = putXyz(out, o, px[v1], py[v1], pz[v1], nx / nl, ny / nl, nz / nl, color)
+                    o = putXyz(out, o, px[v2], py[v2], pz[v2], nx / nl, ny / nl, nz / nl, color)
+                }
+            }
+        }
+        return o
+    }
+
+    private fun Boolean.toInt(): Int = if (this) 1 else 0
+
+    private fun crossX(x: FloatArray, y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
+        (y[b] - y[a]) * (z[c] - z[a]) - (z[b] - z[a]) * (y[c] - y[a])
+
+    private fun crossY(x: FloatArray, y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
+        (z[b] - z[a]) * (x[c] - x[a]) - (x[b] - x[a]) * (z[c] - z[a])
+
+    private fun crossZ(x: FloatArray, y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
+        (x[b] - x[a]) * (y[c] - y[a]) - (y[b] - y[a]) * (x[c] - x[a])
+
     /** Sommets attendus, pour dimensionner sans construire. */
-    fun vertexCount(skeleton: TreeSkeleton, sides: Int = DEFAULT_SIDES): Int {
+    fun vertexCount(
+        skeleton: TreeSkeleton,
+        params: TreeParams? = null,
+        sides: Int = DEFAULT_SIDES
+    ): Int {
         val hasChild = BooleanArray(skeleton.segments.size)
         for (s in skeleton.segments) if (s.parent >= 0) hasChild[s.parent] = true
         var running = 0
         for (b in hasChild) if (b) running++
         val terminal = skeleton.segments.size - running
-        return running * 6 * sides + terminal * 3 * sides
+        val span = params?.foliageDepthSpan ?: 0
+        var clusters = 0
+        if (span > 0 && skeleton.segments.isNotEmpty()) {
+            val maxDepth = skeleton.segments.maxOf { it.depth }
+            for (seg in skeleton.segments) if (seg.depth >= maxDepth - span + 1) clusters++
+        }
+        return running * 6 * sides + terminal * 3 * sides +
+            clusters * OCTAHEDRON_VERTICES
     }
 
     /**
