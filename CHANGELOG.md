@@ -1,5 +1,38 @@
 # Journal des versions
 
+## v0.48.0 — Lot 3.3-b : niveaux de détail et allocation sous budget
+
+L'instruction (validation/lod_arbres.py) a INVALIDÉ la conception que
+suggérait la feuille de route. Des seuils de distance ne tiennent pas :
+même au réglage le plus serré, une forêt de conifères réclame 2,4 fois le
+budget mesuré, parce que le nombre d'arbres croît comme le carré de la
+distance et qu'un seuil ne sait pas combien d'arbres il vient d'admettre.
+
+Le lot livre donc deux mécanismes. D'abord quatre NIVEAUX de maillage —
+plein (17 776 triangles sur un conifère), moyen (10 110), bas (638),
+panneau (4) — dont les plafonds sont exprimés en TAILLE APPARENTE, ce qui
+les rend valables de la mousse de huit centimètres au conifère de douze
+mètres sans aucune distance codée en dur. L'essentiel du gain vient de
+l'élagage des rameaux, pas du nombre de côtés : un conifère porte 1 000 de
+ses 1 111 segments au dernier niveau.
+
+Ensuite un ALLOCATEUR : les arbres sont triés par taille apparente et
+servis dans cet ordre, chacun recevant le meilleur niveau que le budget
+restant permet. Le budget est ainsi tenu par construction, quelle que soit
+la densité — c'est la propriété que des seuils ne savaient pas garantir, et
+elle est testée sur des forêts de 10 à 20 000 arbres. Le coût du panneau
+est payé d'avance pour tous : sans ce plancher, un budget serré donnerait
+tout aux premiers arbres et ferait disparaître les suivants.
+
+Budget par défaut : 700 000 triangles, dérivé d'une mesure réelle sur
+Mali-G77 (330 000 triangles en 6,6 ms, marge de 30 % conservée pour les
+pics et les appareils plus lents).
+
+Console : « arbre conifère bas », « arbre panneau » — les niveaux se
+comparent à l'œil. Quatorze tests ajoutés. Mes premiers seuils de test
+étaient devinés et faux d'un tiers ; ils ont été remplacés par les valeurs
+mesurées.
+
 ## v0.47.0 — Lot 3.3-c : le feuillage (un lot que le plan n'avait pas)
 
 La feuille de route ne contenait AUCUN lot créant du feuillage : le 3.3 ne

@@ -852,6 +852,7 @@ class MainActivity : Activity() {
             setPadding(24, 12, 24, 0)
             addView(quickRow("limbe auto", "limbe tuiles", "limbe globe"))
             addView(quickRow("arbre conifère", "arbre palmier", "arbre off"))
+            addView(quickRow("arbre moyen", "arbre bas", "arbre panneau"))
             addView(quickRow("arbre", "banc limbe", "photo"))
             addView(quickRow("teinte", "soleil 12", "aide"))
             addView(input)
@@ -925,7 +926,9 @@ class MainActivity : Activity() {
                         up.x.toFloat(), up.y.toFloat(), up.z.toFloat(),
                         north.x.toFloat(), north.y.toFloat(), north.z.toFloat()
                     )
-                    val mesh = com.terra.sim.TreeMesh.build(tree, cmd.species.params())
+                    val mesh = com.terra.sim.TreeMesh.build(
+                        tree, cmd.species.params(), detail = cmd.detail
+                    )
                     renderer.plantTestTree(
                         mesh,
                         up.x * r, up.y * r, up.z * r,
@@ -933,7 +936,8 @@ class MainActivity : Activity() {
                     )
                     val triangles = mesh.size / com.terra.sim.TreeMesh.FLOATS_PER_VERTEX / 3
                     showConsoleMessage(
-                        "${cmd.species.label} n°${cmd.seed} planté au point visé.\n" +
+                        "${cmd.species.label} n°${cmd.seed} (${cmd.detail.label}) " +
+                            "planté au point visé.\n" +
                             "${tree.segments.size} segments · $triangles triangles · " +
                             "pied enfoui de ${"%.0f".format(tree.footSinkM() * 100)} cm · " +
                             "${"%.1f".format(tree.heightM())} m de haut, " +

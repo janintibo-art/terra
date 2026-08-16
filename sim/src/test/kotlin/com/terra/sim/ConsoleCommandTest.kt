@@ -59,6 +59,13 @@ class ConsoleCommandTest {
         assertEquals(TreeSpecies.PALMIER, reversed.species)
         assertEquals(7L, reversed.seed)
 
+        val lod = ConsoleCommand.parse("arbre conifère bas 3")
+        assertTrue(lod is ConsoleCommand.ShowTree)
+        assertEquals(TreeSpecies.CONIFERE, lod.species)
+        assertEquals(TreeDetail.LOW, lod.detail)
+        assertEquals(3L, lod.seed)
+        assertEquals(TreeDetail.FULL, (ConsoleCommand.parse("arbre") as ConsoleCommand.ShowTree).detail)
+
         assertTrue(ConsoleCommand.parse("arbre off") is ConsoleCommand.HideTree)
         assertTrue(ConsoleCommand.parse("arbre chêne") is ConsoleCommand.Invalid)
     }

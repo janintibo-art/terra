@@ -63,7 +63,11 @@ sealed class ConsoleCommand {
      * de nullité (échec de compilation v0.44.0 — le type dit maintenant la
      * bonne chose).
      */
-    data class ShowTree(val species: TreeSpecies, val seed: Long) : ConsoleCommand()
+    data class ShowTree(
+        val species: TreeSpecies,
+        val seed: Long,
+        val detail: TreeDetail = TreeDetail.FULL
+    ) : ConsoleCommand()
 
     /** `arbre off` — retire le squelette de test. */
     object HideTree : ConsoleCommand()
@@ -81,8 +85,9 @@ sealed class ConsoleCommand {
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
             "photo                     enregistre une capture d'écran\n" +
             "arbre [espèce] [graine] | arbre off\n" +
-            "   squelette au point visé ; espèces : conifère, feuillu,\n" +
-            "   palmier, cactus, arbuste, herbacée, mousse\n" +
+            "   arbre au point visé ; espèces : conifère, feuillu, palmier,\n" +
+            "   cactus, arbuste, herbacée, mousse ; détail : plein, moyen,\n" +
+            "   bas, panneau\n" +
             "limbe auto|tuiles|globe|collerette\n" +
             "   rendu du limbe en mode sol (auto : globe en orbite)\n" +
             "banc limbe [alt_km]       cadre le disque entier pour capture\n" +
@@ -157,6 +162,7 @@ sealed class ConsoleCommand {
         private fun parseTree(parts: List<String>): ConsoleCommand {
             var species = TreeSpecies.FEUILLU
             var seed = 1L
+            var detail = TreeDetail.FULL
             for (arg in parts.drop(1)) {
                 val lower = arg.lowercase()
                 if (lower == "off" || lower == "non") return HideTree
@@ -165,10 +171,20 @@ sealed class ConsoleCommand {
                     seed = asSeed
                     continue
                 }
+                // Un mot peut être un niveau de détail ou une espèce ; on
+                // essaie le niveau d'abord, il n'y a pas de collision de
+                // noms entre les deux jeux.
+                val asDetail = TreeDetail.values().firstOrNull {
+                    it.label == lower || it.name.lowercase() == lower
+                }
+                if (asDetail != null) {
+                    detail = asDetail
+                    continue
+                }
                 species = TreeSpecies.parse(arg)
                     ?: return Invalid("Espèce inconnue : $arg (voir « aide »)")
             }
-            return ShowTree(species, seed)
+            return ShowTree(species, seed, detail)
         }
 
         private fun parseTeleport(parts: List<String>): ConsoleCommand {

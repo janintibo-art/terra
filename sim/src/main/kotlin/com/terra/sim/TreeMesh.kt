@@ -66,10 +66,27 @@ object TreeMesh {
     fun build(
         skeleton: TreeSkeleton,
         params: TreeParams? = null,
-        sides: Int = DEFAULT_SIDES
+        sides: Int = DEFAULT_SIDES,
+        detail: TreeDetail = TreeDetail.FULL
     ): FloatArray {
         require(sides in 3..32) { "sides hors de [3 ; 32] : $sides" }
-        val segments = skeleton.segments
+
+        // Niveaux de détail (lot 3.3-b). Le PANNEAU est un cas à part : il
+        // n'y a plus ni tube ni touffe, seulement deux triangles croisés.
+        if (detail == TreeDetail.BILLBOARD) return buildBillboard(skeleton, params)
+
+        val effectiveSides = detail.sidesFor(sides)
+        val allSegments = skeleton.segments
+        // Au niveau BAS, on élague les rameaux les plus fins : ils occupent
+        // moins d'un pixel et coûtent l'essentiel des segments (1 000 des
+        // 1 111 d'un conifère).
+        val segments = if (detail.prunedDepths > 0 && allSegments.isNotEmpty()) {
+            val maxDepth = allSegments.maxOf { it.depth }
+            allSegments.filter { it.depth <= maxDepth - detail.prunedDepths }
+        } else {
+            allSegments
+        }
+        if (segments.isEmpty()) return FloatArray(0)
 
         // Un segment est terminal s'il n'a aucun enfant. Le calcul se fait
         // en UNE passe sur les parents : chercher les enfants segment par
@@ -91,18 +108,23 @@ object TreeMesh {
         val foliageFrom = maxDepth - span + 1
         var clusters = 0
         if (span > 0) {
-            for (seg in segments) if (seg.depth >= foliageFrom) clusters++
+            var index = 0
+            for (seg in segments) {
+                if (seg.depth < foliageFrom) continue
+                if (detail.foliageStride > 1 && (index++ % detail.foliageStride) != 0) continue
+                clusters++
+            }
         }
 
-        val vertexCount = running * 6 * sides + terminal * 3 * sides +
+        val vertexCount = running * 6 * effectiveSides + terminal * 3 * effectiveSides +
             clusters * OCTAHEDRON_VERTICES
         val out = FloatArray(vertexCount * FLOATS_PER_VERTEX)
 
         // Anneaux réutilisés d'un segment à l'autre : ces tableaux sont
         // écrits puis lus dans la foulée, jamais conservés.
-        val baseRing = FloatArray(sides * 3)
-        val tipRing = FloatArray(sides * 3)
-        val ringNormal = FloatArray(sides * 3)
+        val baseRing = FloatArray(effectiveSides * 3)
+        val tipRing = FloatArray(effectiveSides * 3)
+        val ringNormal = FloatArray(effectiveSides * 3)
 
         var o = 0
         for (i in segments.indices) {
@@ -116,8 +138,8 @@ object TreeMesh {
             val u = (axis cross helper).normalized()
             val v = (u cross axis)
 
-            for (k in 0 until sides) {
-                val a = 2f * PI_F * k.toFloat() / sides.toFloat()
+            for (k in 0 until effectiveSides) {
+                val a = 2f * PI_F * k.toFloat() / effectiveSides.toFloat()
                 val nx = u.x * cos(a) + v.x * sin(a)
                 val ny = u.y * cos(a) + v.y * sin(a)
                 val nz = u.z * cos(a) + v.z * sin(a)
@@ -136,8 +158,8 @@ object TreeMesh {
             val cTip = barkColor(seg.depth, seg.radiusTipM)
 
             if (hasChild[i]) {
-                for (k in 0 until sides) {
-                    val k2 = (k + 1) % sides
+                for (k in 0 until effectiveSides) {
+                    val k2 = (k + 1) % effectiveSides
                     // Deux triangles par côté, orientés vers l'EXTÉRIEUR
                     // (sens direct vu du dehors) : l'élagage des faces
                     // arrière est actif dans le moteur.
@@ -150,8 +172,8 @@ object TreeMesh {
                     o = put(out, o, baseRing, k2, ringNormal, k2, cBase)
                 }
             } else {
-                for (k in 0 until sides) {
-                    val k2 = (k + 1) % sides
+                for (k in 0 until effectiveSides) {
+                    val k2 = (k + 1) % effectiveSides
                     o = put(out, o, baseRing, k, ringNormal, k, cBase)
                     // Apex : la normale d'un sommet de cône ne peut pas être
                     // radiale, on reprend l'axe — approximation qui suffit à
@@ -166,8 +188,12 @@ object TreeMesh {
         }
 
         if (span > 0 && params != null) {
+            var index = 0
             for (seg in segments) {
                 if (seg.depth < foliageFrom) continue
+                // Au niveau MOYEN, une touffe sur deux : le volume de la
+                // couronne se lit encore, pour la moitié du coût.
+                if (detail.foliageStride > 1 && (index++ % detail.foliageStride) != 0) continue
                 o = emitFoliage(out, o, seg, params)
             }
         }
@@ -257,11 +283,64 @@ object TreeMesh {
         (x[b] - x[a]) * (y[c] - y[a]) - (y[b] - y[a]) * (x[c] - x[a])
 
     /** Sommets attendus, pour dimensionner sans construire. */
+    /**
+     * Panneau : deux quadrilatères croisés à la verticale, aux dimensions
+     * de l'arbre. Sans texture, ce sont deux rectangles opaques — assumé,
+     * puisqu'à ce niveau l'arbre occupe moins de douze pixels de haut et se
+     * lit comme une tache colorée. C'est exactement ce que font déjà les
+     * cerfs-volants de la végétation des tuiles.
+     */
+    private fun buildBillboard(skeleton: TreeSkeleton, params: TreeParams?): FloatArray {
+        val h = skeleton.heightM()
+        val w = skeleton.spreadM().coerceAtLeast(h * 0.15f)
+        if (h <= 0f) return FloatArray(0)
+
+        // Couleur : le feuillage s'il existe, sinon le bois — un cactus
+        // lointain doit rester vert-gris, pas brun.
+        val cr = params?.foliageRed ?: 0.26f
+        val cg = params?.foliageGreen ?: 0.42f
+        val cb = params?.foliageBlue ?: 0.18f
+        val hasFoliage = (params?.foliageDepthSpan ?: 0) > 0
+        val color = if (hasFoliage) floatArrayOf(cr, cg, cb) else floatArrayOf(0.30f, 0.38f, 0.22f)
+
+        val out = FloatArray(12 * FLOATS_PER_VERTEX)
+        var o = 0
+        // Deux lames verticales à 90°, normales horizontales opposées au
+        // regard moyen : sans texture il n'y a pas d'orientation à suivre.
+        val planes = arrayOf(
+            floatArrayOf(1f, 0f, 0f, 0f, 0f, 1f),
+            floatArrayOf(0f, 0f, 1f, -1f, 0f, 0f)
+        )
+        for (pl in planes) {
+            val ax = pl[0] * w * 0.5f
+            val az = pl[2] * w * 0.5f
+            val nx = pl[3]
+            val nz = pl[5]
+            o = putXyz(out, o, -ax, 0f, -az, nx, 0f, nz, color)
+            o = putXyz(out, o, ax, 0f, az, nx, 0f, nz, color)
+            o = putXyz(out, o, ax, h, az, nx, 0f, nz, color)
+            o = putXyz(out, o, -ax, 0f, -az, nx, 0f, nz, color)
+            o = putXyz(out, o, ax, h, az, nx, 0f, nz, color)
+            o = putXyz(out, o, -ax, h, -az, nx, 0f, nz, color)
+        }
+        return out
+    }
+
+    /**
+     * Sommets attendus, sans construire. Redirige sur [build] pour les
+     * niveaux dégradés : dupliquer la logique d'élagage et d'espacement
+     * ferait deux vérités qui finiraient par diverger — le compte serait
+     * juste jusqu'au jour où l'une des deux changerait seule.
+     */
     fun vertexCount(
         skeleton: TreeSkeleton,
         params: TreeParams? = null,
-        sides: Int = DEFAULT_SIDES
+        sides: Int = DEFAULT_SIDES,
+        detail: TreeDetail = TreeDetail.FULL
     ): Int {
+        if (detail != TreeDetail.FULL) {
+            return build(skeleton, params, sides, detail).size / FLOATS_PER_VERTEX
+        }
         val hasChild = BooleanArray(skeleton.segments.size)
         for (s in skeleton.segments) if (s.parent >= 0) hasChild[s.parent] = true
         var running = 0
