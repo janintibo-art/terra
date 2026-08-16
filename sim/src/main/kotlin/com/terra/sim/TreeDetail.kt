@@ -35,7 +35,23 @@ enum class TreeDetail(
     LOW("bas", 3, 1, 3),
 
     /** Deux lames croisées. 4 triangles. */
-    BILLBOARD("panneau", 0, 0, 0);
+    BILLBOARD("panneau", 0, 0, 0),
+
+    /**
+     * Pas dessiné du tout.
+     *
+     * Dernier recours de l'allocateur : quand le budget ne suffit même pas
+     * à donner un panneau à chaque arbre, il faut bien en retirer. Sans ce
+     * niveau, l'allocateur PROMETTAIT de tenir le budget sans pouvoir le
+     * faire — 20 000 panneaux à quatre triangles en coûtent 80 000, et un
+     * budget de 50 000 était alors dépassé de 60 % (défaut attrapé par son
+     * propre test, v0.48.1).
+     *
+     * Ce niveau est réservé au budget : la taille apparente seule ne fait
+     * jamais disparaître un arbre. C'est au lot 3.6 (répartition) de borner
+     * la portée pour qu'on n'y arrive qu'exceptionnellement.
+     */
+    NONE("aucun", 0, 0, 0);
 
     fun sidesFor(requested: Int): Int =
         if (this == FULL) requested else minOf(requested, sides).coerceAtLeast(3)
@@ -142,30 +158,37 @@ object TreeLodBudget {
             }
         }
 
-        val out = Array(apparentPxSorted.size) { TreeDetail.BILLBOARD }
-        // Le panneau est le plancher : on paie d'abord son coût pour TOUS
-        // les arbres, puis on dépense le reste à améliorer les plus gros.
-        // Sans cela, un budget serré donnerait le niveau plein aux premiers
-        // et plus rien du tout aux suivants — des arbres qui disparaissent.
+        val out = Array(apparentPxSorted.size) { TreeDetail.NONE }
+        // Le panneau est le plancher : on paie d'abord son coût pour autant
+        // d'arbres que le budget le permet, puis on dépense le reste à
+        // améliorer les plus gros. Payer le plancher d'abord évite qu'un
+        // budget serré ne donne tout aux premiers et rien aux suivants.
+        //
+        // Si le plancher lui-même excède le budget, les arbres les plus
+        // lointains ne sont PAS dessinés : c'est la seule issue honnête, et
+        // son absence était le défaut de la v0.48.0.
         val floorCost = triangleCost(TreeDetail.BILLBOARD)
-        var spent = floorCost.toLong() * apparentPxSorted.size
-        if (spent > budgetTriangles) return out
+        val affordable = if (floorCost <= 0) {
+            apparentPxSorted.size
+        } else {
+            minOf(apparentPxSorted.size.toLong(), budgetTriangles / floorCost.toLong()).toInt()
+        }
+        var spent = floorCost.toLong() * affordable
+        for (i in 0 until affordable) out[i] = TreeDetail.BILLBOARD
 
-        for (i in apparentPxSorted.indices) {
+        for (i in 0 until affordable) {
             val allowed = detailForSize(apparentPxSorted[i])
-            if (allowed == TreeDetail.BILLBOARD) continue
+            if (allowed.ordinal >= TreeDetail.BILLBOARD.ordinal) continue
             // On tente le meilleur niveau permis, puis on redescend.
-            var chosen = TreeDetail.BILLBOARD
             for (candidate in arrayOf(TreeDetail.FULL, TreeDetail.MEDIUM, TreeDetail.LOW)) {
                 if (candidate.ordinal < allowed.ordinal) continue
                 val extra = triangleCost(candidate) - floorCost
                 if (spent + extra <= budgetTriangles) {
-                    chosen = candidate
+                    out[i] = candidate
                     spent += extra
                     break
                 }
             }
-            out[i] = chosen
         }
         return out
     }

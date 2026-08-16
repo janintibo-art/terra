@@ -142,7 +142,7 @@ class TreeDetailTest {
         // arbres, budgets serrés comme larges.
         val cost = mapOf(
             TreeDetail.FULL to 17_776, TreeDetail.MEDIUM to 5_700,
-            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4
+            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4, TreeDetail.NONE to 0
         )
         for (count in intArrayOf(10, 200, 5_000, 20_000)) {
             for (budget in intArrayOf(50_000, 200_000, 700_000)) {
@@ -163,7 +163,7 @@ class TreeDetailTest {
     fun lesPlusGrosSontServisEnPremier() {
         val cost = mapOf(
             TreeDetail.FULL to 17_776, TreeDetail.MEDIUM to 5_700,
-            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4
+            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4, TreeDetail.NONE to 0
         )
         val sizes = FloatArray(100) { 300f - it * 2.5f }
         val levels = TreeLodBudget.allocate(sizes, { cost.getValue(it) }, 100_000)
@@ -183,7 +183,7 @@ class TreeDetailTest {
         // suivants sans rien. Le panneau est un plancher payé d'avance.
         val cost = mapOf(
             TreeDetail.FULL to 17_776, TreeDetail.MEDIUM to 5_700,
-            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4
+            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4, TreeDetail.NONE to 0
         )
         val sizes = FloatArray(500) { 300f - it * 0.5f }
         val levels = TreeLodBudget.allocate(sizes, { cost.getValue(it) }, 60_000)
@@ -195,11 +195,31 @@ class TreeDetailTest {
     }
 
     @Test
+    fun quandMemeLePlancherNeTientPasLesPlusLointainsDisparaissent() {
+        // Le cas qui a fait tomber la v0.48.0 : 20 000 panneaux à quatre
+        // triangles en coûtent 80 000, au-dessus d'un budget de 50 000.
+        // L'allocateur doit alors retirer les arbres les plus lointains —
+        // et non promettre un budget qu'il ne peut pas tenir.
+        val cost = mapOf(
+            TreeDetail.FULL to 17_776, TreeDetail.MEDIUM to 5_700,
+            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4, TreeDetail.NONE to 0
+        )
+        val sizes = FloatArray(20_000) { 400f / (1f + it * 0.05f) }
+        val levels = TreeLodBudget.allocate(sizes, { cost.getValue(it) }, 50_000)
+        val total = levels.sumOf { cost.getValue(it) }
+        assertTrue(total <= 50_000, "budget dépassé : $total")
+        // Des arbres ont bien été retirés, et ce sont les DERNIERS.
+        assertTrue(levels.any { it == TreeDetail.NONE })
+        assertEquals(TreeDetail.NONE, levels.last())
+        assertTrue(levels.first() != TreeDetail.NONE)
+    }
+
+    @Test
     fun lesPlafondsPrimentSurLeBudget() {
         // Budget énorme, arbre minuscule : il reste un panneau.
         val cost = mapOf(
             TreeDetail.FULL to 17_776, TreeDetail.MEDIUM to 5_700,
-            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4
+            TreeDetail.LOW to 200, TreeDetail.BILLBOARD to 4, TreeDetail.NONE to 0
         )
         val levels = TreeLodBudget.allocate(
             floatArrayOf(8f, 5f, 2f), { cost.getValue(it) }, 10_000_000

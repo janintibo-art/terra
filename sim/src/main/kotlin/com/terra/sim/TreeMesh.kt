@@ -73,6 +73,7 @@ object TreeMesh {
 
         // Niveaux de détail (lot 3.3-b). Le PANNEAU est un cas à part : il
         // n'y a plus ni tube ni touffe, seulement deux triangles croisés.
+        if (detail == TreeDetail.NONE) return FloatArray(0)
         if (detail == TreeDetail.BILLBOARD) return buildBillboard(skeleton, params)
 
         val effectiveSides = detail.sidesFor(sides)
@@ -258,9 +259,9 @@ object TreeMesh {
                     val flip = ((i == 1).toInt() + (j == 3).toInt() + (k == 5).toInt()) % 2 == 1
                     val v1 = if (flip) k else j
                     val v2 = if (flip) j else k
-                    val nx = crossX(px, py, pz, i, v1, v2)
-                    val ny = crossY(px, py, pz, i, v1, v2)
-                    val nz = crossZ(px, py, pz, i, v1, v2)
+                    val nx = crossX(py, pz, i, v1, v2)
+                    val ny = crossY(pz, px, i, v1, v2)
+                    val nz = crossZ(px, py, i, v1, v2)
                     val nl = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-12f)
                     o = putXyz(out, o, px[i], py[i], pz[i], nx / nl, ny / nl, nz / nl, color)
                     o = putXyz(out, o, px[v1], py[v1], pz[v1], nx / nl, ny / nl, nz / nl, color)
@@ -273,13 +274,17 @@ object TreeMesh {
 
     private fun Boolean.toInt(): Int = if (this) 1 else 0
 
-    private fun crossX(x: FloatArray, y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
+    // Composantes du produit vectoriel (P[b] − P[a]) × (P[c] − P[a]).
+    // Chaque fonction ne reçoit que les deux tableaux dont elle a besoin :
+    // passer les trois laissait un paramètre inutilisé, que le compilateur
+    // signalait à chaque build.
+    private fun crossX(y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
         (y[b] - y[a]) * (z[c] - z[a]) - (z[b] - z[a]) * (y[c] - y[a])
 
-    private fun crossY(x: FloatArray, y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
+    private fun crossY(z: FloatArray, x: FloatArray, a: Int, b: Int, c: Int) =
         (z[b] - z[a]) * (x[c] - x[a]) - (x[b] - x[a]) * (z[c] - z[a])
 
-    private fun crossZ(x: FloatArray, y: FloatArray, z: FloatArray, a: Int, b: Int, c: Int) =
+    private fun crossZ(x: FloatArray, y: FloatArray, a: Int, b: Int, c: Int) =
         (x[b] - x[a]) * (y[c] - y[a]) - (y[b] - y[a]) * (x[c] - x[a])
 
     /** Sommets attendus, pour dimensionner sans construire. */

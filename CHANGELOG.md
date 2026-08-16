@@ -1,5 +1,23 @@
 # Journal des versions
 
+## v0.48.1 — Correctif : l'allocateur tient enfin sa promesse
+
+Le test du lot a attrapé le défaut du lot : « budget 50 000 dépassé
+(80 000) pour 20 000 arbres ». Vingt mille panneaux à quatre triangles en
+coûtent quatre-vingt mille — l'allocateur promettait de tenir le budget
+« quelle que soit la densité » sans en avoir les moyens, parce qu'il lui
+manquait la seule issue possible : ne pas dessiner les arbres les plus
+lointains.
+
+Nouveau niveau `TreeDetail.NONE`, réservé au budget — la taille apparente
+seule ne fait jamais disparaître un arbre. Le plancher n'est plus payé pour
+tous les arbres mais pour autant d'arbres que le budget le permet, les plus
+gros à l'écran d'abord. Vérifié sur les douze combinaisons de densité et de
+budget des tests, plus un test dédié au cas extrême.
+
+Ce recours doit rester exceptionnel : c'est au lot 3.6 (répartition) de
+borner la portée pour qu'on n'y arrive pas en usage normal.
+
 ## v0.48.0 — Lot 3.3-b : niveaux de détail et allocation sous budget
 
 L'instruction (validation/lod_arbres.py) a INVALIDÉ la conception que
