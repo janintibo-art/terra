@@ -16,3 +16,4 @@ rootProject.name = "Terra"
 include(":core")
 include(":sim")
 include(":app")
+include(":desktop")

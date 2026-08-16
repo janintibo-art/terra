@@ -1,5 +1,44 @@
 # Journal des versions
 
+## v0.49.0 — Lot 10.1 : Terra sur PC, l'APK et le .exe côte à côte
+
+La décision d'architecture de la Phase 0 — interdire à `:sim` toute
+dépendance Android — se paie aujourd'hui : la génération de planète, la
+tectonique, le climat, les biomes et les arbres tournent sur PC SANS UNE
+LIGNE DE CHANGEMENT. Seule la couche de rendu est à écrire.
+
+Nouveau module `:desktop` : fenêtre GLFW, contexte OpenGL 3.3 core, monde
+généré par le même code qu'Android, globe affiché en haute définition
+(raffinement systématique — sur PC il n'y a aucune raison de s'en priver),
+anti-crénelage 8×. Souris pour orbiter et zoomer, G pour un nouveau monde,
+L pour changer de calque, Échap pour quitter.
+
+`PlanetMesh` déménage de `:app` vers `:sim` : il n'avait jamais eu la
+moindre dépendance Android, et le dupliquer aurait créé deux vérités
+vouées à diverger. `Mat4` rejoint `:core` — Android fournit
+`android.opengl.Matrix`, le PC n'a rien d'équivalent, et plutôt qu'ajouter
+une dépendance pour trois fonctions, ce sont des maths pures donc testées
+(dix tests : une matrice transposée ou un signe de profondeur faux ne lève
+AUCUNE erreur, seulement une image vide qu'il faudrait diagnostiquer sur
+machine).
+
+La CI produit désormais DEUX artefacts en parallèle : l'APK sur
+ubuntu-latest, `Terra.exe` sur windows-latest via jpackage, runtime Java
+embarqué. Type `app-image` et non `exe` : le second exigerait WiX Toolset,
+une dépendance externe de plus sur le runner. On télécharge un dossier,
+on lance Terra.exe, sans installation. Les jobs sont séparés : un échec de
+packaging Windows ne prive pas du binaire Android.
+
+Le déterminisme est intact — un même nom de monde donne la même planète
+des deux côtés. Ce qui diffère est le rendu, jamais la simulation : c'est
+cette distinction qui permettra de tout donner en qualité graphique sur PC
+sans toucher à l'invariant n°1.
+
+LWJGL 3.3.6 plutôt que la 3.4 : cette dernière vise le JDK 25 et son API
+FFM, quand tout le projet est en JDK 17. Suite : lot 10.2, le portage du
+rendu terrain (quadtree, eau, ciel, arbres) et l'adaptation des shaders
+GLSL ES 1.00 → GLSL 3.30.
+
 ## v0.48.1 — Correctif : l'allocateur tient enfin sa promesse
 
 Le test du lot a attrapé le défaut du lot : « budget 50 000 dépassé

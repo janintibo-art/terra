@@ -1,10 +1,9 @@
-package com.terra.planet
+package com.terra.sim
 
-import com.terra.sim.Biome
-import com.terra.sim.GlobeRefinement
-import com.terra.sim.LayerPalette
-import com.terra.sim.MapLayer
-import com.terra.sim.PlanetData
+// Déplacé de :app vers :sim au lot 10.1 : ce maillage n'a jamais eu la
+// moindre dépendance Android, et le module :desktop en a besoin. Le
+// dupliquer aurait créé deux vérités qui auraient divergé.
+
 import kotlin.math.sqrt
 
 /**

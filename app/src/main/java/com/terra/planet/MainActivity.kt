@@ -40,6 +40,7 @@ import com.terra.sim.TileWorkerPool
 import com.terra.sim.MapLayer
 import com.terra.sim.ParamEditor
 import com.terra.sim.PlanetData
+import com.terra.sim.PlanetMesh
 import com.terra.sim.PlanetParams
 import com.terra.sim.SeasonalClimate
 import com.terra.sim.WorldGenerator

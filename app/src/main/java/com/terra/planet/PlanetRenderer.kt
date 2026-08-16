@@ -9,6 +9,7 @@ import com.terra.sim.CelestialSky
 import com.terra.sim.CoarseSampler
 import com.terra.sim.Icosphere
 import com.terra.sim.PlanetCamera
+import com.terra.sim.PlanetMesh
 import com.terra.sim.ScaleRegistry
 import com.terra.sim.TerrainProfile
 import com.terra.sim.TileId
