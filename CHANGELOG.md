@@ -1,5 +1,26 @@
 # Journal des versions
 
+## v0.50.0 — Lot 3.6 : qui pousse où
+
+Neuf mélanges d'espèces, un par biome végétalisé : la taïga aux conifères
+(80 %), les tropiques aux palmiers et sans conifères, le semi-désert aux
+cactus, la toundra aux mousses, prairies et steppes dominées par l'herbe —
+huit assertions écologiques figées dans validation/repartition.py PUIS
+reprises telles quelles dans les tests. Les densités de la v0.26 sont
+DÉPLACÉES vers VegetationRules à l'identique, contrat figé par un test :
+les changer aurait changé l'aspect de tous les mondes existants.
+
+Le tirage d'espèce (speciesAt) ne tire rien : il reçoit un u déterministe
+du micro-hachage de position — la même clairière porte le même chêne à
+chaque visite, sur Android comme sur PC. La tolérance du test de
+fréquences (0,008) est calculée, quatre écarts-types binomiaux sur 20 000
+tirages équirépartis ; le comportement au bord haut du cumul float a été
+vérifié en Python avant d'écrire le repli.
+
+Console : « flore » affiche biome, densité et mélange au point visé — la
+seule partie visible avant l'instanciation massive du lot 3.5, qui
+consommera ces règles. Cinq tests ajoutés, plus un pour la console.
+
 ## v0.49.0 — Lot 10.1 : Terra sur PC, l'APK et le .exe côte à côte
 
 La décision d'architecture de la Phase 0 — interdire à `:sim` toute

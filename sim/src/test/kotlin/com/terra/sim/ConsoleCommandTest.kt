@@ -71,6 +71,12 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande flore`() {
+        assertTrue(ConsoleCommand.parse("flore") is ConsoleCommand.ShowFlora)
+        assertTrue(ConsoleCommand.parse("  FLORE  ") is ConsoleCommand.ShowFlora)
+    }
+
+    @Test
     fun `commande photo`() {
         assertTrue(ConsoleCommand.parse("photo") is ConsoleCommand.TakePhoto)
         assertTrue(ConsoleCommand.parse("  PHOTO  ") is ConsoleCommand.TakePhoto)

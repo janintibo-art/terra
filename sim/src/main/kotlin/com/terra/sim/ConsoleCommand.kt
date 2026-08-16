@@ -72,6 +72,9 @@ sealed class ConsoleCommand {
     /** `arbre off` — retire le squelette de test. */
     object HideTree : ConsoleCommand()
 
+    /** `flore` — biome, densité et mélange d'espèces au point visé (3.6). */
+    object ShowFlora : ConsoleCommand()
+
     data class Invalid(val message: String) : ConsoleCommand()
 
     companion object {
@@ -88,6 +91,7 @@ sealed class ConsoleCommand {
             "   arbre au point visé ; espèces : conifère, feuillu, palmier,\n" +
             "   cactus, arbuste, herbacée, mousse ; détail : plein, moyen,\n" +
             "   bas, panneau\n" +
+            "flore                     biome et mélange d'espèces au point visé\n" +
             "limbe auto|tuiles|globe|collerette\n" +
             "   rendu du limbe en mode sol (auto : globe en orbite)\n" +
             "banc limbe [alt_km]       cadre le disque entier pour capture\n" +
@@ -120,6 +124,7 @@ sealed class ConsoleCommand {
                 }
                 "photo" -> TakePhoto
                 "arbre" -> parseTree(parts)
+                "flore" -> ShowFlora
                 "limbe" -> when (parts.getOrNull(1)?.lowercase()) {
                     "tuiles", "tuile" -> SetLimbMode(0)
                     "globe" -> SetLimbMode(1)

@@ -855,7 +855,7 @@ class MainActivity : Activity() {
             addView(quickRow("arbre conifère", "arbre palmier", "arbre off"))
             addView(quickRow("arbre moyen", "arbre bas", "arbre panneau"))
             addView(quickRow("arbre", "banc limbe", "photo"))
-            addView(quickRow("teinte", "soleil 12", "aide"))
+            addView(quickRow("flore", "teinte", "soleil 12", "aide"))
             addView(input)
         }
         dialog = AlertDialog.Builder(this)
@@ -893,6 +893,27 @@ class MainActivity : Activity() {
                     worldTime, clock.tick, lon, cmd.hour
                 )
                 clock.restore(clock.tick + jump)
+            }
+            ConsoleCommand.ShowFlora -> {
+                val cam = camera
+                val sampler = worldSampler
+                if (cam != null && sampler != null) {
+                    val dir = cam.focusDirection().toVec3()
+                    val cell = sampler.nearestVertex(dir, weatherHint)
+                    weatherHint = cell
+                    val biome = sampler.biomeAt(dir, cell)
+                    val density = com.terra.sim.VegetationRules.densityFor(biome)
+                    val mix = com.terra.sim.VegetationRules.mixFor(biome)
+                    val mixText = if (mix.isEmpty()) "aucune végétation"
+                    else mix.joinToString("\n") {
+                        "  ${it.species.label} : ${(it.weight * 100).toInt()} %"
+                    }
+                    showConsoleMessage(
+                        "Au point visé : ${biome.label}\n" +
+                            "Densité de peuplement : ${(density * 100).toInt()} %\n" +
+                            mixText
+                    )
+                }
             }
             ConsoleCommand.HideTree -> {
                 renderer.clearTestTree()

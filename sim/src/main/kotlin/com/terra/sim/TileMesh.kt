@@ -1061,18 +1061,9 @@ class TileMesh(
          * arbres, les milieux froids ou arides portent des touffes rares,
          * la roche et la glace rien.
          */
-        fun plantDensity(biome: Biome): Float = when (biome) {
-            Biome.RAINFOREST -> 1.0f
-            Biome.TEMPERATE_FOREST -> 0.9f
-            Biome.BOREAL_FOREST -> 0.8f
-            Biome.WETLAND -> 0.6f
-            Biome.GRASSLAND -> 0.5f
-            Biome.SAVANNA -> 0.35f
-            Biome.STEPPE -> 0.25f
-            Biome.TUNDRA -> 0.12f
-            Biome.SEMI_DESERT -> 0.08f
-            else -> 0f
-        }
+        // Densité DÉPLACÉE vers VegetationRules (lot 3.6), valeurs
+        // inchangées ; ce renvoi reste pour les appelants existants.
+        fun plantDensity(biome: Biome): Float = VegetationRules.densityFor(biome)
 
         /**
          * Gain de l'occlusion ambiante, appliqué à la COURBURE (concavité
