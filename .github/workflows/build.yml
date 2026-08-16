@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK + EXE
 
 on:
   push:
@@ -43,3 +43,42 @@ jobs:
           path: |
             core/build/reports/
             sim/build/reports/
+
+  # ---------------------------------------------------------------------
+  # PC : Terra.exe avec runtime Java embarque (lot 10.1).
+  #
+  # Job SEPARE et parallele : un echec de packaging Windows ne doit pas
+  # priver du binaire Android, qui reste la plateforme principale. Les
+  # tests ne sont pas rejoues ici, le job « build » en fait autorite.
+  # jpackage exige de tourner sur la plateforme cible, d'ou windows-latest.
+  # ---------------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      # Compilation seule d'abord : si le module :desktop ne compile pas,
+      # l'echec est lisible ici plutot que noye dans la sortie de jpackage.
+      - name: Compile desktop module
+        run: gradle :desktop:assemble --no-daemon
+
+      - name: Package Terra.exe
+        run: gradle :desktop:packageExe --no-daemon
+
+      - name: Upload Terra.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: terra-windows-${{ github.sha }}
+          path: desktop/build/jpackage/Terra/

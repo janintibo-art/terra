@@ -1,5 +1,22 @@
 # Journal des versions
 
+## v0.50.1 — Correctif de livraison : le workflow n'était jamais parti
+
+Un seul job se lançait sur GitHub, et pour cause : le motif d'exclusion
+des archives (`-x "*.git*"`), censé protéger le dossier .git du dépôt,
+avalait aussi `.github/` — le workflow à deux jobs (APK + Terra.exe) des
+v0.49 et v0.50 n'a donc jamais quitté la machine de développement. Le
+dépôt tournait toujours avec l'ancien workflow, APK seul.
+
+Motif corrigé (`.git/*` exact au lieu du glob gourmand) et vérification
+ajoutée à l'empaquetage : l'archive doit contenir
+`.github/workflows/build.yml`, sinon elle n'est pas produite. Aucun
+changement de code — seule la livraison était en cause.
+
+Leçon pour l'état du projet : un motif d'exclusion se vérifie sur ce qu'il
+EXCLUT réellement, et l'empaquetage mérite ses propres contrôles — c'était
+le seul maillon de la chaîne sans aucun.
+
 ## v0.50.0 — Lot 3.6 : qui pousse où
 
 Neuf mélanges d'espèces, un par biome végétalisé : la taïga aux conifères
