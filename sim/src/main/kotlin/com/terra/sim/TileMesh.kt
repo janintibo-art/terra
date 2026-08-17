@@ -60,6 +60,16 @@ class TileMesh(
     val planetRadiusM: Double
 ) {
 
+    /**
+     * Révision de [PlantExclusion] lue au DÉBUT de la construction — lot
+     * 3.5-c. Une tuile en cours de construction quand l'exclusion change
+     * livre des losanges périmés APRÈS l'éviction, et resterait en cache
+     * avec un losange au pied d'un vrai arbre (constaté sur photo). Le
+     * flux compare cette estampille à la révision courante au dépôt et
+     * jette les retardataires — la tuile se redemande d'elle-même.
+     */
+    val plantRevision: Int = PlantExclusion.revision
+
     /** Centre de référence de la tuile, en mètres depuis le centre planétaire. */
     val centerXM: Double
     val centerYM: Double

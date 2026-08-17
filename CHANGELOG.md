@@ -1,5 +1,32 @@
 # Journal des versions
 
+## v0.52.1 — Correctifs sur photos : la falaise d'allocation et la course des losanges
+
+Deux défauts constatés sur les captures du suivi.
+
+LA FALAISE. Des arbres pleins autour de la caméra, puis brutalement plus
+que des losanges — aucun moyen, aucun bas. L'allocation gloutonne donnait
+tout le budget au niveau plein ; ma propre instruction l'écrivait (« 38
+pleins, 1 moyen, 0 bas ») sans que j'en voie l'effet visuel. Nouvelle
+allocation : chaque arbre part du niveau que sa taille apparente dicte,
+puis dégradation DEPUIS LA QUEUE (les plus petits à l'écran d'abord), un
+cran à la fois, jusqu'à tenir le budget. La transition pleins → moyens →
+bas → losanges est monotone par construction — testée sur le monde réel et
+dans le miroir Python. Budget de champ porté de 250 k à 500 k triangles
+(la marge Mali-G77 mesurée en autorise 700 k pour toute la végétation) :
+~110 arbres réels au lieu de 44.
+
+LA COURSE. Des losanges au pied même de certains arbres réels : une tuile
+EN COURS de construction au moment du changement d'exclusion livrait ses
+losanges périmés APRÈS l'éviction, et restait en cache. Chaque TileMesh
+porte désormais la révision de PlantExclusion lue au début de sa
+construction ; le flux jette au dépôt les estampilles périmées, et la
+tuile se redemande d'elle-même avec l'exclusion à jour.
+
+Note de vol : en mode Voler, distancer la reconstruction (140 m entre
+deux, garde anti-empilement) est attendu — la forêt rattrape au
+ralentissement.
+
 ## v0.52.0 — Lot 3.5-c : la forêt suit la caméra
 
 « foret » active désormais un SUIVI : quand l'œil s'écarte de plus de 35 %

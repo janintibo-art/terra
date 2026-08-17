@@ -69,21 +69,51 @@ print("  paie jamais les conifères.")
 assert total / 1e6 < 12, "les variantes devraient rester sous 12 Mo"
 V = 4    # pour l'affichage du §4 (le niveau bas)
 
-# Budget de champ : borne les arbres pleins pour le GPU, pas la mémoire.
+# Budget de champ, ALLOCATION v0.52.1 : chaque arbre part du niveau que
+# sa taille apparente dicte, puis on dégrade depuis la queue si le total
+# déborde. La première allocation (gloutonne, « meilleur niveau que le
+# budget permet ») donnait 38 pleins puis PLUS RIEN — la « falaise »
+# constatée sur photo, écrite ici même sans que j'en voie l'effet.
+import random
+PX = 1406.8
+H = 1.15
+def apparent(h, d): return 2 * math.atan(h / (2 * d)) * PX
+def allowed(px):
+    if px >= 90 * H: return "FULL"
+    if px >= 35 * H: return "MEDIUM"
+    if px >= 12 * H: return "LOW"
+    return None
 tris = {"FULL": 6_472, "MEDIUM": 3_721, "LOW": 771}
-BUDGET_FIELD = 250_000
-counts = {"FULL": 0, "MEDIUM": 0, "LOW": 0}
-spent = 0
-for i in range(n400):
-    for level in ("FULL", "MEDIUM", "LOW"):
-        if spent + tris[level] <= BUDGET_FIELD:
-            counts[level] += 1
-            spent += tris[level]
-            break
-print(f"  budget de champ {BUDGET_FIELD:,} tris (feuillus) : "
-      f"{counts['FULL']} pleins, {counts['MEDIUM']} moyens, {counts['LOW']} bas, "
-      f"dépense {spent:,}")
-assert counts["FULL"] >= 30, "trop peu d'arbres pleins pour une vue au sol"
+BUDGET_FIELD = 500_000
+sizes = sorted((apparent(11.0, math.sqrt(random.Random(i).random()) * 400 + 20)
+                for i in range(n400)), reverse=True)
+levels = [allowed(px) for px in sizes]
+spent = sum(tris[l] for l in levels if l)
+tail = len(levels) - 1
+while spent > BUDGET_FIELD and tail >= 0:
+    l = levels[tail]
+    if l is None:
+        tail -= 1
+        continue
+    down = {"FULL": "MEDIUM", "MEDIUM": "LOW", "LOW": None}[l]
+    spent -= tris[l]
+    levels[tail] = down
+    if down:
+        spent += tris[down]
+    else:
+        tail -= 1
+from collections import Counter
+counts = Counter(l for l in levels if l)
+print(f"  budget {BUDGET_FIELD:,}, allocation progressive : "
+      f"{counts['FULL']} pleins, {counts['MEDIUM']} moyens, "
+      f"{counts['LOW']} bas, dépense {spent:,}")
+assert spent <= BUDGET_FIELD
+assert counts["MEDIUM"] >= 20, "la transition doit exister — pas de falaise"
+order = {"FULL": 0, "MEDIUM": 1, "LOW": 2, None: 3}
+assert all(order[levels[i]] >= order[levels[i - 1]] for i in range(1, len(levels))), \
+    "les niveaux doivent se dégrader de façon monotone avec la distance"
+print("  → transition pleins → moyens → bas → losanges, monotone : la")
+print("    falaise (« 38 pleins puis plus rien ») est structurellement exclue.")
 
 print("\n=== 4. Variantes d'individus ===")
 # Générer un maillage PAR ARBRE serait du gâchis : à 400 m on ne distingue
@@ -108,7 +138,7 @@ print("""
 CONCLUSION. TreeField dans :sim : énumère les cases du treillis autour du
 point sous l'œil (même face), rejoue les exclusions des losanges (eau, lac,
 pente 27 %, densité), choisit l'espèce (sel +7) et la variante (sel +8),
-alloue les niveaux sous un budget de champ de 250 000 triangles (plafonds
+alloue les niveaux sous un budget de champ de 500 000 triangles (par\nniveau de taille apparente puis dégradation depuis la queue ; plafonds
 en pixels du 3.3-b ; les BILLBOARD sont laissés aux losanges existants), et
 produit des INSTANCES (position double, repère, échelle) pointant vers des
 maillages de variantes partagés. Le renderer dessine un appel par arbre,

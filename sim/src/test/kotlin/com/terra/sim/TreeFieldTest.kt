@@ -184,6 +184,28 @@ class TreeFieldTest {
     }
 
     @Test
+    fun lAllocationEstProgressivePasUneFalaise() {
+        // v0.52.1 : l'allocation gloutonne donnait 38 arbres pleins puis
+        // plus rien — la « falaise » vue sur photo. La nouvelle part du
+        // niveau dicté par la taille apparente et dégrade depuis la queue :
+        // en forêt dense, il DOIT exister des arbres moyens, et les
+        // niveaux doivent se dégrader de façon monotone avec le rang.
+        val counts = HashMap<TreeDetail, Int>()
+        for (inst in field.instances) {
+            counts[inst.variant.detail] = (counts[inst.variant.detail] ?: 0) + 1
+        }
+        assertTrue((counts[TreeDetail.FULL] ?: 0) >= 5, "pleins : $counts")
+        assertTrue((counts[TreeDetail.MEDIUM] ?: 0) >= 5, "moyens : $counts")
+        for (i in 1 until field.instances.size) {
+            assertTrue(
+                field.instances[i].variant.detail.ordinal >=
+                    field.instances[i - 1].variant.detail.ordinal,
+                "niveau remonté au rang $i"
+            )
+        }
+    }
+
+    @Test
     fun lesCasesOccupeesSontPublieesUneParArbre() {
         // Le fondement du lot 3.5-b : chaque arbre réel occupe exactement
         // une case, et l'ensemble sert à taire les losanges en dessous.

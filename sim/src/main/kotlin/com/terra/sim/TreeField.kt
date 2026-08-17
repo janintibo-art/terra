@@ -44,10 +44,13 @@ class TreeField(
     private val planetRadiusM: Double
 ) {
 
-    /** Budget du champ, en triangles. L'instruction §3 : le budget global
-     *  du 3.3-b (700 k) était taillé pour des forêts denses ; sur 264
-     *  arbres il achèterait du détail que personne ne voit. */
-    val budgetTriangles: Int = 250_000
+    /** Budget du champ, en triangles. 500 k depuis la v0.52.1 : les 250 k
+     *  initiaux, taillés pour l'allocation gloutonne, bridaient la
+     *  nouvelle allocation progressive à ~44 arbres réels sur 264. La
+     *  marge GPU mesurée (Mali-G77, validation/lod_arbres.py §4) autorise
+     *  ~700 k pour toute la végétation — 500 k pour le champ en laisse aux
+     *  losanges lointains et au reste. */
+    val budgetTriangles: Int = 500_000
 
     /** Une instance : où, comment orientée, quelle variante. Le repère
      *  (colonnes est, haut, nord) porte DÉJÀ l'échelle de l'individu :
@@ -172,25 +175,52 @@ class TreeField(
             compareByDescending<Candidate> { it.apparentPx }.thenBy { it.cellKey }
         )
 
+        // ALLOCATION EN DEUX TEMPS (v0.52.1). La version gloutonne donnait
+        // TOUT le budget au niveau plein : 38 arbres superbes puis
+        // brutalement plus que des losanges — la « falaise » constatée sur
+        // photo, et pourtant écrite noir sur blanc dans l'instruction
+        // (« 38 pleins, 1 moyen, 0 bas ») sans que j'en voie l'effet.
+        //
+        // 1) chaque arbre reçoit le niveau que sa TAILLE APPARENTE dicte ;
+        // 2) si le total déborde, on DÉGRADE DEPUIS LA QUEUE (les plus
+        //    petits à l'écran d'abord), un cran à la fois, jusqu'à tenir.
+        // La transition devient progressive : pleins, puis moyens, puis
+        // bas, puis losanges — jamais de falaise.
+        val levels = arrayOfNulls<TreeDetail>(candidates.size)
+        var spent = 0L
+        for (i in candidates.indices) {
+            val allowed = TreeLodBudget.detailForSize(candidates[i].apparentPx)
+            if (allowed.ordinal >= TreeDetail.BILLBOARD.ordinal) continue
+            levels[i] = allowed
+            spent += triangleCost(candidates[i].species, allowed)
+        }
+        var tail = candidates.size - 1
+        while (spent > budgetTriangles && tail >= 0) {
+            val level = levels[tail]
+            if (level == null) {
+                tail--
+                continue
+            }
+            val degraded = when (level) {
+                TreeDetail.FULL -> TreeDetail.MEDIUM
+                TreeDetail.MEDIUM -> TreeDetail.LOW
+                else -> null
+            }
+            spent -= triangleCost(candidates[tail].species, level)
+            levels[tail] = degraded
+            if (degraded != null) {
+                spent += triangleCost(candidates[tail].species, degraded)
+            }
+            // On ne recule dans la liste que lorsque l'arbre est épuisé :
+            // un même arbre peut descendre de deux crans avant son voisin.
+            if (degraded == null) tail--
+        }
+
         val instances = ArrayList<Instance>(candidates.size)
         val occupied = HashSet<Long>(candidates.size)
-        var spent = 0
-        for (c in candidates) {
-            val allowed = TreeLodBudget.detailForSize(c.apparentPx)
-            // BILLBOARD et en deçà : le losange des tuiles joue déjà ce
-            // rôle, le champ n'ajoute rien.
-            if (allowed.ordinal >= TreeDetail.BILLBOARD.ordinal) continue
-            var chosen: TreeDetail? = null
-            for (candidate in DETAIL_ORDER) {
-                if (candidate.ordinal < allowed.ordinal) continue
-                val cost = triangleCost(c.species, candidate)
-                if (spent + cost <= budgetTriangles) {
-                    chosen = candidate
-                    spent += cost
-                    break
-                }
-            }
-            if (chosen == null) continue
+        for (i in candidates.indices) {
+            val chosen = levels[i] ?: continue
+            val c = candidates[i]
             val variants = variantCount(chosen)
             val key = VariantKey(c.species, chosen, (c.variantU * variants).toInt()
                 .coerceIn(0, variants - 1))
@@ -198,7 +228,7 @@ class TreeField(
             occupied += c.cellKey
         }
 
-        return Field(instances, spent, visited, candidates.size, occupied)
+        return Field(instances, spent.toInt(), visited, candidates.size, occupied)
     }
 
     // ------------------------------------------------------------------
@@ -417,7 +447,4 @@ class TreeField(
         return if (e.lengthSq < 1e-12f) Vec3(1f, 0f, 0f) else e.normalized()
     }
 
-    private companion object {
-        val DETAIL_ORDER = arrayOf(TreeDetail.FULL, TreeDetail.MEDIUM, TreeDetail.LOW)
-    }
 }

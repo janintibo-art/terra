@@ -113,6 +113,12 @@ class TileStream(private val gpu: GpuBufferPool) {
             val pending = ready.poll() ?: break
             if (pending.epoch != acceptEpoch) continue
             val mesh = pending.mesh
+            // Estampille de l'exclusion des losanges (lot 3.5-c) : une
+            // tuile construite AVANT le dernier changement d'exclusion
+            // porte des losanges périmés — au pied des vrais arbres,
+            // constaté sur photo. On la jette ; le sélecteur la
+            // redemandera, et la nouvelle version lira l'exclusion à jour.
+            if (mesh.plantRevision != com.terra.sim.PlantExclusion.revision) continue
             val key = mesh.tile.packed()
 
             // Une tuile peut avoir été demandée puis dépassée : si une version
