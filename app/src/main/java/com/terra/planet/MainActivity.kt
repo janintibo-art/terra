@@ -173,6 +173,15 @@ class MainActivity : Activity() {
      */
     @Volatile private var worldSampler: CoarseSampler? = null
 
+    // --- Suivi du champ d'arbres (lot 3.5-c) ---
+    // La forêt se reconstruit quand l'œil s'écarte de plus de 35 % du
+    // rayon du dernier champ (validation/suivi_foret.py §3), sur le fil de
+    // travail, avec garde anti-empilement.
+    @Volatile private var forestFollow = false
+    private var forestRadiusM = 400.0
+    @Volatile private var forestCenter: com.terra.core.Vec3d? = null
+    @Volatile private var forestBuilding = false
+
     /**
      * Vitesse plein manche, en pixels de glissement équivalents par seconde.
      * Le joystick passe par cam.pan(), la même mécanique que le doigt :
@@ -917,58 +926,26 @@ class MainActivity : Activity() {
                 }
             }
             is ConsoleCommand.BuildForest -> {
-                val cam = camera
-                val sampler = worldSampler
-                val data = world
-                if (cam != null && sampler != null && data != null) {
-                    showConsoleMessage("Construction de la forêt…")
-                    val eye = cam.eyePositionM()
-                    val pxPerRadian = (glView.height / 2f) /
-                        kotlin.math.tan(com.terra.sim.PlanetCamera.DEFAULT_FOV_RAD / 2.0)
-                            .toFloat()
-                    // Hors du fil d'interface : la construction lit le
-                    // terrain sur des centaines de cases.
-                    worker.execute {
-                        try {
-                            val builder = com.terra.sim.TreeField(
-                                data.terrain, sampler, data.params.radiusM.toDouble()
-                            )
-                            val field = builder.build(eye, pxPerRadian, cmd.radiusM)
-                            val meshes = HashMap<com.terra.sim.TreeField.VariantKey, FloatArray>()
-                            for (inst in field.instances) {
-                                meshes.getOrPut(inst.variant) {
-                                    builder.buildVariantMesh(inst.variant)
-                                }
-                            }
-                            renderer.pendingTreeField =
-                                PlanetRenderer.TreeFieldData(field.instances, meshes)
-                            // Plus de losange sous les vrais arbres : la
-                            // photo du 3.5 a montré qu'ils dépassent sous
-                            // les couronnes. Les tuiles se reconstruisent.
-                            com.terra.sim.PlantExclusion.replace(field.occupiedCells)
-                            renderer.tilesRefreshRequested = true
-                            runOnUiThread {
-                                showConsoleMessage(
-                                    "Forêt : ${field.instances.size} arbres " +
-                                        "(${field.cellsPlanted} candidats, " +
-                                        "${field.trianglesSpent} triangles, " +
-                                        "${meshes.size} variantes).\n" +
-                                        "« foret off » pour la retirer."
-                                )
-                            }
-                        } catch (t: Throwable) {
-                            runOnUiThread {
-                                showConsoleMessage("Échec : ${t.javaClass.simpleName}")
-                            }
-                        }
-                    }
-                }
+                forestRadiusM = cmd.radiusM
+                forestFollow = true
+                showConsoleMessage("Construction de la forêt (suivi actif)…")
+                rebuildForest(announce = true)
             }
             ConsoleCommand.HideForest -> {
+                forestFollow = false
                 renderer.clearTreeField()
                 com.terra.sim.PlantExclusion.clear()
-                renderer.tilesRefreshRequested = true
-                showConsoleMessage("Forêt retirée, losanges restaurés.")
+                // Restaurer les losanges autour du dernier champ : éviction
+                // ciblée, pas le vidage complet du cache.
+                forestCenter?.let { c ->
+                    val data = world
+                    renderer.pendingPlantEvict = doubleArrayOf(
+                        c.x, c.y, c.z, forestRadiusM + 100.0,
+                        (data?.params?.radiusM ?: 6_371_000f).toDouble()
+                    )
+                }
+                forestCenter = null
+                showConsoleMessage("Forêt retirée, suivi coupé, losanges restaurés.")
             }
             ConsoleCommand.HideTree -> {
                 renderer.clearTestTree()
@@ -1158,10 +1135,88 @@ class MainActivity : Activity() {
             override fun run() {
                 if (!uiLoopRunning) return
                 tickSimulation()
+                forestFollowStep()
                 if (hudVisible) hud.text = buildHudText()
                 mainHandler.postDelayed(this, 100L)
             }
         })
+    }
+
+    /**
+     * Reconstruit le champ d'arbres à la position courante — lot 3.5-c.
+     * Appelée par la console et par le suivi ; la garde [forestBuilding]
+     * empêche l'empilement si la marche est plus rapide que le fil de
+     * travail.
+     */
+    private fun rebuildForest(announce: Boolean) {
+        if (forestBuilding) return
+        val cam = camera ?: return
+        val sampler = worldSampler ?: return
+        val data = world ?: return
+        forestBuilding = true
+        val eye = cam.eyePositionM()
+        val radius = forestRadiusM
+        val pxPerRadian = (glView.height / 2f) /
+            kotlin.math.tan(com.terra.sim.PlanetCamera.DEFAULT_FOV_RAD / 2.0).toFloat()
+        worker.execute {
+            try {
+                val builder = com.terra.sim.TreeField(
+                    data.terrain, sampler, data.params.radiusM.toDouble()
+                )
+                val field = builder.build(eye, pxPerRadian, radius)
+                val meshes = HashMap<com.terra.sim.TreeField.VariantKey, FloatArray>()
+                for (inst in field.instances) {
+                    meshes.getOrPut(inst.variant) { builder.buildVariantMesh(inst.variant) }
+                }
+                renderer.pendingTreeField =
+                    PlanetRenderer.TreeFieldData(field.instances, meshes)
+                com.terra.sim.PlantExclusion.replace(field.occupiedCells)
+                // Éviction CIBLÉE : l'union des deux disques (ancien champ,
+                // nouveau champ) couvre toutes les tuiles dont les losanges
+                // changent. Deux évictions valent plus simple qu'une union.
+                val previous = forestCenter
+                val planetR = data.params.radiusM.toDouble()
+                renderer.pendingPlantEvict = doubleArrayOf(
+                    eye.x, eye.y, eye.z, radius + 100.0, planetR
+                )
+                if (previous != null) {
+                    renderer.pendingPlantEvictOld = doubleArrayOf(
+                        previous.x, previous.y, previous.z, radius + 100.0, planetR
+                    )
+                }
+                forestCenter = eye
+                if (announce) {
+                    runOnUiThread {
+                        showConsoleMessage(
+                            "Forêt : ${field.instances.size} arbres " +
+                                "(${field.cellsPlanted} candidats, " +
+                                "${field.trianglesSpent} triangles, " +
+                                "${meshes.size} variantes). Suivi actif — " +
+                                "« foret off » pour couper."
+                        )
+                    }
+                }
+            } catch (t: Throwable) {
+                if (announce) {
+                    runOnUiThread { showConsoleMessage("Échec : ${t.javaClass.simpleName}") }
+                }
+            } finally {
+                forestBuilding = false
+            }
+        }
+    }
+
+    /** Le pas du suivi, appelé à 10 Hz par la boucle d'interface. */
+    private fun forestFollowStep() {
+        if (!forestFollow || forestBuilding) return
+        val cam = camera ?: return
+        val center = forestCenter ?: return
+        val eye = cam.eyePositionM()
+        val dx = eye.x - center.x
+        val dy = eye.y - center.y
+        val dz = eye.z - center.z
+        val moved = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+        if (moved > forestRadiusM * 0.35) rebuildForest(announce = false)
     }
 
     /**

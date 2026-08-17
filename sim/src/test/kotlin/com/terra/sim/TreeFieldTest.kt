@@ -210,6 +210,27 @@ class TreeFieldTest {
     }
 
     @Test
+    fun lEnumerationCouvreLeDisqueMemeAUneAreteDuCube() {
+        // Lot 3.5-c : l'ancienne énumération s'arrêtait à la face du point
+        // sous l'œil — à cheval sur une arête, la moitié du disque restait
+        // vide. L'échantillonnage de directions doit visiter autant de
+        // cases à une arête qu'en pleine face, à la déformation près.
+        val edgeDir = Vec3d(1.0, 0.03, 1.0).normalized()   // arête +X / +Z
+        val f = TreeField(profile, sampler, radius)
+            .build(edgeDir * (radius + 30.0), pxPerRadian, 400.0)
+        val cellArc = (Math.PI / 2.0 * radius) / (7L shl 15).toDouble()
+        val nominal = Math.PI * 400.0 * 400.0 / (cellArc * cellArc)
+        assertTrue(
+            f.cellsVisited > nominal * 0.8,
+            "seulement ${f.cellsVisited} cases visitées à l'arête " +
+                "pour ~${nominal.toInt()} attendues — un pan du disque manque"
+        )
+        // Les cases d'arête sont plus petites (déformation −25 %) : le
+        // compte peut dépasser le nominal, jamais le double.
+        assertTrue(f.cellsVisited < nominal * 2.0, "${f.cellsVisited} cases")
+    }
+
+    @Test
     fun surLoceanLeChampEstVide() {
         var oceanCell = -1
         for (cell in 0 until world.vertexCount) {

@@ -269,6 +269,38 @@ class TileStream(private val gpu: GpuBufferPool) {
         }
     }
 
+    /**
+     * Évince les tuiles dont le centre est à moins de [angularRadiusRad]
+     * du point [dirX, dirY, dirZ] (unitaire) — lot 3.5-c. L'exclusion des
+     * losanges ne change que près du champ d'arbres : vider tout le cache
+     * comme à un changement de monde imposerait un re-streaming complet
+     * toutes les deux minutes de marche. Le rayon de chaque tuile s'ajoute
+     * à la marge : une tuile dont un BORD touche le champ ment aussi.
+     */
+    fun evictNear(
+        centerXM: Double, centerYM: Double, centerZM: Double,
+        radiusM: Double, planetRadiusM: Double
+    ) {
+        val it = cache.entries.iterator()
+        while (it.hasNext()) {
+            val entry = it.next()
+            val tile = entry.value
+            // Le niveau vit dans la clef compactée (TileId.packed) ; le
+            // rayon de la tuile s'ajoute à la marge — une tuile dont un
+            // BORD touche le champ porte aussi des losanges à taire.
+            val level = ((tile.key ushr 52) and 0x3F).toInt()
+            val edgeM = (Math.PI / 2.0) * planetRadiusM / (1L shl level)
+            val dx = tile.centerXM - centerXM
+            val dy = tile.centerYM - centerYM
+            val dz = tile.centerZM - centerZM
+            val dist = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+            if (dist <= radiusM + edgeM * 0.75) {
+                gpu.release(tile.vbo)
+                it.remove()
+            }
+        }
+    }
+
     /** Vide tout proprement — changement de monde, contexte encore valide. */
     fun clear() {
         for (tile in cache.values) gpu.release(tile.vbo)

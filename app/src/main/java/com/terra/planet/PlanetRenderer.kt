@@ -250,10 +250,14 @@ class PlanetRenderer(
         treeFieldClear = true
     }
 
-    /** Vider le cache de tuiles au prochain rendu — l'exclusion des
-     *  losanges a changé, les tuiles déjà construites mentent. Même
-     *  mécanique qu'un changement de monde, reconstruction par priorité. */
-    @Volatile var tilesRefreshRequested = false
+    /** Éviction CIBLÉE du cache de tuiles au prochain rendu (lot 3.5-c) :
+     *  [x, y, z] métriques du centre, rayon en mètres, rayon planétaire.
+     *  L'exclusion des losanges ne change que près du champ — le vidage
+     *  complet coûterait un re-streaming toutes les deux minutes de
+     *  marche. Le second emplacement couvre l'ANCIEN champ lors d'une
+     *  reconstruction en mouvement. */
+    @Volatile var pendingPlantEvict: DoubleArray? = null
+    @Volatile var pendingPlantEvictOld: DoubleArray? = null
 
     // --- Capture d'écran (lot 2.20-a) ---
     /** Armé par l'UI ; consommé en fin d'image sur le fil GL. */
@@ -1699,9 +1703,13 @@ class PlanetRenderer(
             for (ids in fieldVbos.values) GLES20.glDeleteBuffers(1, ids, 0)
             fieldVbos.clear()
         }
-        if (tilesRefreshRequested) {
-            tilesRefreshRequested = false
-            stream.clear()
+        pendingPlantEvict?.let { e ->
+            pendingPlantEvict = null
+            stream.evictNear(e[0], e[1], e[2], e[3], e[4])
+        }
+        pendingPlantEvictOld?.let { e ->
+            pendingPlantEvictOld = null
+            stream.evictNear(e[0], e[1], e[2], e[3], e[4])
         }
         pendingTreeField?.let { data ->
             pendingTreeField = null

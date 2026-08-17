@@ -117,46 +117,60 @@ class TreeField(
         val drawnSet = HashSet<Long>(drawn.size * 2)
         for (tile in drawn) drawnSet.add(tile.packed())
 
-        // Case du treillis sous l'œil, comme les losanges la définissent.
-        val lat = TileMesh.PLANT_LATTICE_LEVEL
-        val n = TileMesh.PLANT_LATTICE_N
-        val total = (n.toLong() shl lat).toDouble()
-        val (face, s, t) = CubeSphere.fromSphere(ground)
-        val centerX = (s + 1f) * 0.5 * total
-        val centerY = (t + 1f) * 0.5 * total
-
-        // Portée en cases : l'arc d'une case vaut (π/2·R)/total au centre
-        // de face, davantage vers les bords — la marge d'une case suffit.
-        val cellArcM = (Math.PI / 2.0 * planetRadiusM) / total
-        val radiusCells = ceil(range / cellArcM).toLong() + 1
+        val total = (TileMesh.PLANT_LATTICE_N.toLong() shl
+            TileMesh.PLANT_LATTICE_LEVEL).toDouble()
 
         val candidates = ArrayList<Candidate>(256)
         val hint = intArrayOf(0)
         var visited = 0
 
-        var cy = (Math.floor(centerY) - radiusCells).toLong()
-        val cyEnd = (Math.floor(centerY) + radiusCells).toLong()
-        val cxStart = (Math.floor(centerX) - radiusCells).toLong()
-        val cxEnd = (Math.floor(centerX) + radiusCells).toLong()
-        while (cy <= cyEnd) {
-            var cx = cxStart
-            while (cx <= cxEnd) {
-                // Hors de la face : voir la limitation en tête de classe.
-                if (cx < 0 || cy < 0 || cx >= total.toLong() || cy >= total.toLong()) {
-                    cx++
-                    continue
-                }
+        // Énumération par ÉCHANTILLONNAGE DE DIRECTIONS (lot 3.5-c) : une
+        // grille tangente autour du point sous l'œil, chaque direction
+        // projetée vers (face, case) par fromSphere, dédoublonnée par clef
+        // canonique. Les arêtes et coins du cube sont traités par
+        // construction — l'ancienne double boucle s'arrêtait à la face
+        // courante et laissait un pan du disque vide près des arêtes.
+        //
+        // Pas de 16,4 m : la moitié de la case la plus déformée (coin de
+        // face, −25 %). Le §2 de validation/suivi_foret.py prouve la
+        // couverture : toute case contient un disque inscrit plus grand
+        // que la demi-diagonale de la grille d'échantillons.
+        val cellArcM = (Math.PI / 2.0 * planetRadiusM) / total
+        val stepM = cellArcM * 0.5 * 0.75
+        val stepRad = stepM / planetRadiusM
+        val k = ceil((range + cellArcM) / stepM).toInt()
+        val east0 = eastOf(ground)
+        val north0 = (ground cross east0)
+        val seenCells = HashSet<Long>(k * k / 2)
+        val limitSq = (range + cellArcM) * (range + cellArcM)
+
+        for (j in -k..k) {
+            for (i in -k..k) {
+                if ((i.toDouble() * i + j.toDouble() * j) * stepM * stepM > limitSq) continue
+                val dir = Vec3(
+                    ground.x + (east0.x * i + north0.x * j) * stepRad.toFloat(),
+                    ground.y + (east0.y * i + north0.y * j) * stepRad.toFloat(),
+                    ground.z + (east0.z * i + north0.z * j) * stepRad.toFloat()
+                ).normalized()
+                val (f, sc, tc) = CubeSphere.fromSphere(dir)
+                val cx = ((sc + 1f) * 0.5 * total).toLong()
+                    .coerceIn(0L, total.toLong() - 1)
+                val cy = ((tc + 1f) * 0.5 * total).toLong()
+                    .coerceIn(0L, total.toLong() - 1)
+                if (!seenCells.add(PlantExclusion.key(f, cx, cy))) continue
                 visited++
-                collectCell(face, cx, cy, total, eyePosM, range, pxPerRadian,
+                collectCell(f, cx, cy, total, eyePosM, range, pxPerRadian,
                     hint, drawnSet, candidates)
-                cx++
             }
-            cy++
         }
 
-        // Tri par taille apparente décroissante : le plus gros à l'écran
-        // est servi en premier — le prérequis de toute allocation.
-        candidates.sortByDescending { it.apparentPx }
+        // Tri par taille apparente décroissante, PUIS par clef de case :
+        // le second critère rend le champ indépendant de l'ordre
+        // d'échantillonnage — deux grilles différentes donneraient le même
+        // résultat au bit près.
+        candidates.sortWith(
+            compareByDescending<Candidate> { it.apparentPx }.thenBy { it.cellKey }
+        )
 
         val instances = ArrayList<Instance>(candidates.size)
         val occupied = HashSet<Long>(candidates.size)

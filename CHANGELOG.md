@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.52.0 — Lot 3.5-c : la forêt suit la caméra
+
+« foret » active désormais un SUIVI : quand l'œil s'écarte de plus de 35 %
+du rayon du dernier champ (140 m à marche normale, soit ~100 s), la forêt
+se reconstruit sur le fil de travail et s'échange par référence — aucune
+saccade, garde anti-empilement si l'on va plus vite que la reconstruction.
+« foret off » coupe le suivi et restaure les losanges.
+
+L'énumération des cases change de méthode : au lieu d'un rectangle sur la
+SEULE face du cube courante (un pan du disque restait vide près des
+arêtes), une grille de DIRECTIONS échantillonnées est projetée par
+fromSphere vers (face, case) et dédoublonnée par clef canonique — arêtes
+et coins traités par construction, sans table d'adjacence. Pas de 16,4 m :
+la couverture est PROUVÉE (validation/suivi_foret.py §2, disque inscrit
+d'une case > demi-diagonale de la grille). Un tri secondaire par clef de
+case rend le champ indépendant de l'ordre d'échantillonnage. Test d'arête
+ajouté : autant de cases visitées à cheval sur +X/+Z qu'en pleine face.
+
+L'invalidation des tuiles devient CIBLÉE : evictNear évince par distance
+métrique au centre du champ (rayon de tuile compris, niveau extrait de la
+clef compactée), au lieu du vidage complet qui aurait imposé un
+re-streaming toutes les deux minutes de marche. À chaque reconstruction,
+deux évictions couvrent l'ancien et le nouveau disque.
+
 ## v0.51.2 — Correctif : les arbres ne volent plus
 
 Constat sur appareil : les arbres du champ flottaient au-dessus du sol dès
