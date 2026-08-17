@@ -144,6 +144,32 @@ class TreeFieldTest {
     }
 
     @Test
+    fun lesCasesOccupeesSontPublieesUneParArbre() {
+        // Le fondement du lot 3.5-b : chaque arbre réel occupe exactement
+        // une case, et l'ensemble sert à taire les losanges en dessous.
+        assertEquals(field.instances.size, field.occupiedCells.size)
+        for (key in field.occupiedCells) {
+            assertTrue(key != 0L)
+        }
+    }
+
+    @Test
+    fun lExclusionRepondPresentSurSesClefs() {
+        PlantExclusion.replace(setOf(PlantExclusion.key(2, 1234L, 5678L)))
+        try {
+            assertTrue(PlantExclusion.contains(2, 1234L, 5678L))
+            assertTrue(!PlantExclusion.contains(2, 1234L, 5679L))
+            assertTrue(!PlantExclusion.contains(3, 1234L, 5678L))
+            assertEquals(1, PlantExclusion.size)
+        } finally {
+            // L'objet est global : un test qui ne nettoie pas polluerait
+            // les autres.
+            PlantExclusion.clear()
+        }
+        assertTrue(!PlantExclusion.contains(2, 1234L, 5678L))
+    }
+
+    @Test
     fun surLoceanLeChampEstVide() {
         var oceanCell = -1
         for (cell in 0 until world.vertexCount) {

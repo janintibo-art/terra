@@ -1,5 +1,25 @@
 # Journal des versions
 
+## v0.51.1 — Lot 3.5-b : plus de losange sous les arbres
+
+La première photo de la forêt a tranché contre le pari du 3.5 : le losange
+sous un feuillu ne disparaît pas dans la couronne, il dépasse DESSOUS —
+la couronne commence à quatre mètres, le losange en fait jusqu'à sept.
+
+Parade : le champ publie les cases qu'il a réellement plantées
+(PlantExclusion, instantané immuable remplacé d'un bloc), TileMesh n'émet
+plus de losange sur une case occupée, et le cache de tuiles se vide au
+rendu suivant — reconstruction par priorité, même mécanique qu'un
+changement de monde. « foret off » restaure tout. Couplage forêt→tuiles à
+sens unique, sur commande console uniquement.
+
+Le déterminisme n'est pas concerné : les plantes des tuiles sont du rendu,
+hors empreinte et hors sauvegarde. Limite connue, écrite dans le code :
+aux arêtes du cube, la face canonique vue par le champ peut différer de
+celle de la tuile — un losange y survivrait ; la traversée de face
+traitera les deux ensemble. Deux tests ajoutés (une case publiée par
+arbre ; sémantique de l'exclusion).
+
 ## v0.51.0 — Lot 3.5 : la forêt instanciée
 
 Console « foret » : le champ d'arbres se construit autour de la caméra —

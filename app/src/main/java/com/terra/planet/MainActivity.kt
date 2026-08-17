@@ -942,6 +942,11 @@ class MainActivity : Activity() {
                             }
                             renderer.pendingTreeField =
                                 PlanetRenderer.TreeFieldData(field.instances, meshes)
+                            // Plus de losange sous les vrais arbres : la
+                            // photo du 3.5 a montré qu'ils dépassent sous
+                            // les couronnes. Les tuiles se reconstruisent.
+                            com.terra.sim.PlantExclusion.replace(field.occupiedCells)
+                            renderer.tilesRefreshRequested = true
                             runOnUiThread {
                                 showConsoleMessage(
                                     "Forêt : ${field.instances.size} arbres " +
@@ -961,7 +966,9 @@ class MainActivity : Activity() {
             }
             ConsoleCommand.HideForest -> {
                 renderer.clearTreeField()
-                showConsoleMessage("Forêt retirée.")
+                com.terra.sim.PlantExclusion.clear()
+                renderer.tilesRefreshRequested = true
+                showConsoleMessage("Forêt retirée, losanges restaurés.")
             }
             ConsoleCommand.HideTree -> {
                 renderer.clearTestTree()

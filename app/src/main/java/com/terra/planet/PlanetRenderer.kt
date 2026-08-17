@@ -250,6 +250,11 @@ class PlanetRenderer(
         treeFieldClear = true
     }
 
+    /** Vider le cache de tuiles au prochain rendu — l'exclusion des
+     *  losanges a changé, les tuiles déjà construites mentent. Même
+     *  mécanique qu'un changement de monde, reconstruction par priorité. */
+    @Volatile var tilesRefreshRequested = false
+
     // --- Capture d'écran (lot 2.20-a) ---
     /** Armé par l'UI ; consommé en fin d'image sur le fil GL. */
     @Volatile var captureRequested = false
@@ -1693,6 +1698,10 @@ class PlanetRenderer(
             fieldInstances = emptyList()
             for (ids in fieldVbos.values) GLES20.glDeleteBuffers(1, ids, 0)
             fieldVbos.clear()
+        }
+        if (tilesRefreshRequested) {
+            tilesRefreshRequested = false
+            stream.clear()
         }
         pendingTreeField?.let { data ->
             pendingTreeField = null

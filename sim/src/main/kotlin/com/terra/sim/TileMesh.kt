@@ -617,6 +617,10 @@ class TileMesh(
         alt: FloatArray, verts: Int, gridOff: Int
     ): Int {
         val o = startOffset
+        // Case occupée par un vrai arbre du champ instancié (lot 3.5-b) :
+        // pas de losange en dessous — la photo a montré qu'il dépasse sous
+        // les couronnes au lieu d'y disparaître.
+        if (PlantExclusion.contains(tile.face, cellX, cellY)) return o
         // Les sels de hachage viennent de la CASE canonique : la même
         // plante renaît identique dans toute tuile qui la contient.
         val sx = (tile.face.toLong() * 0x9E3779B1L + cellX * 0x85EBCA77L +

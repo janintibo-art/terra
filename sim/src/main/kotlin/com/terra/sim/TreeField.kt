@@ -70,7 +70,9 @@ class TreeField(
         val instances: List<Instance>,
         val trianglesSpent: Int,
         val cellsVisited: Int,
-        val cellsPlanted: Int
+        val cellsPlanted: Int,
+        /** Clefs [PlantExclusion.key] des cases portant un vrai arbre. */
+        val occupiedCells: Set<Long>
     )
 
     /** Variantes par niveau : 2 pour les maillages chers, 4 pour le bas
@@ -144,6 +146,7 @@ class TreeField(
         candidates.sortByDescending { it.apparentPx }
 
         val instances = ArrayList<Instance>(candidates.size)
+        val occupied = HashSet<Long>(candidates.size)
         var spent = 0
         for (c in candidates) {
             val allowed = TreeLodBudget.detailForSize(c.apparentPx)
@@ -165,9 +168,10 @@ class TreeField(
             val key = VariantKey(c.species, chosen, (c.variantU * variants).toInt()
                 .coerceIn(0, variants - 1))
             instances += Instance(c.posXM, c.posYM, c.posZM, c.frame, key, c.apparentPx)
+            occupied += c.cellKey
         }
 
-        return Field(instances, spent, visited, candidates.size)
+        return Field(instances, spent, visited, candidates.size, occupied)
     }
 
     // ------------------------------------------------------------------
@@ -177,7 +181,8 @@ class TreeField(
         val frame: FloatArray,
         val species: TreeSpecies,
         val variantU: Float,
-        val apparentPx: Float
+        val apparentPx: Float,
+        val cellKey: Long
     )
 
     private fun collectCell(
@@ -263,7 +268,10 @@ class TreeField(
             nn.x * scale, nn.y * scale, nn.z * scale
         )
 
-        out += Candidate(posX, posY, posZ, frame, species, variantU, apparent)
+        out += Candidate(
+            posX, posY, posZ, frame, species, variantU, apparent,
+            PlantExclusion.key(face, cellX, cellY)
+        )
     }
 
     /** Hauteurs des espèces-types (graine 1), mesurées par les tests du
