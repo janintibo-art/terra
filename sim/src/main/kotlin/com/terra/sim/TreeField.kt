@@ -104,6 +104,19 @@ class TreeField(
         val eyeDir = eyePosM.normalized()
         val ground = eyeDir.toVec3()
 
+        // Tuiles RÉELLEMENT dessinées pour cette position d'œil : le même
+        // sélecteur, le même seuil — c'est lui qui dit sur quelle surface
+        // interpolée chaque arbre doit se poser (v0.51.2 : les arbres
+        // posés sur le terrain exact FLOTTAIENT, l'écart tuile/exact
+        // atteignant ~3 m à 400 m où la tuile est de niveau 15).
+        val drawn = ArrayList<TileId>(512)
+        TileSelector().select(
+            eyePosM.x / planetRadiusM, eyePosM.y / planetRadiusM,
+            eyePosM.z / planetRadiusM, drawn
+        )
+        val drawnSet = HashSet<Long>(drawn.size * 2)
+        for (tile in drawn) drawnSet.add(tile.packed())
+
         // Case du treillis sous l'œil, comme les losanges la définissent.
         val lat = TileMesh.PLANT_LATTICE_LEVEL
         val n = TileMesh.PLANT_LATTICE_N
@@ -135,7 +148,7 @@ class TreeField(
                 }
                 visited++
                 collectCell(face, cx, cy, total, eyePosM, range, pxPerRadian,
-                    hint, candidates)
+                    hint, drawnSet, candidates)
                 cx++
             }
             cy++
@@ -188,7 +201,7 @@ class TreeField(
     private fun collectCell(
         face: Int, cellX: Long, cellY: Long, total: Double,
         eyePosM: Vec3d, rangeM: Double, pxPerRadian: Float,
-        hint: IntArray, out: ArrayList<Candidate>
+        hint: IntArray, drawnTiles: HashSet<Long>, out: ArrayList<Candidate>
     ) {
         // Sels IDENTIQUES à TileMesh.emitOnePlant : la même case porte la
         // même plante, gigue et densité comprises.
@@ -236,10 +249,16 @@ class TreeField(
         val variantU = profile.micro01(sx * 31 + 8)
         val heightM = speciesHeight(species) * scale
 
-        // Position métrique : terrain exact moins l'enfouissement du pied
-        // (leçon v0.26.1 — le sol dessiné est la surface de tuile).
+        // Position métrique : altitude de la SURFACE DESSINÉE — la tuile
+        // que le sélecteur a retenue pour cette position d'œil, interpolée
+        // bilinéairement entre ses nœuds, exactement comme le vertex shader
+        // la rend. L'enfouissement ne couvre plus que l'anneau de base
+        // ouvert et le morphing entre niveaux, plus les mètres d'écart
+        // tuile/exact qui faisaient flotter les arbres.
+        val drawnAlt = drawnAltitudeAt(face, cellX, cellY, total, px, py, drawnTiles)
+            ?: alt   // hors des tuiles dessinées (dos de la planète) : exact
         val sink = speciesSink(species) * scale
-        val r = planetRadiusM + alt.toDouble() - sink
+        val r = planetRadiusM + drawnAlt.toDouble() - sink
         val posX = d.x.toDouble() * r
         val posY = d.y.toDouble() * r
         val posZ = d.z.toDouble() * r
@@ -272,6 +291,61 @@ class TreeField(
             posX, posY, posZ, frame, species, variantU, apparent,
             PlantExclusion.key(face, cellX, cellY)
         )
+    }
+
+    /**
+     * Altitude de la surface dessinée au point (px, py) du treillis.
+     *
+     * Descend l'arbre quadtree jusqu'à la tuile PRÉSENTE dans la sélection,
+     * puis interpole bilinéairement les quatre nœuds encadrants de sa
+     * grille 16×16 — mêmes indices globaux, même [CubeSphere.gridDirection],
+     * même [TerrainProfile.renderedAltitudeAt] que `TileMesh` : c'est
+     * l'invariant n°3 étendu à la végétation. Nul si aucune tuile de la
+     * sélection ne contient le point.
+     */
+    private fun drawnAltitudeAt(
+        face: Int, cellX: Long, cellY: Long, total: Double,
+        px: Double, py: Double, drawnTiles: HashSet<Long>
+    ): Float? {
+        // Fraction de face dans [0 ; 1).
+        val u = (px / total).coerceIn(0.0, 0.9999999)
+        val v = (py / total).coerceIn(0.0, 0.9999999)
+        var tile: TileId? = null
+        for (level in 0..TileId.MAX_LEVEL) {
+            val cells = 1L shl level
+            val tx = (u * cells).toInt()
+            val ty = (v * cells).toInt()
+            val candidate = TileId(face, level, tx, ty)
+            if (drawnTiles.contains(candidate.packed())) {
+                tile = candidate
+                break
+            }
+        }
+        val t = tile ?: return null
+
+        val n = TileMesh.MESH_N
+        val tileCells = (1L shl t.level).toDouble()
+        val fx = (u * tileCells - t.x) * n     // [0 ; 16) dans la tuile
+        val fy = (v * tileCells - t.y) * n
+        val i0 = fx.toInt().coerceIn(0, n - 1)
+        val j0 = fy.toInt().coerceIn(0, n - 1)
+        val ax = (fx - i0).toFloat()
+        val ay = (fy - j0).toFloat()
+        val baseGx = t.x * n
+        val baseGy = t.y * n
+
+        val a00 = nodeAltitude(t, baseGx + i0, baseGy + j0, n)
+        val a10 = nodeAltitude(t, baseGx + i0 + 1, baseGy + j0, n)
+        val a01 = nodeAltitude(t, baseGx + i0, baseGy + j0 + 1, n)
+        val a11 = nodeAltitude(t, baseGx + i0 + 1, baseGy + j0 + 1, n)
+        return (a00 * (1f - ax) + a10 * ax) * (1f - ay) +
+            (a01 * (1f - ax) + a11 * ax) * ay
+    }
+
+    /** L'altitude d'un nœud de tuile, ÉCHANTILLONNÉE COMME TileMesh. */
+    private fun nodeAltitude(tile: TileId, gx: Int, gy: Int, n: Int): Float {
+        val d = CubeSphere.gridDirection(tile.face, tile.level, gx, gy, n)
+        return profile.renderedAltitudeAt(d.toVec3())
     }
 
     /** Hauteurs des espèces-types (graine 1), mesurées par les tests du

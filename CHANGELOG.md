@@ -1,5 +1,29 @@
 # Journal des versions
 
+## v0.51.2 — Correctif : les arbres ne volent plus
+
+Constat sur appareil : les arbres du champ flottaient au-dessus du sol dès
+la distance moyenne. Cause chiffrée : ils étaient posés sur le terrain
+EXACT, alors que le sol dessiné est la surface interpolée des tuiles — et
+à 400 m, le sélecteur retient une tuile de niveau 15, des nœuds tous les
+19 m, jusqu'à ~3 m d'écart sur une pente. Les 50 cm d'enfouissement du
+pied, calibrés pour le niveau 18 (36 cm), étaient dérisoires.
+
+La parade est celle notée depuis la v0.46.1, enfin réalisable : le champ
+exécute LE MÊME SÉLECTEUR de tuiles que le renderer (même seuil, même
+position d'œil), retrouve la tuile réellement dessinée sous chaque arbre,
+et interpole bilinéairement sa grille 16×16 — mêmes indices globaux, même
+gridDirection, même renderedAltitudeAt que TileMesh. L'invariant n°3
+(« terrain fin et grille = même fonction ») s'étend à la végétation : un
+arbre se pose sur ce que l'écran montre, pas sur ce que le terrain sait.
+
+Résidu : le morphing entre niveaux (lot 2.4) fait osciller la surface
+entre deux grilles pendant les transitions — centimétrique près de la
+caméra, sans commune mesure avec les mètres corrigés. Le test borne
+l'écart au terrain exact à ±4,5 m dans LES DEUX SENS : la surface dessinée
+passe au-dessus des creux et au-dessous des bosses, une borne asymétrique
+aurait été fausse (erreur attrapée à la relecture du test lui-même).
+
 ## v0.51.1 — Lot 3.5-b : plus de losange sous les arbres
 
 La première photo de la forêt a tranché contre le pari du 3.5 : le losange

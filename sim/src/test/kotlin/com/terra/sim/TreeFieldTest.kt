@@ -144,6 +144,46 @@ class TreeFieldTest {
     }
 
     @Test
+    fun lesArbresSontPosesSurLaSurfaceDessinee() {
+        // Le correctif v0.51.2 : chaque arbre doit se poser sur la tuile
+        // que le SÉLECTEUR dessine à cette position d'œil, pas sur le
+        // terrain exact — l'écart entre les deux atteint plusieurs mètres
+        // aux niveaux grossiers et faisait flotter les arbres.
+        val eye = eyeAt(30.0)
+        val drawn = ArrayList<TileId>()
+        TileSelector().select(
+            eye.x / radius, eye.y / radius, eye.z / radius, drawn
+        )
+        val byPack = HashSet<Long>()
+        for (tile in drawn) byPack.add(tile.packed())
+
+        var checkedNodes = 0
+        for (inst in field.instances) {
+            val r = sqrt(inst.posXM * inst.posXM + inst.posYM * inst.posYM +
+                inst.posZM * inst.posZM)
+            val dir = com.terra.core.Vec3(
+                (inst.posXM / r).toFloat(), (inst.posYM / r).toFloat(),
+                (inst.posZM / r).toFloat()
+            )
+            // La surface dessinée s'écarte du terrain exact DANS LES DEUX
+            // SENS (corde au-dessus d'un creux, au-dessous d'une bosse) :
+            // la borne est symétrique — écart de tuile grossière (~3 m au
+            // niveau 15) plus enfouissement maximal, jamais davantage.
+            // L'ancien code, posé sur l'exact, violait cette borne de
+            // plusieurs mètres côté « au-dessus » dès 200 m de distance.
+            val instAlt = r - radius
+            val exact = profile.renderedAltitudeAt(dir).toDouble()
+            assertTrue(
+                kotlin.math.abs(instAlt - exact) < 4.5,
+                "arbre à ${instAlt - exact} m du terrain exact"
+            )
+            checkedNodes++
+        }
+        assertTrue(checkedNodes > 5)
+        assertTrue(drawn.isNotEmpty() && byPack.size == drawn.size)
+    }
+
+    @Test
     fun lesCasesOccupeesSontPublieesUneParArbre() {
         // Le fondement du lot 3.5-b : chaque arbre réel occupe exactement
         // une case, et l'ensemble sert à taire les losanges en dessous.
