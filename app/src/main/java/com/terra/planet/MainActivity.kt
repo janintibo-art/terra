@@ -855,6 +855,7 @@ class MainActivity : Activity() {
             addView(quickRow("arbre conifère", "arbre palmier", "arbre off"))
             addView(quickRow("arbre moyen", "arbre bas", "arbre panneau"))
             addView(quickRow("arbre", "banc limbe", "photo"))
+            addView(quickRow("foret", "foret 800", "foret off"))
             addView(quickRow("flore", "teinte", "soleil 12", "aide"))
             addView(input)
         }
@@ -914,6 +915,53 @@ class MainActivity : Activity() {
                             mixText
                     )
                 }
+            }
+            is ConsoleCommand.BuildForest -> {
+                val cam = camera
+                val sampler = worldSampler
+                val data = world
+                if (cam != null && sampler != null && data != null) {
+                    showConsoleMessage("Construction de la forêt…")
+                    val eye = cam.eyePositionM()
+                    val pxPerRadian = (glView.height / 2f) /
+                        kotlin.math.tan(com.terra.sim.PlanetCamera.DEFAULT_FOV_RAD / 2.0)
+                            .toFloat()
+                    // Hors du fil d'interface : la construction lit le
+                    // terrain sur des centaines de cases.
+                    worker.execute {
+                        try {
+                            val builder = com.terra.sim.TreeField(
+                                data.terrain, sampler, data.params.radiusM.toDouble()
+                            )
+                            val field = builder.build(eye, pxPerRadian, cmd.radiusM)
+                            val meshes = HashMap<com.terra.sim.TreeField.VariantKey, FloatArray>()
+                            for (inst in field.instances) {
+                                meshes.getOrPut(inst.variant) {
+                                    builder.buildVariantMesh(inst.variant)
+                                }
+                            }
+                            renderer.pendingTreeField =
+                                PlanetRenderer.TreeFieldData(field.instances, meshes)
+                            runOnUiThread {
+                                showConsoleMessage(
+                                    "Forêt : ${field.instances.size} arbres " +
+                                        "(${field.cellsPlanted} candidats, " +
+                                        "${field.trianglesSpent} triangles, " +
+                                        "${meshes.size} variantes).\n" +
+                                        "« foret off » pour la retirer."
+                                )
+                            }
+                        } catch (t: Throwable) {
+                            runOnUiThread {
+                                showConsoleMessage("Échec : ${t.javaClass.simpleName}")
+                            }
+                        }
+                    }
+                }
+            }
+            ConsoleCommand.HideForest -> {
+                renderer.clearTreeField()
+                showConsoleMessage("Forêt retirée.")
             }
             ConsoleCommand.HideTree -> {
                 renderer.clearTestTree()

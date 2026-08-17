@@ -229,6 +229,27 @@ class PlanetRenderer(
         treeMeshDirty = true
     }
 
+    // --- Champ d'arbres instancié (lot 3.5) ---
+    //
+    // :sim calcule tout (TreeField) ; ici on téléverse les maillages de
+    // variantes une fois, puis on dessine UN APPEL PAR ARBRE — l'uniforme
+    // uBaseRel porte la position, soustraite de l'œil en DOUBLE à chaque
+    // image (invariant n°5). Les instances arrivent GROUPÉES par variante :
+    // entre deux arbres de la même variante, seuls trois uniformes changent.
+    class TreeFieldData(
+        val instances: List<com.terra.sim.TreeField.Instance>,
+        val variantMeshes: Map<com.terra.sim.TreeField.VariantKey, FloatArray>
+    )
+
+    @Volatile var pendingTreeField: TreeFieldData? = null
+    @Volatile private var treeFieldClear = false
+    private var fieldInstances: List<com.terra.sim.TreeField.Instance> = emptyList()
+    private val fieldVbos = HashMap<com.terra.sim.TreeField.VariantKey, IntArray>()
+
+    fun clearTreeField() {
+        treeFieldClear = true
+    }
+
     // --- Capture d'écran (lot 2.20-a) ---
     /** Armé par l'UI ; consommé en fin d'image sur le fil GL. */
     @Volatile var captureRequested = false
@@ -419,6 +440,13 @@ class PlanetRenderer(
         treeVbo = 0
         treeVertexCount = 0
         treeMeshDirty = true
+        fieldVbos.clear()
+        if (fieldInstances.isNotEmpty()) {
+            // Les maillages GPU sont perdus ; les instances seules ne
+            // suffisent pas à redessiner. Le champ devra être reconstruit
+            // par la console — un outil de diagnostic n'automatise pas ça.
+            fieldInstances = emptyList()
+        }
         collarVbo = 0
         collarVertexCount = 0
         collarLastAltM = -1.0
@@ -986,6 +1014,7 @@ class PlanetRenderer(
         // Profondeur écrite par le terrain, testée ici ; l'eau translucide
         // dessinée ensuite se mélangera par-dessus si l'arbre est sous elle.
         drawTestTree(snapshot, sunLx, sunY, sunLz)
+        drawTreeField(snapshot, sunLx, sunY, sunLz)
 
         // --- Couche d'eau (lot 2.9-a), après TOUT le terrain ---------------
         //
@@ -1653,6 +1682,95 @@ class PlanetRenderer(
 
     private fun disableAttribute(location: Int) {
         if (location >= 0) GLES20.glDisableVertexAttribArray(location)
+    }
+
+    /** Champ d'arbres — lot 3.5. Un appel par arbre, groupés par variante. */
+    private fun drawTreeField(
+        snapshot: CameraSnapshot, sunLx: Float, sunLy: Float, sunLz: Float
+    ) {
+        if (treeFieldClear) {
+            treeFieldClear = false
+            fieldInstances = emptyList()
+            for (ids in fieldVbos.values) GLES20.glDeleteBuffers(1, ids, 0)
+            fieldVbos.clear()
+        }
+        pendingTreeField?.let { data ->
+            pendingTreeField = null
+            for (ids in fieldVbos.values) GLES20.glDeleteBuffers(1, ids, 0)
+            fieldVbos.clear()
+            try {
+                for ((key, mesh) in data.variantMeshes) {
+                    val ids = IntArray(2)
+                    GLES20.glGenBuffers(1, ids, 0)
+                    ids[1] = mesh.size / com.terra.sim.TreeMesh.FLOATS_PER_VERTEX
+                    val buffer = ByteBuffer.allocateDirect(mesh.size * 4)
+                        .order(ByteOrder.nativeOrder())
+                        .asFloatBuffer()
+                    buffer.put(mesh)
+                    buffer.position(0)
+                    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, ids[0])
+                    GLES20.glBufferData(
+                        GLES20.GL_ARRAY_BUFFER, mesh.size * 4, buffer,
+                        GLES20.GL_STATIC_DRAW
+                    )
+                    fieldVbos[key] = ids
+                }
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+                // Groupées par variante pour la cohérence d'état : le tri
+                // par taille de l'allocation n'importe plus au dessin.
+                fieldInstances = data.instances.sortedBy { it.variant.hashCode() }
+            } catch (t: Throwable) {
+                fieldInstances = emptyList()
+                lastError = "Forêt : ${t.javaClass.simpleName}"
+            }
+        }
+        if (fieldInstances.isEmpty() || treeProgram == 0) return
+
+        GLES20.glUseProgram(treeProgram)
+        GLES20.glUniformMatrix4fv(trUViewProj, 1, false, mvp, 0)
+        GLES20.glUniform3f(trUSun, sunLx, sunLy, sunLz)
+
+        val stride = com.terra.sim.TreeMesh.FLOATS_PER_VERTEX * 4
+        var boundKey: com.terra.sim.TreeField.VariantKey? = null
+        var boundCount = 0
+        for (inst in fieldInstances) {
+            if (inst.variant != boundKey) {
+                val ids = fieldVbos[inst.variant] ?: continue
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, ids[0])
+                boundCount = ids[1]
+                if (trAPosition >= 0) {
+                    GLES20.glEnableVertexAttribArray(trAPosition)
+                    GLES20.glVertexAttribPointer(
+                        trAPosition, 3, GLES20.GL_FLOAT, false, stride, 0
+                    )
+                }
+                if (trANormal >= 0) {
+                    GLES20.glEnableVertexAttribArray(trANormal)
+                    GLES20.glVertexAttribPointer(
+                        trANormal, 3, GLES20.GL_FLOAT, false, stride, 12
+                    )
+                }
+                if (trAColor >= 0) {
+                    GLES20.glEnableVertexAttribArray(trAColor)
+                    GLES20.glVertexAttribPointer(
+                        trAColor, 3, GLES20.GL_FLOAT, false, stride, 24
+                    )
+                }
+                boundKey = inst.variant
+            }
+            GLES20.glUniform3f(
+                trUBaseRel,
+                (inst.posXM - snapshot.eyeXM).toFloat(),
+                (inst.posYM - snapshot.eyeYM).toFloat(),
+                (inst.posZM - snapshot.eyeZM).toFloat()
+            )
+            GLES20.glUniformMatrix3fv(trUFrame, 1, false, inst.frame, 0)
+            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, boundCount)
+        }
+        if (trAPosition >= 0) GLES20.glDisableVertexAttribArray(trAPosition)
+        if (trANormal >= 0) GLES20.glDisableVertexAttribArray(trANormal)
+        if (trAColor >= 0) GLES20.glDisableVertexAttribArray(trAColor)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
     }
 
     /**

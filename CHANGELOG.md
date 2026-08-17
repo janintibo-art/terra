@@ -1,5 +1,39 @@
 # Journal des versions
 
+## v0.51.0 — Lot 3.5 : la forêt instanciée
+
+Console « foret » : le champ d'arbres se construit autour de la caméra —
+de vrais conifères, feuillus, palmiers et cactus aux emplacements EXACTS
+des losanges (même treillis canonique de 43,6 m, mêmes sels de hachage
+pour la gigue, la densité et la taille), l'espèce choisie par les règles
+du 3.6 (sel +7), les niveaux de détail alloués par les plafonds du 3.3-b
+sous un budget de champ de 250 000 triangles. Déterministe par graine et
+par position, identique Android/PC.
+
+L'instruction (validation/instanciation.py) a REJETÉ l'architecture
+classique avant qu'elle ne soit écrite : les lots fusionnés — chaque arbre
+copié dans un grand tampon — auraient dupliqué 27 Mo de VBO pour 38 arbres
+pleins, plus que le cache de tuiles entier. À la place : des maillages de
+VARIANTES partagés (2 par niveau cher, 4 pour le bas, ~9 Mo pour deux
+espèces chargées à la demande) et UN APPEL DE DESSIN PAR ARBRE, position
+en uniforme soustraite de l'œil en double (invariant n°5). 264 appels
+minuscules au pire, contre ~330 pour les tuiles. La variété visuelle vient
+de l'azimut propre (sel +6) et de l'échelle ±15 % (sel +4, celui des
+losanges) ; l'échelle est CUITE dans le repère de l'instance, le shader
+n'en sait rien.
+
+Limites assumées, écrites dans le code : construction à la demande (le
+suivi caméra avec hystérésis spatiale est un lot ultérieur), énumération
+limitée à la face cube du point sous l'œil, losanges des tuiles conservés
+(au-delà du champ ils restent la végétation lointaine ; en deçà ils
+disparaissent dans les couronnes — à juger sur photo). Le treillis reste
+clairsemé (43,6 m) : la densification est un chantier séparé, à mesurer.
+
+Huit tests sur un monde réel (champ non vide en forêt dense, budget tenu,
+plus gros servis d'abord, déterminisme bit à bit, océan vide, variantes
+bornées, échelles dans [0,85 ; 1,15]), plus la console. « foret off » pour
+retirer.
+
 ## v0.50.1 — Correctif de livraison : le workflow n'était jamais parti
 
 Un seul job se lançait sur GitHub, et pour cause : le motif d'exclusion

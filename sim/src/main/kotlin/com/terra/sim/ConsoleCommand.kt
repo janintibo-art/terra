@@ -75,6 +75,12 @@ sealed class ConsoleCommand {
     /** `flore` — biome, densité et mélange d'espèces au point visé (3.6). */
     object ShowFlora : ConsoleCommand()
 
+    /** `foret [rayon_m]` — construit le champ d'arbres instancié (3.5). */
+    data class BuildForest(val radiusM: Double) : ConsoleCommand()
+
+    /** `foret off` — retire le champ d'arbres. */
+    object HideForest : ConsoleCommand()
+
     data class Invalid(val message: String) : ConsoleCommand()
 
     companion object {
@@ -92,6 +98,8 @@ sealed class ConsoleCommand {
             "   cactus, arbuste, herbacée, mousse ; détail : plein, moyen,\n" +
             "   bas, panneau\n" +
             "flore                     biome et mélange d'espèces au point visé\n" +
+            "foret [rayon_m] | foret off\n" +
+            "   champ d'arbres instancié autour de la caméra (défaut 400 m)\n" +
             "limbe auto|tuiles|globe|collerette\n" +
             "   rendu du limbe en mode sol (auto : globe en orbite)\n" +
             "banc limbe [alt_km]       cadre le disque entier pour capture\n" +
@@ -125,6 +133,12 @@ sealed class ConsoleCommand {
                 "photo" -> TakePhoto
                 "arbre" -> parseTree(parts)
                 "flore" -> ShowFlora
+                "foret", "forêt" -> when (val arg = parts.getOrNull(1)?.lowercase()) {
+                    null -> BuildForest(400.0)
+                    "off", "non" -> HideForest
+                    else -> arg.toDoubleOrNull()?.let { BuildForest(it) }
+                        ?: Invalid("Usage : foret [rayon_m] | foret off")
+                }
                 "limbe" -> when (parts.getOrNull(1)?.lowercase()) {
                     "tuiles", "tuile" -> SetLimbMode(0)
                     "globe" -> SetLimbMode(1)

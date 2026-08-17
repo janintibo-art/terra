@@ -71,6 +71,18 @@ class ConsoleCommandTest {
     }
 
     @Test
+    fun `commande foret`() {
+        val d = ConsoleCommand.parse("foret")
+        assertTrue(d is ConsoleCommand.BuildForest)
+        assertEquals(400.0, d.radiusM)
+        val r = ConsoleCommand.parse("forêt 800")
+        assertTrue(r is ConsoleCommand.BuildForest)
+        assertEquals(800.0, r.radiusM)
+        assertTrue(ConsoleCommand.parse("foret off") is ConsoleCommand.HideForest)
+        assertTrue(ConsoleCommand.parse("foret loin") is ConsoleCommand.Invalid)
+    }
+
+    @Test
     fun `commande flore`() {
         assertTrue(ConsoleCommand.parse("flore") is ConsoleCommand.ShowFlora)
         assertTrue(ConsoleCommand.parse("  FLORE  ") is ConsoleCommand.ShowFlora)
