@@ -125,4 +125,47 @@ class TimeDilationTest {
             "jour réel à 27 km : $dayRealSeconds s"
         )
     }
+
+    // ------------------------------------- saut de calendrier (lot 3.4)
+
+    @Test
+    fun leSautDeSaisonAtteintLeJourVoulu() {
+        val time = WorldTime()
+        val ticksPerDay = (time.minutesPerDay / time.minutesPerTick).toLong()
+        for (depart in listOf(0L, 37L * ticksPerDay, 359L * ticksPerDay)) {
+            for (cible in listOf(1, 91, 181, 271, 360)) {
+                val apres = depart + time.ticksUntilDayOfYear(depart, cible)
+                assertEquals(
+                    cible, time.dayOfYear(apres),
+                    "depuis le jour ${time.dayOfYear(depart)} vers $cible"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun leSautDeSaisonNeRemonteJamaisLeTemps() {
+        // Le temps de Terra ne revient pas en arrière : rien dans la
+        // simulation n'est prévu pour cela avant le rattrapage de la Phase 5.
+        val time = WorldTime()
+        val tick = 200L * (time.minutesPerDay / time.minutesPerTick).toLong()
+        for (cible in 1..360) {
+            assertTrue(
+                time.ticksUntilDayOfYear(tick, cible) >= 0L,
+                "saut négatif vers le jour $cible"
+            )
+        }
+    }
+
+    @Test
+    fun leSautDeSaisonPreserveLHeureLocale() {
+        // Un saut d'un nombre ENTIER de jours : deux captures prises à deux
+        // saisons gardent la même lumière et la même ombre portée, donc se
+        // comparent.
+        val time = WorldTime()
+        val ticksPerDay = (time.minutesPerDay / time.minutesPerTick).toLong()
+        val midi = 143L * ticksPerDay + ticksPerDay / 2
+        val apres = midi + time.ticksUntilDayOfYear(midi, 271)
+        assertEquals(time.dayFraction(midi), time.dayFraction(apres), 1e-6f)
+    }
 }

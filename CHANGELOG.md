@@ -1,5 +1,70 @@
 # Journal des versions
 
+## v0.53.0 — Lot 3.4 : la couleur du feuillage
+
+Les forêts du lot 3.5 étaient vertes du même vert partout et toute
+l'année. Elles suivent désormais le climat, la saison et l'individu.
+
+OÙ VIT LA COULEUR. Les maillages de variantes sont PARTAGÉS depuis le
+3.5 — deux feuillus voisins dessinent le même VBO. Y peindre une couleur
+par individu redupliquerait les 27 Mo que l'instruction du 3.5 avait
+écartés. La teinte est donc un UNIFORME par arbre, posé dans la boucle
+qui pose déjà `uBaseRel` et `uFrame` : coût nul. Le calcul, lui, vit dans
+`:sim` (`FoliageTint`), donc testé.
+
+LE CANAL MATÉRIAU. Le maillage mêle bois et feuillage dans un même VBO.
+Sans moyen de les séparer, l'or de l'automne aurait coulé sur les troncs.
+Un dixième flottant par sommet dit lequel est lequel (+1,03 Mo mesuré, et
+les rangs de la position, de la normale et de la couleur ne bougent pas).
+Le paramètre correspondant est SANS valeur par défaut : les seize sites
+d'appel devaient tous être repris, et le compilateur en est le filet
+(leçon v0.47, où un défaut avait rendu des appels positionnels
+silencieusement compatibles).
+
+LES TROIS CAUSES. Le climat décide de la couleur d'été (mélange vers un
+olive en climat sec, vers un vert sombre en climat froid). La saison
+décide de la sénescence par la TEMPÉRATURE LOCALE du moment, jamais par
+un calendrier : l'hémisphère, le retard thermique de 27 à 55 jours et
+l'inclinaison du monde sont alors gratuits, ils sont déjà dans
+`SeasonalClimate.deltaC`. Une planète droite n'a pas d'automne, et c'est
+le même code qui le dit. L'individu décide de sa luminosité, de sa nuance
+et de sa DATE de roussissement (sels +9, +10, +11) — à mi-descente les
+arbres s'échelonnent de 0,33 à 0,67 de sénescence, ce qui fait une forêt
+d'automne plutôt qu'un aplat.
+
+CE QUE L'INSTRUCTION A INVALIDÉ. Première mouture : l'aridité prise sur
+la pluie brute. Elle jaunissait la forêt boréale (500 mm) autant que la
+steppe ; ce jaunissement annulait presque exactement l'assombrissement du
+froid, et boréale et tropicale finissaient à 0,061 de distance RGB —
+identiques à l'œil. Correction : indice de De Martonne `P/(T+10)`, qui
+classe correctement 500 mm à 3 °C comme humide, et COLD_MIX porté de 0,40
+à 0,60. Second échec du script : un contrôle qui mesurait la dispersion
+individuelle AU SEUIL, là où la rampe lisse impose que tout le monde soit
+encore vert — le test était faux, pas le modèle.
+
+OBSERVER. Nouvelle commande `saison printemps|été|automne|hiver|<jour>` :
+sans elle, il faudrait laisser tourner l'accéléré ×400 pendant une année
+entière. Le saut porte sur un nombre ENTIER de jours, donc l'heure locale
+est préservée et deux captures à deux saisons se comparent (même lumière,
+même ombre portée). Son retour donne la température locale et l'état du
+feuillage au point visé : un feuillage qui ne roussit pas laisserait
+sinon le choix entre trois explications.
+
+CHIFFRES MESURÉS (`validation/couleur_feuillage.py`) : contraste
+été/automne 0,305 au pire, contraste climatique 0,088, dispersion
+individuelle 7,6 % de la moyenne, composante maximale 0,805 (0,886 après
+l'éclairage du shader, sous la saturation). Tous les seuils des tests en
+sont tirés.
+
+LIMITES ASSUMÉES. Les feuilles ne tombent pas — un feuillu d'hiver est
+brun, pas nu (lot 3.8). La savane ne jaunit pas en saison sèche : seule
+la température est saisonnière dans Terra, pas la pluie ; un test le
+vérifie explicitement, pour que le trou reste un choix. Les losanges des
+tuiles lointaines gardent leur couleur de biome.
+
+AUSSI : `outils/controles_statiques.py` entre enfin dans le dépôt. Il
+était le filet de sécurité principal du projet et vivait hors de lui.
+
 ## v0.52.1 — Correctifs sur photos : la falaise d'allocation et la course des losanges
 
 Deux défauts constatés sur les captures du suivi.

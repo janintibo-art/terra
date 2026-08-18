@@ -124,4 +124,17 @@ class CoarseSampler(private val data: PlanetData) {
 
     fun smoothPrecipitationAt(p: Vec3, hint: Int = -1): Float =
         smoothField(p, data.precipMm, hint)
+
+    /**
+     * Continentalité lissée — lot 3.4.
+     *
+     * Elle ne sert pas à colorer directement : elle commande le RETARD du
+     * pic thermique sur le solstice (27 jours au cœur d'un continent, 55 en
+     * mer, [SeasonalClimate.lagDays]), donc la date à laquelle une forêt
+     * roussit. Lissée comme la température : un saut de continentalité
+     * d'une cellule à l'autre décalerait l'automne de trois semaines sur
+     * 115 km, et la limite se verrait.
+     */
+    fun smoothContinentalityAt(p: Vec3, hint: Int = -1): Float =
+        smoothField(p, data.continentality, hint)
 }

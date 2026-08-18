@@ -349,4 +349,89 @@ class TreeMeshTest {
         // terminaux → 1×6×5 + 3×3×5 = 75 sommets à 5 côtés.
         assertEquals(75, TreeMesh.build(tree, sides = 5).size / TreeMesh.FLOATS_PER_VERTEX)
     }
+
+    // ------------------------------------------- canal matériau (lot 3.4)
+
+    /**
+     * Le canal matériau sépare le bois du feuillage. C'est lui qui empêche
+     * l'uniforme de teinte du lot 3.4 de rousssir les troncs en automne :
+     * sans ce test, une inversion passerait inaperçue jusqu'à la photo.
+     */
+    @Test
+    fun leCanalMateriauSepareLeBoisDuFeuillage() {
+        val params = TreeSpecies.CONIFERE.params()
+        val tree = skeleton(TreeSpecies.CONIFERE)
+        val bois = TreeMesh.build(tree)
+        val complet = TreeMesh.build(tree, params)
+        val stride = TreeMesh.FLOATS_PER_VERTEX
+        val m = TreeMesh.OFFSET_MATERIAL
+
+        // Les tubes viennent d'abord, et sont tous du bois.
+        for (v in 0 until bois.size / stride) {
+            assertEquals(
+                TreeMesh.MATERIAL_WOOD, complet[v * stride + m],
+                "sommet de tube $v marqué comme feuillage"
+            )
+        }
+        // Les touffes suivent, et sont toutes du feuillage.
+        var touffes = 0
+        for (v in bois.size / stride until complet.size / stride) {
+            assertEquals(
+                TreeMesh.MATERIAL_FOLIAGE, complet[v * stride + m],
+                "sommet de touffe $v marqué comme bois"
+            )
+            touffes++
+        }
+        assertTrue(touffes > 100, "échantillon de feuillage trop maigre : $touffes")
+    }
+
+    @Test
+    fun leCactusNEstQueDuBois() {
+        // Sa tige EST verte, mais c'est du bois pour le maillage : lui
+        // appliquer une teinte de feuillage le ferait roussir en hiver,
+        // dans un désert où rien ne roussit.
+        val mesh = TreeMesh.build(
+            skeleton(TreeSpecies.CACTUS), TreeSpecies.CACTUS.params()
+        )
+        val stride = TreeMesh.FLOATS_PER_VERTEX
+        for (v in 0 until mesh.size / stride) {
+            assertEquals(
+                TreeMesh.MATERIAL_WOOD, mesh[v * stride + TreeMesh.OFFSET_MATERIAL],
+                "sommet $v du cactus"
+            )
+        }
+    }
+
+    @Test
+    fun lePanneauSuitLeMateriauDeSonEspece() {
+        val stride = TreeMesh.FLOATS_PER_VERTEX
+        val m = TreeMesh.OFFSET_MATERIAL
+
+        // Un feuillu lointain doit flamber comme ses voisins proches, sinon
+        // la limite du niveau de détail se lit comme une ligne de couleur.
+        val feuillu = TreeMesh.build(
+            skeleton(TreeSpecies.FEUILLU), TreeSpecies.FEUILLU.params(),
+            detail = TreeDetail.BILLBOARD
+        )
+        for (v in 0 until feuillu.size / stride) {
+            assertEquals(TreeMesh.MATERIAL_FOLIAGE, feuillu[v * stride + m], "panneau $v")
+        }
+
+        val cactus = TreeMesh.build(
+            skeleton(TreeSpecies.CACTUS), TreeSpecies.CACTUS.params(),
+            detail = TreeDetail.BILLBOARD
+        )
+        for (v in 0 until cactus.size / stride) {
+            assertEquals(TreeMesh.MATERIAL_WOOD, cactus[v * stride + m], "panneau cactus $v")
+        }
+    }
+
+    @Test
+    fun leFormatDeSommetFaitDixFlottants() {
+        // Le canal a été ajouté EN DERNIER : les rangs de la position, de la
+        // normale et de la couleur ne bougent pas, et tous les tests écrits
+        // contre eux restent justes.
+        assertEquals(10, TreeMesh.FLOATS_PER_VERTEX)
+        assertEquals(9, TreeMesh.OFFSET_MATERIAL)
+    }
 }

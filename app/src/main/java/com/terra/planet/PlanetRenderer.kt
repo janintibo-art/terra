@@ -208,10 +208,25 @@ class PlanetRenderer(
     private var trAPosition = -1
     private var trANormal = -1
     private var trAColor = -1
+    private var trAMaterial = -1
     private var trUViewProj = -1
     private var trUBaseRel = -1
     private var trUFrame = -1
     private var trUSun = -1
+    private var trUFoliage = -1
+    private var trUFoliageMix = -1
+    private var trUShade = -1
+
+    /** Horloge du monde, pour la couleur saisonnière du feuillage (lot
+     *  3.4). Nulle avant le premier monde : le champ d'arbres est alors
+     *  vide, donc personne ne la lit. */
+    @Volatile var seasonTime: com.terra.sim.WorldTime? = null
+    @Volatile var seasonTick: Long = 0L
+
+    /** Sortie de [com.terra.sim.FoliageTint] : trois composantes puis la
+     *  luminosité. Réutilisé d'un arbre à l'autre — 264 allocations par
+     *  image seraient 15 840 objets par seconde à ramasser. */
+    private val tintOut = FloatArray(4)
 
     fun plantTestTree(
         mesh: FloatArray,
@@ -561,10 +576,14 @@ class PlanetRenderer(
             trAPosition = GLES20.glGetAttribLocation(treeProgram, "aPosition")
             trANormal = GLES20.glGetAttribLocation(treeProgram, "aNormal")
             trAColor = GLES20.glGetAttribLocation(treeProgram, "aColor")
+            trAMaterial = GLES20.glGetAttribLocation(treeProgram, "aMaterial")
             trUViewProj = GLES20.glGetUniformLocation(treeProgram, "uViewProj")
             trUBaseRel = GLES20.glGetUniformLocation(treeProgram, "uBaseRel")
             trUFrame = GLES20.glGetUniformLocation(treeProgram, "uFrame")
             trUSun = GLES20.glGetUniformLocation(treeProgram, "uSun")
+            trUFoliage = GLES20.glGetUniformLocation(treeProgram, "uFoliage")
+            trUFoliageMix = GLES20.glGetUniformLocation(treeProgram, "uFoliageMix")
+            trUShade = GLES20.glGetUniformLocation(treeProgram, "uShade")
         }
 
         skyProgram = buildProgram(SKY_VERTEX_SHADER, SKY_FRAGMENT_SHADER)
@@ -1742,10 +1761,12 @@ class PlanetRenderer(
             }
         }
         if (fieldInstances.isEmpty() || treeProgram == 0) return
+        val time = seasonTime ?: return
 
         GLES20.glUseProgram(treeProgram)
         GLES20.glUniformMatrix4fv(trUViewProj, 1, false, mvp, 0)
         GLES20.glUniform3f(trUSun, sunLx, sunLy, sunLz)
+        GLES20.glUniform1f(trUFoliageMix, 1f)
 
         val stride = com.terra.sim.TreeMesh.FLOATS_PER_VERTEX * 4
         var boundKey: com.terra.sim.TreeField.VariantKey? = null
@@ -1773,6 +1794,13 @@ class PlanetRenderer(
                         trAColor, 3, GLES20.GL_FLOAT, false, stride, 24
                     )
                 }
+                if (trAMaterial >= 0) {
+                    GLES20.glEnableVertexAttribArray(trAMaterial)
+                    GLES20.glVertexAttribPointer(
+                        trAMaterial, 1, GLES20.GL_FLOAT, false, stride,
+                        com.terra.sim.TreeMesh.OFFSET_MATERIAL * 4
+                    )
+                }
                 boundKey = inst.variant
             }
             GLES20.glUniform3f(
@@ -1782,11 +1810,18 @@ class PlanetRenderer(
                 (inst.posZM - snapshot.eyeZM).toFloat()
             )
             GLES20.glUniformMatrix3fv(trUFrame, 1, false, inst.frame, 0)
+            // Couleur recalculée à CHAQUE image : le champ n'est reconstruit
+            // qu'après 35 % de déplacement, et un observateur immobile ne
+            // verrait sinon jamais la saison tourner (lot 3.4).
+            com.terra.sim.FoliageTint.of(inst, time, seasonTick, tintOut)
+            GLES20.glUniform3f(trUFoliage, tintOut[0], tintOut[1], tintOut[2])
+            GLES20.glUniform1f(trUShade, tintOut[3])
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, boundCount)
         }
         if (trAPosition >= 0) GLES20.glDisableVertexAttribArray(trAPosition)
         if (trANormal >= 0) GLES20.glDisableVertexAttribArray(trANormal)
         if (trAColor >= 0) GLES20.glDisableVertexAttribArray(trAColor)
+        if (trAMaterial >= 0) GLES20.glDisableVertexAttribArray(trAMaterial)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
     }
 
@@ -1842,6 +1877,12 @@ class PlanetRenderer(
         // Soleil dans le repère planète locale, comme pour les tuiles : le
         // shader ramène la normale du repère de l'arbre à celui-ci.
         GLES20.glUniform3f(trUSun, sunLx, sunLy, sunLz)
+        // Teinte NEUTRE : l'arbre de test garde les couleurs de son
+        // maillage. On y examine une géométrie, pas une saison — et pouvoir
+        // comparer sa silhouette d'une version à l'autre vaut mieux que de
+        // le voir roussir.
+        GLES20.glUniform1f(trUFoliageMix, 0f)
+        GLES20.glUniform1f(trUShade, 1f)
 
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, treeVbo)
         val stride = com.terra.sim.TreeMesh.FLOATS_PER_VERTEX * 4
@@ -1857,10 +1898,18 @@ class PlanetRenderer(
             GLES20.glEnableVertexAttribArray(trAColor)
             GLES20.glVertexAttribPointer(trAColor, 3, GLES20.GL_FLOAT, false, stride, 24)
         }
+        if (trAMaterial >= 0) {
+            GLES20.glEnableVertexAttribArray(trAMaterial)
+            GLES20.glVertexAttribPointer(
+                trAMaterial, 1, GLES20.GL_FLOAT, false, stride,
+                com.terra.sim.TreeMesh.OFFSET_MATERIAL * 4
+            )
+        }
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, treeVertexCount)
         if (trAPosition >= 0) GLES20.glDisableVertexAttribArray(trAPosition)
         if (trANormal >= 0) GLES20.glDisableVertexAttribArray(trANormal)
         if (trAColor >= 0) GLES20.glDisableVertexAttribArray(trAColor)
+        if (trAMaterial >= 0) GLES20.glDisableVertexAttribArray(trAMaterial)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
     }
 
@@ -2361,10 +2410,14 @@ class PlanetRenderer(
             uniform vec3 uBaseRel;
             uniform mat3 uFrame;
             uniform vec3 uSun;
+            uniform vec3 uFoliage;
+            uniform float uFoliageMix;
+            uniform float uShade;
 
             attribute vec3 aPosition;
             attribute vec3 aNormal;
             attribute vec3 aColor;
+            attribute float aMaterial;
 
             varying vec3 vColor;
 
@@ -2376,9 +2429,17 @@ class PlanetRenderer(
                 // passer par sa transposée inverse.
                 vec3 n = normalize(uFrame * aNormal);
                 float diffuse = max(dot(n, normalize(uSun)), 0.0);
+
+                // Lot 3.4 : la teinte de feuillage ne s'applique qu'aux
+                // sommets marqués aMaterial = 1. Sans ce masque, l'or de
+                // l'automne coulerait sur les troncs. uFoliageMix vaut 0
+                // pour l'arbre de test, qui garde ainsi les couleurs de son
+                // maillage — c'est un banc d'essai de GÉOMÉTRIE.
+                vec3 base = mix(aColor, uFoliage, aMaterial * uFoliageMix);
+
                 // Ambiante généreuse : sans elle, la moitié à l'ombre d'un
                 // tronc devient noire et l'arbre se lit comme une découpe.
-                vColor = aColor * (0.35 + 0.75 * diffuse);
+                vColor = base * uShade * (0.35 + 0.75 * diffuse);
             }
         """
 

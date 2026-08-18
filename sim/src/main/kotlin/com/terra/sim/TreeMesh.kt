@@ -50,8 +50,21 @@ object TreeMesh {
     /** Côtés par tube. Écart au cercle : 3,8 % de la largeur du tronc. */
     const val DEFAULT_SIDES = 8
 
-    /** Position (3) + normale (3) + couleur (3). */
-    const val FLOATS_PER_VERTEX = 9
+    /** Position (3) + normale (3) + couleur (3) + matériau (1). */
+    const val FLOATS_PER_VERTEX = 10
+
+    /** Rang du canal MATÉRIAU dans un sommet — lot 3.4.
+     *
+     * Il vaut [MATERIAL_WOOD] sur les tubes et [MATERIAL_FOLIAGE] sur les
+     * touffes. Sans lui, l'uniforme de teinte du lot 3.4 s'appliquerait à
+     * tout l'arbre et roussirait les troncs en automne. Le canal est ajouté
+     * EN DERNIER : les rangs de la position, de la normale et de la couleur
+     * ne bougent pas, et les tests écrits contre eux restent justes.
+     */
+    const val OFFSET_MATERIAL = 9
+
+    const val MATERIAL_WOOD = 0f
+    const val MATERIAL_FOLIAGE = 1f
 
     /** Une touffe = un octaèdre : 8 faces, sommets dupliqués. */
     const val OCTAHEDRON_VERTICES = 24
@@ -164,26 +177,26 @@ object TreeMesh {
                     // Deux triangles par côté, orientés vers l'EXTÉRIEUR
                     // (sens direct vu du dehors) : l'élagage des faces
                     // arrière est actif dans le moteur.
-                    o = put(out, o, baseRing, k, ringNormal, k, cBase)
-                    o = put(out, o, tipRing, k, ringNormal, k, cTip)
-                    o = put(out, o, tipRing, k2, ringNormal, k2, cTip)
+                    o = put(out, o, baseRing, k, ringNormal, k, cBase, MATERIAL_WOOD)
+                    o = put(out, o, tipRing, k, ringNormal, k, cTip, MATERIAL_WOOD)
+                    o = put(out, o, tipRing, k2, ringNormal, k2, cTip, MATERIAL_WOOD)
 
-                    o = put(out, o, baseRing, k, ringNormal, k, cBase)
-                    o = put(out, o, tipRing, k2, ringNormal, k2, cTip)
-                    o = put(out, o, baseRing, k2, ringNormal, k2, cBase)
+                    o = put(out, o, baseRing, k, ringNormal, k, cBase, MATERIAL_WOOD)
+                    o = put(out, o, tipRing, k2, ringNormal, k2, cTip, MATERIAL_WOOD)
+                    o = put(out, o, baseRing, k2, ringNormal, k2, cBase, MATERIAL_WOOD)
                 }
             } else {
                 for (k in 0 until effectiveSides) {
                     val k2 = (k + 1) % effectiveSides
-                    o = put(out, o, baseRing, k, ringNormal, k, cBase)
+                    o = put(out, o, baseRing, k, ringNormal, k, cBase, MATERIAL_WOOD)
                     // Apex : la normale d'un sommet de cône ne peut pas être
                     // radiale, on reprend l'axe — approximation qui suffit à
                     // un ombrage plat et évite un point noir au bout.
                     o = putXyz(
                         out, o, seg.tipX, seg.tipY, seg.tipZ,
-                        axis.x, axis.y, axis.z, cTip
+                        axis.x, axis.y, axis.z, cTip, MATERIAL_WOOD
                     )
-                    o = put(out, o, baseRing, k2, ringNormal, k2, cBase)
+                    o = put(out, o, baseRing, k2, ringNormal, k2, cBase, MATERIAL_WOOD)
                 }
             }
         }
@@ -263,9 +276,12 @@ object TreeMesh {
                     val ny = crossY(pz, px, i, v1, v2)
                     val nz = crossZ(px, py, i, v1, v2)
                     val nl = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-12f)
-                    o = putXyz(out, o, px[i], py[i], pz[i], nx / nl, ny / nl, nz / nl, color)
-                    o = putXyz(out, o, px[v1], py[v1], pz[v1], nx / nl, ny / nl, nz / nl, color)
-                    o = putXyz(out, o, px[v2], py[v2], pz[v2], nx / nl, ny / nl, nz / nl, color)
+                    o = putXyz(out, o, px[i], py[i], pz[i],
+                        nx / nl, ny / nl, nz / nl, color, MATERIAL_FOLIAGE)
+                    o = putXyz(out, o, px[v1], py[v1], pz[v1],
+                        nx / nl, ny / nl, nz / nl, color, MATERIAL_FOLIAGE)
+                    o = putXyz(out, o, px[v2], py[v2], pz[v2],
+                        nx / nl, ny / nl, nz / nl, color, MATERIAL_FOLIAGE)
                 }
             }
         }
@@ -307,6 +323,11 @@ object TreeMesh {
         val cb = params?.foliageBlue ?: 0.18f
         val hasFoliage = (params?.foliageDepthSpan ?: 0) > 0
         val color = if (hasFoliage) floatArrayOf(cr, cg, cb) else floatArrayOf(0.30f, 0.38f, 0.22f)
+        // Le panneau prend le matériau FEUILLAGE dès que l'espèce en a : sans
+        // cela, un arbre lointain resterait vert d'été pendant que ses voisins
+        // proches flamberaient, et la limite du niveau de détail se lirait
+        // comme une ligne de couleur en travers de la forêt.
+        val material = if (hasFoliage) MATERIAL_FOLIAGE else MATERIAL_WOOD
 
         val out = FloatArray(12 * FLOATS_PER_VERTEX)
         var o = 0
@@ -321,12 +342,12 @@ object TreeMesh {
             val az = pl[2] * w * 0.5f
             val nx = pl[3]
             val nz = pl[5]
-            o = putXyz(out, o, -ax, 0f, -az, nx, 0f, nz, color)
-            o = putXyz(out, o, ax, 0f, az, nx, 0f, nz, color)
-            o = putXyz(out, o, ax, h, az, nx, 0f, nz, color)
-            o = putXyz(out, o, -ax, 0f, -az, nx, 0f, nz, color)
-            o = putXyz(out, o, ax, h, az, nx, 0f, nz, color)
-            o = putXyz(out, o, -ax, h, -az, nx, 0f, nz, color)
+            o = putXyz(out, o, -ax, 0f, -az, nx, 0f, nz, color, material)
+            o = putXyz(out, o, ax, 0f, az, nx, 0f, nz, color, material)
+            o = putXyz(out, o, ax, h, az, nx, 0f, nz, color, material)
+            o = putXyz(out, o, -ax, 0f, -az, nx, 0f, nz, color, material)
+            o = putXyz(out, o, ax, h, az, nx, 0f, nz, color, material)
+            o = putXyz(out, o, -ax, h, -az, nx, 0f, nz, color, material)
         }
         return out
     }
@@ -381,24 +402,27 @@ object TreeMesh {
         out: FloatArray, offset: Int,
         ring: FloatArray, ringIndex: Int,
         normals: FloatArray, normalIndex: Int,
-        color: FloatArray
+        color: FloatArray,
+        material: Float
     ): Int = putXyz(
         out, offset,
         ring[3 * ringIndex], ring[3 * ringIndex + 1], ring[3 * ringIndex + 2],
         normals[3 * normalIndex], normals[3 * normalIndex + 1], normals[3 * normalIndex + 2],
-        color
+        color, material
     )
 
     private fun putXyz(
         out: FloatArray, offset: Int,
         x: Float, y: Float, z: Float,
         nx: Float, ny: Float, nz: Float,
-        color: FloatArray
+        color: FloatArray,
+        material: Float
     ): Int {
         var o = offset
         out[o++] = x; out[o++] = y; out[o++] = z
         out[o++] = nx; out[o++] = ny; out[o++] = nz
         out[o++] = color[0]; out[o++] = color[1]; out[o++] = color[2]
+        out[o++] = material
         return o
     }
 

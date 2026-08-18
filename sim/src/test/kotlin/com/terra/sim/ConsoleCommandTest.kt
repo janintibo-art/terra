@@ -188,4 +188,36 @@ class ConsoleCommandTest {
         assertTrue(ConsoleCommand.HELP_TEXT.contains("teinte"))
     }
 
+
+    // ------------------------------------------------ saison (lot 3.4)
+
+    @Test
+    fun `saison par nom`() {
+        for ((mot, jour) in listOf(
+            "printemps" to ConsoleCommand.DAY_SPRING,
+            "été" to ConsoleCommand.DAY_SUMMER,
+            "ete" to ConsoleCommand.DAY_SUMMER,
+            "automne" to ConsoleCommand.DAY_AUTUMN,
+            "hiver" to ConsoleCommand.DAY_WINTER
+        )) {
+            val c = ConsoleCommand.parse("saison $mot")
+            assertTrue(c is ConsoleCommand.SetSeasonDay, "« $mot » non reconnu : $c")
+            assertEquals(jour, c.dayOfYear, mot)
+        }
+    }
+
+    @Test
+    fun `saison par jour`() {
+        val c = ConsoleCommand.parse("saison 220")
+        assertTrue(c is ConsoleCommand.SetSeasonDay)
+        assertEquals(220, c.dayOfYear)
+    }
+
+    @Test
+    fun `saison invalide`() {
+        assertTrue(ConsoleCommand.parse("saison") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("saison mardi") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("saison 0") is ConsoleCommand.Invalid)
+        assertTrue(ConsoleCommand.parse("saison -5") is ConsoleCommand.Invalid)
+    }
 }

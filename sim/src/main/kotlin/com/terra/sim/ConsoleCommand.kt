@@ -23,6 +23,19 @@ sealed class ConsoleCommand {
     data class SetLocalHour(val hour: Double) : ConsoleCommand()
 
     /**
+     * `saison <printemps|été|automne|hiver|jour>` — avancer l'horloge
+     * jusqu'à ce jour de l'année (lot 3.4).
+     *
+     * Sans elle, observer la coloration saisonnière demanderait de laisser
+     * tourner l'accéléré ×400 pendant une année entière. Les quatre mots
+     * désignent les repères ASTRONOMIQUES de l'hémisphère nord ; le
+     * feuillage, lui, suit la température avec 27 à 55 jours de retard,
+     * si bien que le plein flamboiement se trouve plutôt vers le jour 220.
+     * D'où l'argument numérique, qui permet de balayer.
+     */
+    data class SetSeasonDay(val dayOfYear: Int) : ConsoleCommand()
+
+    /**
      * `teinte [on|off]` — colorer chaque tuile selon son niveau de
      * subdivision. Sans argument : bascule. L'outil de diagnostic des
      * artefacts de tuiles : un défaut devient lisible — sa tuile, son
@@ -90,6 +103,8 @@ sealed class ConsoleCommand {
             "   portée en mètres, suffixe k pour km : tp 12 34 80k\n" +
             "monde <nom>               régénère depuis ce nom-graine\n" +
             "soleil <heure>            avance jusqu'à cette heure locale, ex : soleil 12\n" +
+            "saison <nom|jour>         printemps, été, automne, hiver, ou un jour\n" +
+            "   le feuillage suit la température : essayer « saison 220 »\n" +
             "mode sol | mode globe     bascule la vue\n" +
             "teinte [on|off]           colore les tuiles par niveau (diagnostic)\n" +
             "photo                     enregistre une capture d'écran\n" +
@@ -130,6 +145,7 @@ sealed class ConsoleCommand {
                         else -> SetLocalHour(h)
                     }
                 }
+                "saison" -> parseSeason(parts)
                 "photo" -> TakePhoto
                 "arbre" -> parseTree(parts)
                 "flore" -> ShowFlora
@@ -204,6 +220,44 @@ sealed class ConsoleCommand {
                     ?: return Invalid("Espèce inconnue : $arg (voir « aide »)")
             }
             return ShowTree(species, seed, detail)
+        }
+
+        /**
+         * Jours des quatre repères astronomiques, hémisphère NORD.
+         *
+         * L'origine vient de [WorldTime.yearFraction], dont le zéro est
+         * l'équinoxe de printemps boréal : le solstice d'été tombe donc au
+         * quart de l'année. Ces valeurs supposent l'année de 360 jours du
+         * projet ; un monde à l'année différente les verrait ramenées par le
+         * modulo de [WorldTime.ticksUntilDayOfYear], ce qui décalerait les
+         * repères — sans conséquence, la commande étant un outil
+         * d'observation et non un élément de simulation.
+         */
+        const val DAY_SPRING = 1
+        const val DAY_SUMMER = 91
+        const val DAY_AUTUMN = 181
+        const val DAY_WINTER = 271
+
+        private fun parseSeason(parts: List<String>): ConsoleCommand {
+            val raw = parts.getOrNull(1)?.lowercase()
+                ?: return Invalid("Usage : saison printemps|été|automne|hiver|<jour>")
+            val word = raw.replace('é', 'e').replace('è', 'e')
+            val named = when {
+                word.startsWith("print") -> DAY_SPRING
+                word == "ete" || word == "estival" -> DAY_SUMMER
+                word.startsWith("aut") -> DAY_AUTUMN
+                word.startsWith("hiv") -> DAY_WINTER
+                else -> null
+            }
+            if (named != null) return SetSeasonDay(named)
+            val day = word.toIntOrNull()
+                ?: return Invalid("Saison inconnue : $raw. Essayez « aide ».")
+            // Borne haute large plutôt qu'une année en dur : la longueur de
+            // l'année appartient au monde, pas à l'analyseur de commandes.
+            if (day < 1 || day > 100_000) {
+                return Invalid("Jour hors de [1 ; 100000] : $day")
+            }
+            return SetSeasonDay(day)
         }
 
         private fun parseTeleport(parts: List<String>): ConsoleCommand {

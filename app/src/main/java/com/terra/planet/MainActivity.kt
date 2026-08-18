@@ -904,6 +904,11 @@ class MainActivity : Activity() {
                 )
                 clock.restore(clock.tick + jump)
             }
+            is ConsoleCommand.SetSeasonDay -> {
+                val jump = worldTime.ticksUntilDayOfYear(clock.tick, cmd.dayOfYear)
+                clock.restore(clock.tick + jump)
+                showConsoleMessage(describeSeason())
+            }
             ConsoleCommand.ShowFlora -> {
                 val cam = camera
                 val sampler = worldSampler
@@ -1115,6 +1120,56 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /**
+     * Retour de la commande `saison` — lot 3.4.
+     *
+     * Il ne se contente pas d'annoncer la date : il donne la température
+     * locale du point visé et l'état du feuillage qui en découle. Sans ces
+     * deux nombres, un feuillage qui ne roussit pas laisserait le choix
+     * entre trois explications — mauvais climat, mauvaise saison, code
+     * fautif — et il faudrait un aller-retour pour trancher. Instrumenter
+     * avant de corriger (leçon v0.37).
+     *
+     * L'espèce servant d'étalon est le FEUILLU : les persistants ne
+     * roussissent jamais, et afficher leur sénescence nulle ferait croire
+     * à une panne.
+     */
+    private fun describeSeason(): String {
+        val sb = StringBuilder()
+        sb.append(worldTime.format(clock.tick))
+            .append("\njour ").append(worldTime.dayOfYear(clock.tick))
+            .append(" sur ").append(worldTime.daysPerYear)
+            .append(" · ").append(worldTime.seasonNorth(clock.tick).label)
+            .append(" (hémisphère nord)\n")
+
+        val sampler = worldSampler
+        val cam = camera
+        if (sampler == null || cam == null) return sb.toString()
+
+        val dir = cam.focusDirection().toVec3()
+        val cell = sampler.nearestVertex(dir, weatherHint)
+        weatherHint = cell
+        val annual = sampler.smoothTemperatureAt(dir, cell)
+        val local = com.terra.sim.FoliageTint.localTemperatureC(
+            annual, dir.y, sampler.smoothContinentalityAt(dir, cell),
+            worldTime, clock.tick
+        )
+        // Sel médian : l'étalement individuel va de −1,5 à +1,5 °C autour de
+        // ce seuil, la valeur affichée est donc celle de l'arbre moyen.
+        val sen = com.terra.sim.FoliageTint.senescence(local, false, 0.5f)
+        val etat = when {
+            sen < 0.15f -> "feuillage d'été"
+            sen < 0.70f -> "roussissement"
+            else -> "feuillage terne d'hiver"
+        }
+        sb.append("Au point visé : ").append(sampler.biomeAt(dir, cell).label)
+            .append("\nmoyenne annuelle ").append("%.1f".format(annual))
+            .append(" °C · maintenant ").append("%.1f".format(local)).append(" °C\n")
+            .append("Feuillu : ").append(etat)
+            .append(" (sénescence ").append((sen * 100).toInt()).append(" %)")
+        return sb.toString()
+    }
+
     // --------------------------------------------------------------- HUD
 
     /**
@@ -1249,6 +1304,11 @@ class MainActivity : Activity() {
         }
 
         renderer.spinDeg = worldTime.spinDegrees(clock.tick)
+        // Horloge transmise au rendu : la teinte du feuillage se recalcule
+        // par arbre à chaque image (lot 3.4), donc elle a besoin du tick
+        // courant, pas de celui de la construction du champ.
+        renderer.seasonTime = worldTime
+        renderer.seasonTick = clock.tick
         val sun = worldTime.sunDirection(clock.tick)
         renderer.sunX = sun[0]; renderer.sunY = sun[1]; renderer.sunZ = sun[2]
         // Lune : direction monde du moment, ramenée en local par le renderer

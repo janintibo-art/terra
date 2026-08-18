@@ -50,6 +50,27 @@ class WorldTime(
         return (y - kotlin.math.floor(y)).toFloat()
     }
 
+    /**
+     * Ticks à avancer pour atteindre un jour de l'année — support de la
+     * commande console `saison` (lot 3.4).
+     *
+     * Toujours vers l'AVANT, comme [SolarTime.ticksUntilLocalHour] : le
+     * temps de Terra ne revient pas en arrière, et rien dans la simulation
+     * n'est prévu pour cela avant le rattrapage de la Phase 5.
+     *
+     * Le saut porte sur un nombre ENTIER de jours, ce qui préserve l'heure
+     * locale : on change de saison sans changer de moment de la journée, et
+     * deux captures prises à deux saisons restent comparables — même
+     * lumière, même ombre portée.
+     */
+    fun ticksUntilDayOfYear(tick: Long, targetDay: Int): Long {
+        val ticksPerDay = minutesPerDay.toDouble() / minutesPerTick
+        val target = (((targetDay - 1) % daysPerYear) + daysPerYear) % daysPerYear
+        val current = dayOfYear(tick) - 1
+        val forward = (((target - current) % daysPerYear) + daysPerYear) % daysPerYear
+        return kotlin.math.round(forward * ticksPerDay).toLong()
+    }
+
     /** Heure et minute planétaires, pour l'affichage. */
     fun clockTime(tick: Long): Pair<Int, Int> {
         val minuteOfDay = (totalMinutes(tick).toLong() % minutesPerDay).toInt()

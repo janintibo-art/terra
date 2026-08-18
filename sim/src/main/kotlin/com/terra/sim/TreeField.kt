@@ -54,12 +54,26 @@ class TreeField(
 
     /** Une instance : où, comment orientée, quelle variante. Le repère
      *  (colonnes est, haut, nord) porte DÉJÀ l'échelle de l'individu :
-     *  le shader n'a pas d'uniforme d'échelle à connaître. */
+     *  le shader n'a pas d'uniforme d'échelle à connaître.
+     *
+     *  Les six derniers champs (lot 3.4) sont les INTRANTS de la couleur,
+     *  pas la couleur elle-même : celle-ci se recalcule à chaque image par
+     *  [FoliageTint.of]. Figer la couleur ici la gèlerait jusqu'à la
+     *  prochaine reconstruction du champ, qui n'a lieu qu'après 35 % de
+     *  déplacement de la caméra — un observateur immobile ne verrait
+     *  jamais l'automne arriver. */
     class Instance(
         val posXM: Double, val posYM: Double, val posZM: Double,
         val frame: FloatArray,
         val variant: VariantKey,
-        val apparentPx: Float
+        val apparentPx: Float,
+        val annualTempC: Float,
+        val precipMm: Float,
+        val sinLat: Float,
+        val continentality01: Float,
+        val saltPhase: Float,
+        val saltHue: Float,
+        val saltShade: Float
     )
 
     /** Clef d'un maillage partagé. */
@@ -224,7 +238,14 @@ class TreeField(
             val variants = variantCount(chosen)
             val key = VariantKey(c.species, chosen, (c.variantU * variants).toInt()
                 .coerceIn(0, variants - 1))
-            instances += Instance(c.posXM, c.posYM, c.posZM, c.frame, key, c.apparentPx)
+            instances += Instance(
+                posXM = c.posXM, posYM = c.posYM, posZM = c.posZM,
+                frame = c.frame, variant = key, apparentPx = c.apparentPx,
+                annualTempC = c.annualTempC, precipMm = c.precipMm,
+                sinLat = c.sinLat, continentality01 = c.continentality01,
+                saltPhase = c.saltPhase, saltHue = c.saltHue,
+                saltShade = c.saltShade
+            )
             occupied += c.cellKey
         }
 
@@ -239,7 +260,14 @@ class TreeField(
         val species: TreeSpecies,
         val variantU: Float,
         val apparentPx: Float,
-        val cellKey: Long
+        val cellKey: Long,
+        val annualTempC: Float,
+        val precipMm: Float,
+        val sinLat: Float,
+        val continentality01: Float,
+        val saltPhase: Float,
+        val saltHue: Float,
+        val saltShade: Float
     )
 
     private fun collectCell(
@@ -331,9 +359,34 @@ class TreeField(
             nn.x * scale, nn.y * scale, nn.z * scale
         )
 
+        // Intrants de la couleur (lot 3.4), lus EN DERNIER : tous les rejets
+        // — eau, densité, pente, espèce nulle, hors de portée — sont déjà
+        // passés, et trois échantillonnages lissés par case visitée auraient
+        // été payés pour rien sur les milliers de cases écartées.
+        //
+        // Champs LISSÉS : la grille est à 115 km, et le plus proche voisin
+        // peindrait la forêt par aplats de cellule — le défaut même que le
+        // lissage avait corrigé sur les couleurs de biome.
+        //
+        // sin(latitude) est simplement d.y : l'axe polaire est Y, convention
+        // figée du projet.
+        val annualTempC = sampler.smoothTemperatureAt(d, near)
+        val precipMm = sampler.smoothPrecipitationAt(d, near)
+        val continentality = sampler.smoothContinentalityAt(d, near)
+
         out += Candidate(
             posX, posY, posZ, frame, species, variantU, apparent,
-            PlantExclusion.key(face, cellX, cellY)
+            PlantExclusion.key(face, cellX, cellY),
+            annualTempC = annualTempC,
+            precipMm = precipMm,
+            sinLat = d.y,
+            continentality01 = continentality,
+            // Sels +9, +10, +11 : les huit premiers sont pris (gigue, densité,
+            // taille, ombrage, azimut, espèce, variante). Même famille de
+            // hachage, donc même déterminisme par graine et par position.
+            saltPhase = profile.micro01(sx * 31 + 9),
+            saltHue = profile.micro01(sx * 31 + 10),
+            saltShade = profile.micro01(sx * 31 + 11)
         )
     }
 
